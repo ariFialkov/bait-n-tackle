@@ -1,0 +1,14 @@
+{
+  "name": "bait-n-tackle",
+  "version": "1.0.0",
+  "description": "Casual 3D lake fishing betting game PWA — trawl the shallows, cast for trophies.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "npx --yes serve -l 8080 ."
+  },
+  "devDependencies": {
+    "playwright-core": "^1.58.0",
+    "three": "0.160.1"
+  }
+}
