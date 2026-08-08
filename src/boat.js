@@ -1,102 +1,244 @@
-// The player's fishing boat: low-poly hull built from primitives, a visible
-// trawl net on the stern (tap/click it to toggle trawling), and drifty
-// arcade movement where the nose lerps toward the direction of travel.
+// The player's fishing boat: a smooth-shaded center-console skiff built
+// procedurally (no external assets) — shaped hull, gunwale rail, console
+// with windshield, seats, outboard motor, fishing rod, and a trawl net rig
+// on the stern (tap/click the net to toggle trawling). Movement is drifty
+// arcade physics where the nose lerps toward the direction of travel.
 
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { isNavigable } from './lake.js';
 
-function buildBoatMesh() {
-  const g = new THREE.Group();
-  const hullMat = new THREE.MeshLambertMaterial({ color: 0xc8532e });
-  const deckMat = new THREE.MeshLambertMaterial({ color: 0xe8d9b0 });
-  const cabinMat = new THREE.MeshLambertMaterial({ color: 0xf2ece0 });
-  const darkMat = new THREE.MeshLambertMaterial({ color: 0x51413a });
+const LEN = 4.6, BEAM = 1.9, HULL_H = 0.95;
 
-  // Hull: tapered box (bow at -Z)
-  const hullGeo = new THREE.BoxGeometry(1.7, 0.8, 4.4, 1, 1, 3);
-  const pos = hullGeo.attributes.position;
+// Half-width of the hull as a fraction of BEAM/2, along u (0 = bow, 1 = stern).
+function hullWidth(u) {
+  const flare = Math.pow(Math.sin(Math.min(u * 1.45, 1) * Math.PI / 2), 0.75);
+  return 0.1 + 0.9 * flare * (1 - 0.08 * Math.max(0, u - 0.75) / 0.25);
+}
+
+function buildHullGeometry() {
+  const geo = new THREE.BoxGeometry(1, 1, 1, 8, 4, 18);
+  const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    const z = pos.getZ(i);
-    if (z < -1.4) { // taper the bow
-      pos.setX(i, pos.getX(i) * 0.25);
-      if (pos.getY(i) < 0) pos.setY(i, pos.getY(i) * 0.4);
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const u = z + 0.5; // 0 bow .. 1 stern
+    let nx = x * hullWidth(u);
+    let ny = y;
+    if (y < 0) {
+      // V-hull bottom: shallower toward the bow, deadrise toward keel.
+      const depth = 0.45 + 0.55 * Math.sin(Math.min(u * 1.6, 1) * Math.PI / 2);
+      ny = y * depth - Math.abs(nx) * 0.22 * -y * 2;
+      // Rocker: the bow sweeps up.
+      ny += Math.pow(1 - u, 2.2) * 0.55 * -y * 2;
     }
+    pos.setXYZ(i, nx, ny, z);
   }
-  hullGeo.computeVertexNormals();
-  const hull = new THREE.Mesh(hullGeo, hullMat);
-  hull.position.y = 0.25;
-  g.add(hull);
+  geo.scale(BEAM, HULL_H, LEN);
+  geo.deleteAttribute('uv');
+  geo.computeVertexNormals();
+  return geo;
+}
 
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.12, 3.6), deckMat);
-  deck.position.set(0, 0.68, 0.2);
+function gunwaleCurve(deckY) {
+  const pts = [];
+  const N = 24;
+  for (let i = 0; i <= N; i++) { // starboard, bow -> stern
+    const u = i / N;
+    pts.push(new THREE.Vector3(hullWidth(u) * BEAM / 2, deckY, (u - 0.5) * LEN));
+  }
+  for (let i = N; i >= 0; i--) { // port, stern -> bow
+    const u = i / N;
+    pts.push(new THREE.Vector3(-hullWidth(u) * BEAM / 2, deckY, (u - 0.5) * LEN));
+  }
+  return new THREE.CatmullRomCurve3(pts, true);
+}
+
+function buildBoat() {
+  const g = new THREE.Group();
+  const cast = [];
+
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0xc94f30, roughness: 0.35, metalness: 0.05 });
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0xe6d7ae, roughness: 0.8 });
+  const railMat = new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 0.4 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x40342c, roughness: 0.6 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xb8c0c4, roughness: 0.25, metalness: 0.8 });
+
+  const hull = new THREE.Mesh(buildHullGeometry(), hullMat);
+  hull.position.y = 0.3;
+  g.add(hull); cast.push(hull);
+
+  // Deck floor
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(BEAM * 0.78, 0.06, LEN * 0.8), deckMat);
+  deck.position.set(0, 0.62, 0.15);
   g.add(deck);
 
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.85, 1.2), cabinMat);
-  cabin.position.set(0, 1.15, -0.35);
-  g.add(cabin);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.1, 1.4), hullMat);
-  roof.position.set(0, 1.62, -0.35);
-  g.add(roof);
+  // Gunwale rail
+  const rail = new THREE.Mesh(
+    new THREE.TubeGeometry(gunwaleCurve(0.48), 96, 0.05, 7, true), railMat);
+  rail.position.y = 0.3;
+  g.add(rail); cast.push(rail);
 
-  // Trawl boom arm
-  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.9, 6), darkMat);
-  boom.rotation.x = Math.PI / 3.1;
-  boom.position.set(0, 1.35, 1.15);
-  g.add(boom);
+  // Bow deck cap
+  const bowCap = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.1, 10, 1), deckMat);
+  bowCap.scale.set(1, 1, 1.7);
+  bowCap.position.set(0, 0.72, -1.62);
+  g.add(bowCap);
 
-  // Trawl net: visible bundle on the stern (the tap target).
+  // Center console with windshield + wheel
+  const console_ = new THREE.Group();
+  const consoleBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.62, 0.55), railMat);
+  consoleBody.position.y = 0.31;
+  console_.add(consoleBody);
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.16, 0.34), darkMat);
+  dash.rotation.x = -0.5;
+  dash.position.set(0, 0.66, -0.1);
+  console_.add(dash);
+  const shield = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.46, 0.46, 0.4, 12, 1, true, -Math.PI * 0.32, Math.PI * 0.64),
+    new THREE.MeshStandardMaterial({
+      color: 0xbfe2ee, roughness: 0.1, metalness: 0.1,
+      transparent: true, opacity: 0.4, side: THREE.DoubleSide,
+    }));
+  shield.position.set(0, 0.9, -0.08);
+  console_.add(shield);
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.02, 6, 14), darkMat);
+  wheel.rotation.x = -0.9;
+  wheel.position.set(0, 0.72, 0.22);
+  console_.add(wheel);
+  console_.position.set(0, 0.62, -0.35);
+  g.add(console_);
+  cast.push(consoleBody);
+
+  // Helm seat + bow seat
+  for (const [z, w] of [[0.45, 0.56], [-1.05, 0.7]]) {
+    const seat = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.3, 8), chromeMat);
+    base.position.y = 0.15;
+    const cushion = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, 0.16, 12), hullMat);
+    cushion.position.y = 0.36;
+    seat.add(base, cushion);
+    seat.position.set(0, 0.62, z);
+    g.add(seat);
+  }
+
+  // Outboard motor
+  const motor = new THREE.Group();
+  const cowl = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.24, 4, 10), darkMat);
+  cowl.rotation.z = Math.PI / 2;
+  cowl.rotation.y = Math.PI / 2;
+  cowl.position.y = 0.12;
+  motor.add(cowl);
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.6, 0.16), darkMat);
+  shaft.position.y = -0.3;
+  motor.add(shaft);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, 0.3), chromeMat);
+  fin.position.set(0, -0.62, 0.05);
+  motor.add(fin);
+  motor.position.set(0, 0.72, 2.28);
+  motor.rotation.x = 0.12;
+  g.add(motor); cast.push(cowl);
+
+  // Fishing rod (line attaches at rodTip)
+  const rod = new THREE.Group();
+  const blank = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 2.3, 6), darkMat);
+  blank.position.y = 1.15;
+  rod.add(blank);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.4, 6), hullMat);
+  grip.position.y = 0.2;
+  rod.add(grip);
+  const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.05, 10), chromeMat);
+  reel.rotation.z = Math.PI / 2;
+  reel.position.set(0, 0.5, 0.07);
+  rod.add(reel);
+  const rodTip = new THREE.Object3D();
+  rodTip.position.y = 2.3;
+  rod.add(rodTip);
+  rod.position.set(0.55, 0.65, -0.75);
+  rod.rotation.set(-0.85, 0, -0.18); // raked up over the bow
+  g.add(rod);
+
+  // Trawl net: stowed bundle on the stern (the tap target)
   const netGroup = new THREE.Group();
-  const netMat = new THREE.MeshLambertMaterial({ color: 0x7d8a4c });
-  const bundle = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), netMat);
-  bundle.scale.set(1.25, 0.7, 1);
-  bundle.position.set(0, 0.85, 1.55);
+  const netMat = new THREE.MeshStandardMaterial({ color: 0x7d8a4c, roughness: 0.9 });
+  const bundle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 9), netMat);
+  bundle.scale.set(1.3, 0.65, 1);
+  bundle.position.set(0, 0.78, 1.62);
   netGroup.add(bundle);
-  const float1 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6),
-    new THREE.MeshLambertMaterial({ color: 0xe8b23a }));
-  float1.position.set(0.3, 1.05, 1.45);
-  netGroup.add(float1);
-  const float2 = float1.clone();
-  float2.position.set(-0.28, 1.0, 1.65);
-  netGroup.add(float2);
+  const netWire = new THREE.Mesh(new THREE.SphereGeometry(0.41, 9, 6),
+    new THREE.MeshBasicMaterial({ color: 0x4c5530, wireframe: true, transparent: true, opacity: 0.5 }));
+  netWire.scale.copy(bundle.scale);
+  netWire.position.copy(bundle.position);
+  netGroup.add(netWire);
+  for (const [sx, sz] of [[0.3, 1.5], [-0.26, 1.72], [0.05, 1.78]]) {
+    const float = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xe8b23a, roughness: 0.5 }));
+    float.position.set(sx, 0.95, sz);
+    netGroup.add(float);
+  }
   g.add(netGroup);
 
-  // Generous invisible tap target around the net.
+  // A-frame boom over the stern
+  for (const sx of [-0.5, 0.5]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.6, 6), chromeMat);
+    leg.rotation.x = Math.PI / 3.4;
+    leg.position.set(sx, 1.15, 1.35);
+    g.add(leg);
+  }
+
+  // Generous invisible tap target around the net
   const netHit = new THREE.Mesh(
     new THREE.SphereGeometry(1.15, 8, 8),
     new THREE.MeshBasicMaterial({ visible: false }));
   netHit.position.copy(bundle.position);
   g.add(netHit);
 
-  // Deployed net (shown behind the boat while trawling)
+  // Deployed net, shown behind the boat while trawling
   const deployed = new THREE.Group();
   const mouth = new THREE.Mesh(
-    new THREE.ConeGeometry(1.1, 3.2, 8, 1, true),
-    new THREE.MeshLambertMaterial({ color: 0x66743e, transparent: true, opacity: 0.75, side: THREE.DoubleSide, wireframe: true }));
+    new THREE.ConeGeometry(1.15, 3.4, 10, 3, true),
+    new THREE.MeshStandardMaterial({
+      color: 0x66743e, transparent: true, opacity: 0.35,
+      side: THREE.DoubleSide, depthWrite: false,
+    }));
   mouth.rotation.x = -Math.PI / 2;
-  mouth.position.set(0, -0.35, 4.6);
+  mouth.position.set(0, -0.3, 4.7);
   deployed.add(mouth);
+  const mouthWire = new THREE.Mesh(mouth.geometry.clone(),
+    new THREE.MeshBasicMaterial({ color: 0x4c5530, wireframe: true, transparent: true, opacity: 0.55 }));
+  mouthWire.rotation.copy(mouth.rotation);
+  mouthWire.position.copy(mouth.position);
+  deployed.add(mouthWire);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const float = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xe8b23a, roughness: 0.5 }));
+    float.position.set(Math.cos(a) * 1.15, -0.3 + Math.sin(a) * 0.25, 3.05);
+    deployed.add(float);
+  }
   const ropeMat = new THREE.LineBasicMaterial({ color: 0x3d3428 });
   for (const sx of [-0.7, 0.7]) {
     const ropeGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(sx, 0.8, 1.7), new THREE.Vector3(sx * 1.1, -0.3, 3.4),
+      new THREE.Vector3(sx * 0.7, 1.4, 1.8), new THREE.Vector3(sx * 1.1, -0.25, 3.2),
     ]);
     deployed.add(new THREE.Line(ropeGeo, ropeMat));
   }
   deployed.visible = false;
   g.add(deployed);
 
-  return { group: g, netHit, netBundle: netGroup, deployedNet: deployed };
+  for (const m of cast) m.castShadow = true;
+
+  return { group: g, netHit, netBundle: netGroup, deployedNet: deployed, rodTip };
 }
 
 export class Boat {
   constructor(scene, lake) {
     this.lake = lake;
-    const parts = buildBoatMesh();
+    const parts = buildBoat();
     this.group = parts.group;
     this.netHit = parts.netHit;
     this.netBundle = parts.netBundle;
     this.deployedNet = parts.deployedNet;
+    this.rodTip = parts.rodTip;
     scene.add(this.group);
 
     this.pos = new THREE.Vector3(0, 0, 0);
@@ -105,7 +247,6 @@ export class Boat {
     this.speed = 0;
     this.trawling = false;
 
-    // Wake foam particles
     this.wake = this.buildWake(scene);
   }
 
@@ -130,6 +271,14 @@ export class Boat {
     this.netBundle.visible = !on;
   }
 
+  /** Ease the nose toward a heading (used when casting). */
+  nudgeHeading(target, amount) {
+    let d = target - this.heading;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    this.heading += d * amount;
+  }
+
   /** inputVec: normalized desired direction in world XZ ({x, z}), len 0..1 */
   update(dt, inputVec, t) {
     const mag = Math.hypot(inputVec.x, inputVec.z);
@@ -139,7 +288,6 @@ export class Boat {
       this.vel.x += inputVec.x * CONFIG.BOAT_ACCEL * dt;
       this.vel.z += inputVec.z * CONFIG.BOAT_ACCEL * dt;
     }
-    // Drag
     const drag = Math.exp(-CONFIG.BOAT_DRAG * dt);
     this.vel.x *= drag; this.vel.z *= drag;
     const sp = Math.hypot(this.vel.x, this.vel.z);
@@ -165,7 +313,7 @@ export class Boat {
 
     // Bob on the waves.
     const bobY = this.lake.waveHeight(this.pos.x, this.pos.z, t);
-    this.group.position.set(this.pos.x, bobY + 0.05, this.pos.z);
+    this.group.position.set(this.pos.x, bobY + 0.02, this.pos.z);
     this.group.rotation.set(
       Math.sin(t * 0.9) * 0.02 + this.speed * 0.008,
       this.heading,
@@ -178,13 +326,12 @@ export class Boat {
   updateWake(dt) {
     const w = this.wake;
     const posAttr = w.points.geometry.attributes.position;
-    // Emit while moving (more while trawling)
     const rate = this.speed > 0.6 ? (this.trawling ? 34 : 18) : 0;
     w.emitAcc += rate * dt;
     while (w.emitAcc >= 1) {
       w.emitAcc -= 1;
       const i = w.idx = (w.idx + 1) % w.life.length;
-      const back = this.trawling ? 4.5 : 2.2;
+      const back = this.trawling ? 4.5 : 2.4;
       const spread = this.trawling ? 1.2 : 0.5;
       posAttr.setXYZ(i,
         this.pos.x + Math.sin(this.heading) * back + (Math.random() - 0.5) * spread,

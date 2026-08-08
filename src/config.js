@@ -17,14 +17,19 @@ export const CONFIG = {
   TRAWL_MAX_TIER: 1,         // trawl nets mostly scoop tier 0-1 fish
   TRAWL_RARE_TIER_CHANCE: 0.06, // small chance a tier-2 fish ends up in the net
 
-  // --- Casting ---
+  // --- Casting / reeling ---
   CAST_MIN_DIST: 7,
-  CAST_MAX_DIST: 26,
+  CAST_MAX_DIST: 27,
   CAST_MAX_SPEED: 0.9,       // boat must be (nearly) stationary to cast
   BITE_MIN_S: 2.2,
   BITE_MAX_S: 9.5,
-  BITE_WINDOW_S: 1.6,        // reaction window to reel once a bite starts
-  CAST_TIMEOUT_S: 30,        // auto-retrieve after this long
+  BITE_WINDOW_S: 2.2,        // reaction window to hook once a bite starts
+  CAST_TIMEOUT_S: 45,        // auto-retrieve after this long
+  REEL_SWIPES: 2.6,          // full-power swipes needed to reel a max cast
+  REEL_SPEED: 8.5,           // m/s the bobber travels while being reeled
+  HOOK_ESCAPE_S: 6,          // hooked fish escapes if you stop reeling
+  HOOK_PULL_SPEED: 0.55,     // m/s a hooked fish takes line back out
+  LINE_SNAP_DIST: 42,        // drive off with line out and it snaps
 
   // --- Boat handling ---
   BOAT_ACCEL: 7.5,

@@ -1,19 +1,21 @@
 // Unified input:
-//  Desktop: WASD/arrows to move, click+swipe up to cast, click the net to
-//           trawl, click to reel.
-//  Mobile:  static joystick (bottom-left) to move, swipe up to cast, tap the
-//           net to trawl, tap to reel.
+//  Desktop: WASD/arrows to move, click+drag in any direction to cast that
+//           way, drag again to reel, click the net to trawl.
+//  Mobile:  static joystick (bottom-left) to move, swipe to cast/reel, tap
+//           the net to trawl.
 
 import * as THREE from 'three';
 
-const SWIPE_MIN_PX = 60;
+const SWIPE_MIN_PX = 55;
 const SWIPE_MAX_MS = 1500;
 const TAP_MAX_PX = 12;
 const TAP_MAX_MS = 400;
 
 export class Input {
   /**
-   * handlers: { cast(power), tapNet(), tap() }
+   * handlers: { swipe({x, z, power}), tapNet(), tap() }
+   * Swipe direction is given in world XZ (screen right = +x, screen up = -z);
+   * power in [0,1] blends swipe length and speed.
    */
   constructor(canvas, camera, getNetObject, handlers) {
     this.canvas = canvas;
@@ -126,9 +128,13 @@ export class Input {
     const dist = Math.hypot(dx, dy);
     const dur = performance.now() - p.t0;
 
-    if (dy < -SWIPE_MIN_PX && dur < SWIPE_MAX_MS && Math.abs(dy) > Math.abs(dx) * 1.2) {
-      const power = Math.min(1, (-dy - SWIPE_MIN_PX) / 220);
-      this.handlers.cast(power);
+    if (dist >= SWIPE_MIN_PX && dur < SWIPE_MAX_MS) {
+      const speed = dist / Math.max(dur, 16); // px per ms
+      const power = Math.min(1,
+        0.55 * Math.min((dist - SWIPE_MIN_PX) / 360, 1) +
+        0.45 * Math.min(speed / 1.4, 1));
+      // Screen space -> world XZ (camera is fixed-rotation, facing -Z).
+      this.handlers.swipe({ x: dx / dist, z: dy / dist, power });
       return;
     }
 

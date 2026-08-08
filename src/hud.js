@@ -72,10 +72,6 @@ export class HUD {
     this.el.bite.classList.toggle('show', on);
   }
 
-  setCasting(on) {
-    if (on) this.hint('Line out — tap / click to reel', 4000);
-  }
-
   setTrawling(on) {
     this.el.trawlBadge.classList.toggle('show', on);
   }

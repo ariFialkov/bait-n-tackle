@@ -67,6 +67,33 @@ function colorAt(h, x, z, out) {
   return out;
 }
 
+// Concatenate simple geometries (position+normal only) into one, so a
+// multi-part tree can still be drawn as a single instanced mesh.
+function mergeGeoms(geoms) {
+  const parts = geoms.map((g) => (g.index ? g.toNonIndexed() : g));
+  let total = 0;
+  for (const g of parts) total += g.attributes.position.count;
+  const pos = new Float32Array(total * 3);
+  const norm = new Float32Array(total * 3);
+  let o = 0;
+  for (const g of parts) {
+    pos.set(g.attributes.position.array, o * 3);
+    norm.set(g.attributes.normal.array, o * 3);
+    o += g.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+  return out;
+}
+
+function makeCanopyGeo() {
+  const c1 = new THREE.ConeGeometry(1.35, 1.7, 7); c1.translate(0, 0.85, 0);
+  const c2 = new THREE.ConeGeometry(1.05, 1.5, 7); c2.translate(0, 1.75, 0);
+  const c3 = new THREE.ConeGeometry(0.68, 1.25, 7); c3.translate(0, 2.6, 0);
+  return mergeGeoms([c1, c2, c3]);
+}
+
 // --- Chunk ---
 class Chunk {
   constructor(cx, cz, parentGroup, treeMaterials) {
@@ -90,6 +117,7 @@ class Chunk {
 
     this.mesh = new THREE.Mesh(geo, Chunk.material);
     this.mesh.position.set(ox, 0, oz);
+    this.mesh.receiveShadow = true;
     parentGroup.add(this.mesh);
 
     this.trees = this.buildTrees(ox, oz, size, treeMaterials, parentGroup);
@@ -99,27 +127,56 @@ class Chunk {
   buildTrees(ox, oz, size, mats, parentGroup) {
     const rng = mulberry32((hash2(this.cx, this.cz, S + 5) * 1e9) | 0);
     const spots = [];
-    for (let i = 0; i < 60; i++) {
+    const rocks = [];
+    for (let i = 0; i < 70; i++) {
       const x = ox + (rng() - 0.5) * size;
       const z = oz + (rng() - 0.5) * size;
       const h = terrainHeight(x, z);
-      if (h > 1.4 && h < 6.0 && rng() < 0.65) spots.push({ x, z, h, s: 0.7 + rng() * 0.9 });
+      if (h > 1.4 && h < 6.0 && rng() < 0.6) {
+        spots.push({ x, z, h, s: 0.7 + rng() * 0.9, r: rng() * Math.PI * 2 });
+      } else if (h > -0.15 && h < 1.1 && rng() < 0.3) {
+        rocks.push({ x, z, h, s: 0.35 + rng() * 0.75, r: rng() * Math.PI * 2 });
+      }
     }
-    if (!spots.length) return null;
+    if (!spots.length && !rocks.length) return null;
 
-    const canopy = new THREE.InstancedMesh(Chunk.canopyGeo, mats.canopy, spots.length);
-    const trunk = new THREE.InstancedMesh(Chunk.trunkGeo, mats.trunk, spots.length);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
-    spots.forEach((t, i) => {
-      sc.setScalar(t.s);
-      p.set(t.x, t.h + 1.6 * t.s, t.z);
-      m.compose(p, q, sc); canopy.setMatrixAt(i, m);
-      p.set(t.x, t.h + 0.5 * t.s, t.z);
-      m.compose(p, q, sc); trunk.setMatrixAt(i, m);
-    });
-    canopy.instanceMatrix.needsUpdate = trunk.instanceMatrix.needsUpdate = true;
-    parentGroup.add(canopy, trunk);
-    return { canopy, trunk };
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(),
+      sc = new THREE.Vector3(), p = new THREE.Vector3(),
+      axisY = new THREE.Vector3(0, 1, 0);
+    const out = {};
+
+    if (spots.length) {
+      const canopy = new THREE.InstancedMesh(Chunk.canopyGeo, mats.canopy, spots.length);
+      const trunk = new THREE.InstancedMesh(Chunk.trunkGeo, mats.trunk, spots.length);
+      canopy.castShadow = trunk.castShadow = true;
+      spots.forEach((t, i) => {
+        q.setFromAxisAngle(axisY, t.r);
+        sc.setScalar(t.s);
+        p.set(t.x, t.h + 0.75 * t.s, t.z);
+        m.compose(p, q, sc); canopy.setMatrixAt(i, m);
+        p.set(t.x, t.h + 0.5 * t.s, t.z);
+        m.compose(p, q, sc); trunk.setMatrixAt(i, m);
+      });
+      canopy.instanceMatrix.needsUpdate = trunk.instanceMatrix.needsUpdate = true;
+      parentGroup.add(canopy, trunk);
+      out.canopy = canopy;
+      out.trunk = trunk;
+    }
+
+    if (rocks.length) {
+      const rock = new THREE.InstancedMesh(Chunk.rockGeo, mats.rock, rocks.length);
+      rock.castShadow = true;
+      rocks.forEach((t, i) => {
+        q.setFromAxisAngle(axisY, t.r);
+        sc.set(t.s, t.s * (0.6 + (i % 3) * 0.2), t.s);
+        p.set(t.x, t.h + 0.1, t.z);
+        m.compose(p, q, sc); rock.setMatrixAt(i, m);
+      });
+      rock.instanceMatrix.needsUpdate = true;
+      parentGroup.add(rock);
+      out.rock = rock;
+    }
+    return out;
   }
 
   buildHotspots(ox, oz, size) {
@@ -147,16 +204,18 @@ class Chunk {
     parentGroup.remove(this.mesh);
     this.mesh.geometry.dispose();
     if (this.trees) {
-      parentGroup.remove(this.trees.canopy, this.trees.trunk);
-      this.trees.canopy.dispose();
-      this.trees.trunk.dispose();
+      for (const im of Object.values(this.trees)) {
+        parentGroup.remove(im);
+        im.dispose();
+      }
     }
   }
 }
 
 Chunk.material = new THREE.MeshLambertMaterial({ vertexColors: true });
-Chunk.canopyGeo = new THREE.ConeGeometry(1.1, 2.6, 6);
-Chunk.trunkGeo = new THREE.CylinderGeometry(0.16, 0.22, 1.2, 5);
+Chunk.canopyGeo = makeCanopyGeo();
+Chunk.trunkGeo = new THREE.CylinderGeometry(0.14, 0.22, 1.3, 6);
+Chunk.rockGeo = new THREE.IcosahedronGeometry(0.55, 0);
 
 // --- Hotspot FX: concentric expanding ripple rings + choppy foam sprites ---
 class HotspotFX {
@@ -267,6 +326,7 @@ export class Lake {
     this.treeMaterials = {
       canopy: new THREE.MeshLambertMaterial({ color: 0x2f6b38 }),
       trunk: new THREE.MeshLambertMaterial({ color: 0x6b4a2f }),
+      rock: new THREE.MeshLambertMaterial({ color: 0x8b8f88, flatShading: true }),
     };
     this.water = makeWater();
     scene.add(this.water);

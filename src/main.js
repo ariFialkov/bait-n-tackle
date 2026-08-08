@@ -16,6 +16,10 @@ const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbfe3f2);
@@ -23,11 +27,20 @@ scene.fog = new THREE.Fog(0xbfe3f2, 90, 220);
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 500);
 
-const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
-sun.position.set(40, 70, 20);
+const SUN_OFFSET = new THREE.Vector3(40, 70, 20);
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.4);
+sun.position.copy(SUN_OFFSET);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = sun.shadow.camera.bottom = -55;
+sun.shadow.camera.right = sun.shadow.camera.top = 55;
+sun.shadow.camera.near = 20;
+sun.shadow.camera.far = 200;
+sun.shadow.bias = -0.0015;
 scene.add(sun);
-scene.add(new THREE.AmbientLight(0xcfe6f0, 0.9));
-scene.add(new THREE.HemisphereLight(0xd8ecf5, 0x3a5f3f, 0.7));
+scene.add(sun.target);
+scene.add(new THREE.AmbientLight(0xcfe6f0, 0.75));
+scene.add(new THREE.HemisphereLight(0xd8ecf5, 0x3a5f3f, 0.75));
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -63,9 +76,9 @@ hud.bindNewRound(() => {
 let state = 'menu';
 
 const input = new Input(canvas, camera, () => boat.netHit, {
-  cast: (power) => { if (state === 'play') fishing.cast(power); },
+  swipe: (s) => { if (state === 'play') fishing.onSwipe(s); },
   tapNet: () => { if (state === 'play') fishing.toggleTrawl(); },
-  tap: () => { if (state === 'play') fishing.reel(); },
+  tap: () => {},
 });
 
 hud.showMenu(() => {
@@ -73,8 +86,8 @@ hud.showMenu(() => {
   rig.startGame();
   input.enabled = true;
   hud.hint(input.isTouch
-    ? 'Joystick to drive · swipe up to cast · tap the net to trawl'
-    : 'WASD to drive · click-swipe up to cast · click the net to trawl', 6000);
+    ? 'Joystick to drive · swipe to cast & reel · tap the net to trawl'
+    : 'WASD to drive · click-drag to cast & reel · click the net to trawl', 6000);
 });
 
 // --- Loop ---
@@ -90,9 +103,13 @@ function frame() {
   boat.update(dt, move, t);
   lake.update(t, boat.pos.x, boat.pos.z);
   ambientFish.setFocus(boat.pos.x, boat.pos.z);
-  ambientFish.update(t);
+  ambientFish.update(t, dt);
   if (state === 'play') fishing.update(dt, t);
   rig.update(dt, t, boat.group.position);
+
+  // Keep the sun (and its shadow frustum) centered on the boat.
+  sun.position.set(boat.pos.x + SUN_OFFSET.x, SUN_OFFSET.y, boat.pos.z + SUN_OFFSET.z);
+  sun.target.position.set(boat.pos.x, 0, boat.pos.z);
 
   hud.setWallet(wallet.balance, rtp.netRound());
 

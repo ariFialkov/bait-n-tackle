@@ -21,13 +21,17 @@ caches everything for offline play.
 
 ## How to play
 
-|            | Desktop                          | Mobile                       |
-| ---------- | -------------------------------- | ---------------------------- |
-| Drive      | `WASD` / arrow keys              | static joystick, bottom-left |
-| Cast       | click + swipe up                 | swipe up                     |
-| Reel       | click                            | tap                          |
-| Trawl      | click the net on the boat’s stern| tap the net                  |
-| Pick lure  | 🎣 button, right edge            | 🎣 button, right edge        |
+|            | Desktop                                | Mobile                       |
+| ---------- | -------------------------------------- | ---------------------------- |
+| Drive      | `WASD` / arrow keys                    | static joystick, bottom-left |
+| Cast       | click + drag in any direction          | swipe in any direction       |
+| Reel       | drag again (2-3 pulls for a long cast) | swipe again                  |
+| Hook       | drag while the bobber dunks (❗)        | swipe while the bobber dunks |
+| Trawl      | click the net on the boat’s stern      | tap the net                  |
+| Pick lure  | 🎣 button, right edge                  | 🎣 button, right edge        |
+
+Casts fly in the direction you swipe; swipe length and speed set the
+distance. Once hooked, keep pulling — stop too long and the fish escapes.
 
 ### The two bets
 
