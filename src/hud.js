@@ -2,12 +2,10 @@
 // indicator, plus the menu overlay.
 
 import { LURES } from './config.js';
+import { TIER_NAMES } from './fishdata.js';
+import { fishIconURL } from './fishicons.js';
 
 const $ = (id) => document.getElementById(id);
-
-function fishEmoji(tier) {
-  return ['🐠', '🐟', '🐟', '🎣', '🦈', '🐋'][tier] || '🐟';
-}
 
 export class HUD {
   constructor() {
@@ -101,30 +99,31 @@ export class HUD {
     const profit = c.value - wager;
     const cls = profit >= 0 ? 'win' : 'meh';
     this.toast(
-      `<div class="catch-emoji">${fishEmoji(c.species.tier)}</div>` +
+      `<img class="catch-icon" src="${fishIconURL(c.species)}" alt="">` +
       `<div class="catch-body"><div class="catch-name">${c.species.name}</div>` +
       `<div class="catch-sub">${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg</div></div>` +
       `<div class="catch-value">$${c.value.toFixed(2)}</div>`, cls, 4200);
   }
 
   showTrawlHaul(catches, total) {
+    const best = catches.reduce((a, b) => (b.value > a.value ? b : a));
     const names = catches.map((c) => c.species.name).join(', ');
     this.toast(
-      `<div class="catch-emoji">🕸️</div>` +
+      `<img class="catch-icon" src="${fishIconURL(best.species)}" alt="">` +
       `<div class="catch-body"><div class="catch-name">Net haul ×${catches.length}</div>` +
       `<div class="catch-sub">${names}</div></div>` +
       `<div class="catch-value">$${total.toFixed(2)}</div>`, 'trawl', 3200);
   }
 
-  /** FIFA-pack style reveal for high-value catches. */
+  /** Pack-opening style reveal for high-value catches. */
   showBigCatch(c) {
     const el = this.el.bigcatch;
     const tierCls = c.species.tier >= 5 ? 'legendary' : c.species.tier >= 4 ? 'epic' : 'rare';
     const tierLabel = c.species.tier >= 5 ? 'Legendary Catch'
-      : c.species.tier >= 4 ? 'Trophy Catch' : 'Prize Fish';
+      : c.species.tier >= 4 ? 'Trophy Catch' : TIER_NAMES[c.species.tier];
     el.className = tierCls; // clears hidden/leaving too
     el.querySelector('.bc-tier').textContent = tierLabel;
-    el.querySelector('.bc-fish').textContent = fishEmoji(c.species.tier);
+    el.querySelector('.bc-fish-img').src = fishIconURL(c.species);
     el.querySelector('.bc-name').textContent = c.species.name;
     el.querySelector('.bc-sub').textContent =
       `${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg · ${Math.round(c.sizeMult * 100)}% size`;

@@ -7,111 +7,22 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { waterDepth } from './lake.js';
+import { SPECIES } from './fishdata.js';
+import { buildFishMesh } from './fishmodels.js';
 
 const VIEW_R = 46;      // fish farther than this get recycled
 const SPAWN_R = 38;     // recycled fish reappear around this radius
 
-const PALETTE = [0x7fa8b8, 0x9c8f6a, 0x6f8f5e, 0xb87f5e, 0x8a7fb8, 0x5e88b8];
-
-// --- Shared geometry: a proper fish body via lathe profile + fins ---
-let shared = null;
-function sharedGeoms() {
-  if (shared) return shared;
-
-  // Body: radius profile from nose to tail, lathed then flattened laterally.
-  const profile = [];
-  const P = [
-    [0.00, 0.015], [0.06, 0.07], [0.16, 0.115], [0.30, 0.145], [0.45, 0.14],
-    [0.60, 0.115], [0.74, 0.075], [0.85, 0.04], [0.94, 0.028], [1.00, 0.02],
-  ];
-  for (const [t, r] of P) profile.push(new THREE.Vector2(r, t - 0.5));
-  const body = new THREE.LatheGeometry(profile, 14);
-  body.rotateX(Math.PI / 2);   // length along +Z (nose at -Z)
-  body.scale(0.55, 1, 1);      // flatten side-to-side
-  body.computeVertexNormals();
-
-  // Tail fin: forked crescent
-  const tailShape = new THREE.Shape();
-  tailShape.moveTo(0, 0);
-  tailShape.quadraticCurveTo(0.16, 0.1, 0.3, 0.24);
-  tailShape.quadraticCurveTo(0.16, 0.02, 0.3, -0.2);
-  tailShape.quadraticCurveTo(0.16, -0.09, 0, 0);
-  const tail = new THREE.ShapeGeometry(tailShape, 6);
-  tail.rotateY(-Math.PI / 2);  // fan out along +Z, in the vertical plane
-
-  // Dorsal fin
-  const dorsalShape = new THREE.Shape();
-  dorsalShape.moveTo(-0.12, 0);
-  dorsalShape.quadraticCurveTo(0.02, 0.16, 0.14, 0.02);
-  dorsalShape.lineTo(-0.12, 0);
-  const dorsal = new THREE.ShapeGeometry(dorsalShape, 4);
-  dorsal.rotateY(-Math.PI / 2);
-
-  // Pectoral fin
-  const pecShape = new THREE.Shape();
-  pecShape.moveTo(0, 0);
-  pecShape.quadraticCurveTo(0.1, -0.03, 0.14, -0.1);
-  pecShape.quadraticCurveTo(0.05, -0.06, 0, 0);
-  const pec = new THREE.ShapeGeometry(pecShape, 4);
-
-  const eye = new THREE.SphereGeometry(0.022, 8, 6);
-
-  shared = { body, tail, dorsal, pec, eye };
-  return shared;
-}
-
-const matCache = new Map();
-function bodyMat(color) {
-  if (!matCache.has(color)) {
-    matCache.set(color, new THREE.MeshStandardMaterial({
-      color, roughness: 0.45, metalness: 0.25,
-    }));
+// Ambient population skews toward common small species, with the odd big one.
+function pickAmbientSpecies(rng = Math.random) {
+  const weights = SPECIES.map((s) => 1 / Math.pow(s.value + 1.5, 0.55));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = rng() * total;
+  for (let i = 0; i < SPECIES.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return SPECIES[i];
   }
-  return matCache.get(color);
-}
-const finMatCache = new Map();
-function finMat(color) {
-  if (!finMatCache.has(color)) {
-    const c = new THREE.Color(color).offsetHSL(0, 0.05, -0.12);
-    finMatCache.set(color, new THREE.MeshStandardMaterial({
-      color: c, roughness: 0.6, metalness: 0.1,
-      side: THREE.DoubleSide, transparent: true, opacity: 0.9,
-    }));
-  }
-  return finMatCache.get(color);
-}
-const eyeMat = new THREE.MeshStandardMaterial({ color: 0x101418, roughness: 0.25 });
-
-function makeFishMesh(scale, color) {
-  const G = sharedGeoms();
-  const g = new THREE.Group();
-  const mb = bodyMat(color), mf = finMat(color);
-
-  const body = new THREE.Mesh(G.body, mb);
-  g.add(body);
-
-  const tail = new THREE.Mesh(G.tail, mf);
-  tail.position.z = 0.5;
-  g.add(tail);
-
-  const dorsal = new THREE.Mesh(G.dorsal, mf);
-  dorsal.position.set(0, 0.13, 0.02);
-  g.add(dorsal);
-
-  for (const s of [1, -1]) {
-    const pec = new THREE.Mesh(G.pec, mf);
-    pec.position.set(s * 0.07, -0.03, -0.18);
-    pec.rotation.set(0.3 * s, s * Math.PI / 2.6, 0);
-    g.add(pec);
-  }
-  for (const s of [1, -1]) {
-    const eye = new THREE.Mesh(G.eye, eyeMat);
-    eye.position.set(s * 0.055, 0.035, -0.36);
-    g.add(eye);
-  }
-
-  g.scale.setScalar(scale);
-  return { group: g, tail };
+  return SPECIES[0];
 }
 
 export class AmbientFish {
@@ -122,19 +33,23 @@ export class AmbientFish {
     this.focus = new THREE.Vector3();
     this.fish = [];
     for (let i = 0; i < count; i++) {
-      const scale = 0.9 + Math.random() * 2.1;
-      const { group, tail } = makeFishMesh(scale, PALETTE[i % PALETTE.length]);
+      const species = pickAmbientSpecies();
+      const { group, tail, len } = buildFishMesh(species);
+      // Individual size variation within the species.
+      const sizeMult = 0.8 + Math.random() * 0.5;
+      group.scale.setScalar(sizeMult);
       this.group.add(group);
       const f = {
         mesh: group,
         tail,
+        species,
         x: 0, z: 0,
         heading: Math.random() * Math.PI * 2,
-        speed: 0.5 + Math.random() * 0.9,
+        // Bigger fish cruise slower but cover ground with their size.
+        speed: (0.45 + Math.random() * 0.7) * (0.7 + len * 0.35),
         turnBias: 0,
-        depthPref: 0.6 + Math.random() * 2.4,
+        depthPref: 0.5 + Math.random() * 1.8 + len * 0.5,
         phase: Math.random() * Math.PI * 2,
-        scale,
       };
       // Initial spread: anywhere in view, in water.
       this.place(f, 6 + Math.random() * (SPAWN_R - 6));

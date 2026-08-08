@@ -21,12 +21,25 @@
 
   <!-- Menu overlay -->
   <div id="menu">
-    <div class="menu-inner">
+    <div class="menu-title">
       <h1>Bait <span>N’</span> Tackle</h1>
       <p class="tagline">Trawl the shallows. Cast for trophies.</p>
-      <button id="play-btn">⛵ &nbsp;Set Sail</button>
-      <p class="menu-tips">Drive to coves &amp; rough water — that’s where the big ones bite.</p>
     </div>
+    <div class="menu-actions">
+      <button id="play-btn">⛵ &nbsp;Set Sail</button>
+      <button id="dex-btn">📖 &nbsp;Fishopedia</button>
+      <p class="menu-tips">Drive to coves &amp; rough water — that’s where the fish bite fastest.</p>
+    </div>
+  </div>
+
+  <!-- Fishopedia -->
+  <div id="dex" class="hidden">
+    <div class="dex-head">
+      <h2>📖 Fishopedia</h2>
+      <span class="dex-count">60 species</span>
+      <button id="dex-close">✕</button>
+    </div>
+    <div id="dex-grid"></div>
   </div>
 
   <!-- Gameplay HUD -->
@@ -52,10 +65,12 @@
 
   <!-- Big catch reveal -->
   <div id="bigcatch" class="hidden">
-    <div class="bc-rays"></div>
+    <div class="bc-glow"></div>
+    <div class="bc-ring"></div>
+    <div class="bc-ring bc-ring2"></div>
     <div class="bc-content">
       <div class="bc-tier">PRIZE FISH</div>
-      <div class="bc-fish">🐟</div>
+      <img class="bc-fish-img" alt="">
       <div class="bc-name">Muskellunge</div>
       <div class="bc-sub">12.4 kg</div>
       <div class="bc-value">$0.00</div>

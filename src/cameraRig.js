@@ -8,8 +8,8 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 
-const MENU_OFFSET = new THREE.Vector3(5.2, 1.15, 7.5);
-const MENU_LOOK = new THREE.Vector3(0, 0.4, 0);
+const MENU_OFFSET = new THREE.Vector3(5.4, 2.5, 8.6);
+const MENU_LOOK = new THREE.Vector3(0, 0.55, 0);
 
 function playOffset() {
   const el = THREE.MathUtils.degToRad(CONFIG.CAM_ELEV_DEG);

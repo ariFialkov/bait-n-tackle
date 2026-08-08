@@ -76,8 +76,11 @@ sw.js                 service worker (offline precache)
 manifest.webmanifest  PWA manifest
 vendor/three.module.js  vendored Three.js
 src/
-  config.js    all tuning knobs: RTP, costs, lures, boat handling, camera
-  fishdata.js  the 60 species with values, weights and tiers
+  config.js    all tuning knobs: RTP paytable, costs, lures, boat, camera
+  fishdata.js  the 60 species: values, weights, tiers + visual style data
+  fishmodels.js procedural per-species fish prefabs (bodies, fins, skins)
+  fishicons.js 2D species icons rendered from the 3D prefabs
+  dex.js       the Fishopedia overlay
   rtp.js       RTP engine: wager/earn ledger + catch resolution
   noise.js     seeded value noise / fbm
   lake.js      infinite chunked lake, water shader, hotspots + ripple FX

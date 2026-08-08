@@ -10,6 +10,8 @@ import { RTPEngine } from './rtp.js';
 import { Fishing } from './fishing.js';
 import { Input } from './input.js';
 import { HUD } from './hud.js';
+import { Dex } from './dex.js';
+import { SPECIES } from './fishdata.js';
 
 // --- Renderer / scene ---
 const canvas = document.getElementById('game');
@@ -54,6 +56,7 @@ const boat = new Boat(scene, lake);
 const ambientFish = new AmbientFish(scene, 16);
 const rig = new CameraRig(camera);
 const hud = new HUD();
+const dex = new Dex();
 const rtp = new RTPEngine();
 
 const wallet = {
@@ -124,7 +127,7 @@ function frame() {
 frame();
 
 // Debug/test handle (harmless in production).
-window.BNT = { hud, rtp, fishing, boat, wallet };
+window.BNT = { hud, rtp, fishing, boat, wallet, dex, SPECIES };
 
 // --- PWA ---
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
