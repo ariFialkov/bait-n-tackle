@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { isNavigable } from './lake.js';
+import { TrawlNet } from './net.js';
 
 const LEN = 4.6, BEAM = 1.9, HULL_H = 0.95;
 
@@ -192,42 +193,9 @@ function buildBoat() {
   netHit.position.copy(bundle.position);
   g.add(netHit);
 
-  // Deployed net, shown behind the boat while trawling
-  const deployed = new THREE.Group();
-  const mouth = new THREE.Mesh(
-    new THREE.ConeGeometry(1.15, 3.4, 10, 3, true),
-    new THREE.MeshStandardMaterial({
-      color: 0x66743e, transparent: true, opacity: 0.35,
-      side: THREE.DoubleSide, depthWrite: false,
-    }));
-  mouth.rotation.x = -Math.PI / 2;
-  mouth.position.set(0, -0.3, 4.7);
-  deployed.add(mouth);
-  const mouthWire = new THREE.Mesh(mouth.geometry.clone(),
-    new THREE.MeshBasicMaterial({ color: 0x4c5530, wireframe: true, transparent: true, opacity: 0.55 }));
-  mouthWire.rotation.copy(mouth.rotation);
-  mouthWire.position.copy(mouth.position);
-  deployed.add(mouthWire);
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    const float = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6),
-      new THREE.MeshStandardMaterial({ color: 0xe8b23a, roughness: 0.5 }));
-    float.position.set(Math.cos(a) * 1.15, -0.3 + Math.sin(a) * 0.25, 3.05);
-    deployed.add(float);
-  }
-  const ropeMat = new THREE.LineBasicMaterial({ color: 0x3d3428 });
-  for (const sx of [-0.7, 0.7]) {
-    const ropeGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(sx * 0.7, 1.4, 1.8), new THREE.Vector3(sx * 1.1, -0.25, 3.2),
-    ]);
-    deployed.add(new THREE.Line(ropeGeo, ropeMat));
-  }
-  deployed.visible = false;
-  g.add(deployed);
-
   for (const m of cast) m.castShadow = true;
 
-  return { group: g, netHit, netBundle: netGroup, deployedNet: deployed, rodTip };
+  return { group: g, netHit, netBundle: netGroup, rodTip };
 }
 
 export class Boat {
@@ -237,9 +205,16 @@ export class Boat {
     this.group = parts.group;
     this.netHit = parts.netHit;
     this.netBundle = parts.netBundle;
-    this.deployedNet = parts.deployedNet;
     this.rodTip = parts.rodTip;
     scene.add(this.group);
+
+    this.net = new TrawlNet(scene);
+    // Local-space tow points (stern waterline) and A-frame rope tops.
+    this._anchorL = new THREE.Vector3();
+    this._anchorR = new THREE.Vector3();
+    this._ropeL = new THREE.Vector3();
+    this._ropeR = new THREE.Vector3();
+    this._backDir = new THREE.Vector3();
 
     this.pos = new THREE.Vector3(0, 0, 0);
     this.vel = new THREE.Vector3();
@@ -265,10 +240,28 @@ export class Boat {
     return { points, life: new Float32Array(N).fill(0), idx: 0, emitAcc: 0 };
   }
 
+  towPoints() {
+    this.group.updateMatrixWorld();
+    this._anchorL.set(-0.62, 0.05, 2.5);
+    this._anchorR.set(0.62, 0.05, 2.5);
+    this._ropeL.set(-0.5, 1.63, 1.95);
+    this._ropeR.set(0.5, 1.63, 1.95);
+    this.group.localToWorld(this._anchorL);
+    this.group.localToWorld(this._anchorR);
+    this.group.localToWorld(this._ropeL);
+    this.group.localToWorld(this._ropeR);
+    this._backDir.set(Math.sin(this.heading), 0, Math.cos(this.heading));
+  }
+
   setTrawling(on) {
     this.trawling = on;
-    this.deployedNet.visible = on;
     this.netBundle.visible = !on;
+    if (on) {
+      this.towPoints();
+      this.net.deploy(this._anchorL, this._anchorR, this._backDir);
+    } else {
+      this.net.stow();
+    }
   }
 
   /** Ease the nose toward a heading (used when casting). */
@@ -321,6 +314,11 @@ export class Boat {
     );
 
     this.updateWake(dt);
+
+    if (this.trawling) {
+      this.towPoints();
+      this.net.update(dt, t, this._anchorL, this._anchorR, this._ropeL, this._ropeR);
+    }
   }
 
   updateWake(dt) {

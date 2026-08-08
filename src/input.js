@@ -7,7 +7,6 @@
 import * as THREE from 'three';
 
 const SWIPE_MIN_PX = 55;
-const SWIPE_MAX_MS = 1500;
 const TAP_MAX_PX = 12;
 const TAP_MAX_MS = 400;
 
@@ -128,7 +127,9 @@ export class Input {
     const dist = Math.hypot(dx, dy);
     const dur = performance.now() - p.t0;
 
-    if (dist >= SWIPE_MIN_PX && dur < SWIPE_MAX_MS) {
+    // Any drag long enough counts as a swipe — speed only shapes the power,
+    // so a slow deliberate aim-drag still casts (just softer).
+    if (dist >= SWIPE_MIN_PX) {
       const speed = dist / Math.max(dur, 16); // px per ms
       const power = Math.min(1,
         0.55 * Math.min((dist - SWIPE_MIN_PX) / 360, 1) +

@@ -123,6 +123,9 @@ function frame() {
 }
 frame();
 
+// Debug/test handle (harmless in production).
+window.BNT = { hud, rtp, fishing, boat, wallet };
+
 // --- PWA ---
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => {

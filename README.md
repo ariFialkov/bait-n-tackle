@@ -49,14 +49,23 @@ edge.
 
 ### The economy
 
-All catch values are driven by a round-based RTP engine
-([`src/rtp.js`](src/rtp.js)): every dollar you spend (trawl meters, lure
-costs) and earn (catches) is tracked, and each new catch is value-selected to
-trend your round total toward `RTP × spent` (default **94%**, see
-[`src/config.js`](src/config.js)). Species choice, size roll and miss chance
-all bend toward closing that gap — if the engine owes you $8 and you cast, a
-salmon-sized $8 fish is exactly what tends to bite. A 40k-wager simulation of
-every play style converges to 0.940.
+Every bet is **isolated** ([`src/rtp.js`](src/rtp.js)): when it resolves, a
+payout multiplier is drawn from a paytable whose expected value is the game
+RTP (default **94%**, see [`src/config.js`](src/config.js)), applied to that
+bet's stake alone. No outcome depends on your history, your position, or
+your skill:
+
+- **Casting** — the bet is only placed when a fish is actually landed; an
+  empty cast costs nothing. Hotspots raise the *catch chance* (80% → 95%)
+  and bite speed, but never what a catch pays.
+- **Trawling** — each stretch of paid distance between catch events is its
+  own microbet, resolved against that stretch's cost alone. Location never
+  affects trawl results.
+
+The fish is chosen to fit the drawn payout (species weighted by how close
+their inherent value is, size roll makes the catch worth exactly the
+payout), not the other way around. A million-draw simulation of the
+paytable converges to 0.940.
 
 ## Project layout
 

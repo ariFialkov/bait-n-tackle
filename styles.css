@@ -236,3 +236,112 @@ html, body {
   max-width: 52vw;
 }
 .catch-value { font-weight: 800; color: #ffd166; font-size: 1.05rem; }
+
+/* ---------- Big catch reveal ---------- */
+#bigcatch {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(8, 30, 44, 0.55), rgba(4, 16, 26, 0.92));
+  z-index: 20;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+#bigcatch.leaving { opacity: 0; pointer-events: none; }
+.bc-rays {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 240vmax; height: 240vmax;
+  margin: -120vmax 0 0 -120vmax;
+  background: repeating-conic-gradient(
+    rgba(255, 209, 102, 0.16) 0deg 9deg,
+    rgba(255, 209, 102, 0) 9deg 24deg);
+  animation: bcSpin 14s linear infinite;
+  pointer-events: none;
+}
+#bigcatch.epic .bc-rays {
+  background: repeating-conic-gradient(
+    rgba(255, 170, 60, 0.2) 0deg 9deg, rgba(255, 170, 60, 0) 9deg 24deg);
+}
+#bigcatch.legendary .bc-rays {
+  background: repeating-conic-gradient(
+    rgba(200, 120, 255, 0.24) 0deg 9deg, rgba(120, 220, 255, 0.05) 9deg 24deg);
+  animation-duration: 8s;
+}
+@keyframes bcSpin { to { transform: rotate(360deg); } }
+
+.bc-content {
+  position: relative;
+  text-align: center;
+  color: #fff;
+  animation: bcPop 0.55s cubic-bezier(0.18, 1.4, 0.4, 1);
+}
+@keyframes bcPop {
+  0% { transform: scale(0.4) translateY(60px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.bc-tier {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.45em;
+  color: #ffd166;
+  text-transform: uppercase;
+  animation: bcFade 0.6s 0.15s both;
+}
+#bigcatch.epic .bc-tier { color: #ffb347; }
+#bigcatch.legendary .bc-tier {
+  background: linear-gradient(90deg, #c878ff, #78dcff, #c878ff);
+  background-size: 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: bcFade 0.6s 0.15s both, bcShimmer 2.2s linear infinite;
+}
+@keyframes bcShimmer { to { background-position: 200% 0; } }
+.bc-fish {
+  font-size: clamp(5rem, 20vw, 8.5rem);
+  line-height: 1.15;
+  margin: 0.05em 0;
+  filter: drop-shadow(0 0 22px rgba(255, 209, 102, 0.55));
+  animation: bcFish 0.8s 0.1s cubic-bezier(0.18, 1.5, 0.4, 1) both;
+}
+#bigcatch.legendary .bc-fish { filter: drop-shadow(0 0 30px rgba(190, 140, 255, 0.8)); }
+@keyframes bcFish {
+  0% { transform: scale(0) rotate(-30deg); }
+  60% { transform: scale(1.18) rotate(6deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+.bc-name {
+  font-size: clamp(1.4rem, 5.5vw, 2.2rem);
+  font-weight: 800;
+  text-shadow: 0 3px 14px rgba(0, 0, 0, 0.5);
+  animation: bcFade 0.5s 0.35s both;
+}
+.bc-sub {
+  margin-top: 0.15em;
+  color: #a9c9d8;
+  font-weight: 600;
+  animation: bcFade 0.5s 0.45s both;
+}
+.bc-value {
+  margin-top: 0.25em;
+  font-size: clamp(2.6rem, 11vw, 4.4rem);
+  font-weight: 900;
+  color: #ffd166;
+  text-shadow: 0 0 26px rgba(255, 209, 102, 0.5), 0 4px 14px rgba(0, 0, 0, 0.5);
+  animation: bcFade 0.4s 0.55s both;
+}
+#bigcatch.legendary .bc-value { color: #e6d1ff; text-shadow: 0 0 30px rgba(190, 140, 255, 0.75); }
+.bc-dismiss {
+  margin-top: 1.4em;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  animation: bcBreathe 1.8s 1s ease-in-out infinite both;
+}
+@keyframes bcFade {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes bcBreathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.8; } }

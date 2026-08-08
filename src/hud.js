@@ -24,10 +24,19 @@ export class HUD {
       hud: $('hud'),
       trawlBadge: $('trawl-badge'),
       newRound: $('new-round'),
+      bigcatch: $('bigcatch'),
     };
     this.hintTimer = null;
     this.onLureSelect = null;
+    this.bigcatchTimer = null;
+    this.valueTween = null;
     this.buildLures();
+
+    this.el.bigcatch.classList.add('hidden');
+    this.el.bigcatch.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.hideBigCatch();
+    });
 
     this.el.lureToggle.addEventListener('click', () => {
       this.el.lures.classList.toggle('collapsed');
@@ -105,6 +114,43 @@ export class HUD {
       `<div class="catch-body"><div class="catch-name">Net haul ×${catches.length}</div>` +
       `<div class="catch-sub">${names}</div></div>` +
       `<div class="catch-value">$${total.toFixed(2)}</div>`, 'trawl', 3200);
+  }
+
+  /** FIFA-pack style reveal for high-value catches. */
+  showBigCatch(c) {
+    const el = this.el.bigcatch;
+    const tierCls = c.species.tier >= 5 ? 'legendary' : c.species.tier >= 4 ? 'epic' : 'rare';
+    const tierLabel = c.species.tier >= 5 ? 'Legendary Catch'
+      : c.species.tier >= 4 ? 'Trophy Catch' : 'Prize Fish';
+    el.className = tierCls; // clears hidden/leaving too
+    el.querySelector('.bc-tier').textContent = tierLabel;
+    el.querySelector('.bc-fish').textContent = fishEmoji(c.species.tier);
+    el.querySelector('.bc-name').textContent = c.species.name;
+    el.querySelector('.bc-sub').textContent =
+      `${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg · ${Math.round(c.sizeMult * 100)}% size`;
+
+    // Count the value up, easing out, FIFA style.
+    const valueEl = el.querySelector('.bc-value');
+    cancelAnimationFrame(this.valueTween);
+    const start = performance.now(), dur = 1300;
+    const tick = (now) => {
+      const k = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - k, 3);
+      valueEl.textContent = '$' + (c.value * eased).toFixed(2);
+      if (k < 1) this.valueTween = requestAnimationFrame(tick);
+    };
+    this.valueTween = requestAnimationFrame(tick);
+
+    clearTimeout(this.bigcatchTimer);
+    this.bigcatchTimer = setTimeout(() => this.hideBigCatch(), 5200);
+  }
+
+  hideBigCatch() {
+    const el = this.el.bigcatch;
+    if (el.classList.contains('hidden')) return;
+    clearTimeout(this.bigcatchTimer);
+    el.classList.add('leaving');
+    setTimeout(() => { el.className = 'hidden'; }, 380);
   }
 
   showMenu(onPlay) {

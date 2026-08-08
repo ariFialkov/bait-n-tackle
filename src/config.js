@@ -2,11 +2,23 @@
 
 export const CONFIG = {
   // --- Economy / RTP ---
-  RTP: 0.94,                 // long-run target return-to-player
+  // Every bet is ISOLATED: when it resolves, a payout multiplier is drawn
+  // from PAYTABLE below (expected value = RTP) against that bet's stake
+  // alone. Nothing about the player's history, position, or skill changes
+  // the odds. A cast's bet is only placed when a fish is actually landed;
+  // each trawl stretch between catch events is its own microbet.
+  RTP: 0.94,                 // documented target; PAYTABLE must average to this
   START_BALANCE: 100,
-  RTP_PULL: 0.35,            // how hard each catch corrects toward the round target
-  MISS_CHANCE_BASE: 0.08,    // baseline chance a cast bite gets away empty
-  MISS_CHANCE_AHEAD: 0.35,   // miss chance when the player is well ahead of target
+  PAYTABLE: [                // { probability, multiplier range (uniform) }
+    { p: 0.60, lo: 0.20, hi: 0.55 },
+    { p: 0.25, lo: 0.70, hi: 1.30 },
+    { p: 0.10, lo: 1.50, hi: 2.60 },
+    { p: 0.04, lo: 3.00, hi: 5.50 },
+    { p: 0.01, lo: 6.00, hi: 12.0 },
+  ], // E[mult] = 0.60*0.375 + 0.25*1.0 + 0.10*2.05 + 0.04*4.25 + 0.01*9 = 0.94
+  CAST_CATCH_CHANCE: 0.80,   // odds a cast produces a catchable fish
+  HOTSPOT_CATCH_CHANCE: 0.95, // same odds on a hotspot (pacing only — EV per bet is identical)
+  BIGCATCH_MIN_VALUE: 50,    // $ value that triggers the big-catch reveal
 
   // --- Trawling ---
   TRAWL_COST_PER_M: 0.06,    // $ per meter travelled with the net down
@@ -45,10 +57,9 @@ export const CONFIG = {
   VIEW_CHUNKS: 3,            // chunk radius kept alive around the boat
   WATER_LEVEL: 0,
 
-  // --- Hotspots ---
+  // --- Hotspots (affect catch frequency & bite speed only, never payout) ---
   HOTSPOT_RADIUS: 7,         // within this radius casting is "hot"
   HOTSPOT_BITE_BOOST: 2.4,   // bite delay divisor when on a hotspot
-  HOTSPOT_VALUE_BOOST: 1.18, // slight value edge on hotspots
 
   // --- Camera ---
   CAM_ELEV_DEG: 60,          // elevation above horizontal => 30 deg off top-down
