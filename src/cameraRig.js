@@ -39,16 +39,38 @@ export class CameraRig {
     this.transFromQuat.copy(this.camera.quaternion);
   }
 
+  backToMenu() {
+    this.mode = 'toMenu';
+    this.transT = 0;
+    this.transFrom.copy(this.camera.position);
+    this.transFromQuat.copy(this.camera.quaternion);
+  }
+
+  /** The menu-mode camera pose (with its idle drift) at time t. */
+  menuPose(t, boatPos, outPos, outQuat) {
+    outPos.set(
+      boatPos.x + MENU_OFFSET.x + Math.sin(t * 0.12) * 0.6,
+      MENU_OFFSET.y + Math.sin(t * 0.5) * 0.08,
+      boatPos.z + MENU_OFFSET.z + Math.cos(t * 0.09) * 0.6);
+    this.tmpM.lookAt(outPos,
+      new THREE.Vector3(boatPos.x + MENU_LOOK.x, MENU_LOOK.y, boatPos.z + MENU_LOOK.z),
+      new THREE.Vector3(0, 1, 0));
+    outQuat.setFromRotationMatrix(this.tmpM);
+  }
+
   update(dt, t, boatPos) {
     const cam = this.camera;
     if (this.mode === 'menu') {
       // Gentle drift around the boat.
-      cam.position.set(
-        boatPos.x + MENU_OFFSET.x + Math.sin(t * 0.12) * 0.6,
-        MENU_OFFSET.y + Math.sin(t * 0.5) * 0.08,
-        boatPos.z + MENU_OFFSET.z + Math.cos(t * 0.09) * 0.6);
-      cam.lookAt(boatPos.x + MENU_LOOK.x, MENU_LOOK.y, boatPos.z + MENU_LOOK.z);
+      this.menuPose(t, boatPos, cam.position, cam.quaternion);
       this.followPos.copy(boatPos);
+    } else if (this.mode === 'toMenu') {
+      this.transT += dt / 1.9;
+      const k = easeInOut(Math.min(1, this.transT));
+      this.menuPose(t, boatPos, this.tmpPos, this.tmpQuat);
+      cam.position.lerpVectors(this.transFrom, this.tmpPos, k);
+      cam.quaternion.slerpQuaternions(this.transFromQuat, this.tmpQuat, k);
+      if (this.transT >= 1) this.mode = 'menu';
     } else if (this.mode === 'transition') {
       this.transT += dt / 2.2;
       const k = easeInOut(Math.min(1, this.transT));

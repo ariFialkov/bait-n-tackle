@@ -24,6 +24,7 @@ export class HUD {
       hud: $('hud'),
       trawlBadge: $('trawl-badge'),
       newRound: $('new-round'),
+      menuBtn: $('menu-btn'),
       bigcatch: $('bigcatch'),
     };
     this.hintTimer = null;
@@ -183,5 +184,23 @@ export class HUD {
       e.stopPropagation();
       fn();
     });
+  }
+
+  bindMenu(fn) {
+    this.el.menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fn();
+    });
+  }
+
+  /** Bring the menu overlay back over the running lake scene. */
+  returnToMenu() {
+    this.hideBigCatch();
+    this.setBite(false);
+    this.el.hint.classList.remove('show');
+    this.el.lures.classList.add('collapsed');
+    this.el.nets.classList.add('collapsed');
+    this.el.hud.classList.add('hidden');
+    this.el.menu.classList.remove('hidden', 'leaving');
   }
 }

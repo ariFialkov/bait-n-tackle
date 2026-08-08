@@ -94,6 +94,19 @@ hud.showMenu(() => {
     : 'WASD to drive · click-drag to cast & reel · click the net to trawl', 6000);
 });
 
+hud.bindMenu(() => {
+  if (state !== 'play') return;
+  state = 'menu';
+  fishing.endCast();
+  if (boat.trawling) {
+    boat.setTrawling(false);
+    hud.setTrawling(false);
+  }
+  input.enabled = false;
+  rig.backToMenu();
+  hud.returnToMenu();
+});
+
 // --- Loop ---
 const clock = new THREE.Clock();
 let saveAcc = 0;
