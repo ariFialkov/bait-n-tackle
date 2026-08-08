@@ -56,6 +56,10 @@ export class TrawlNet {
       new THREE.SphereGeometry(0.09, 8, 6),
       new THREE.MeshStandardMaterial({ color: 0xe8b23a, roughness: 0.5 }),
       this.floatCount);
+    // Instance positions live in world space far from the geometry's own
+    // bounding sphere — without this the whole batch gets frustum-culled
+    // as soon as the world origin leaves the view.
+    this.floats.frustumCulled = false;
 
     // Tow ropes from the boat's A-frame to the net mouth corners.
     this.ropeGeo = new THREE.BufferGeometry().setFromPoints(
