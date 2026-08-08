@@ -12,7 +12,7 @@
 // during a bite sets the hook; bring the fish to the boat to land the bet.
 
 import * as THREE from 'three';
-import { CONFIG, LURES } from './config.js';
+import { CONFIG, LURES, NETS } from './config.js';
 import { waterDepth } from './lake.js';
 import { clamp, lerp } from './noise.js';
 
@@ -26,6 +26,7 @@ export class Fishing {
     this.wallet = wallet;      // { balance }
 
     this.lureIndex = 0;
+    this.netIndex = 0;
 
     // Trawl state
     this.trawlDistAcc = 0;     // meters since last catch roll
@@ -60,7 +61,23 @@ export class Fishing {
   }
 
   get lure() { return LURES[this.lureIndex]; }
-  setLure(i) { this.lureIndex = clamp(i, 0, LURES.length - 1); }
+  setLure(i) {
+    this.lureIndex = clamp(i, 0, LURES.length - 1);
+    this.hud.hint(`${this.lure.name} — $${this.lure.cost} per catch`);
+    return true;
+  }
+
+  get trawlNet() { return NETS[this.netIndex]; }
+  setNet(i) {
+    if (this.boat.trawling) {
+      this.hud.hint('Stow the net before switching');
+      return false;
+    }
+    this.netIndex = clamp(i, 0, NETS.length - 1);
+    const n = this.trawlNet;
+    this.hud.hint(`${n.name} — $${n.costPerM.toFixed(2)}/m`);
+    return true;
+  }
 
   rollTrawlInterval() {
     return CONFIG.TRAWL_CATCH_MIN_M +
@@ -105,13 +122,13 @@ export class Fishing {
       this.hud.hint('No funds to trawl');
       return;
     }
-    this.boat.setTrawling(!this.boat.trawling);
-    this.hud.setTrawling(this.boat.trawling);
+    this.boat.setTrawling(!this.boat.trawling, this.trawlNet);
+    this.hud.setTrawling(this.boat.trawling, this.trawlNet);
     if (this.boat.trawling) {
       this.trawlDistAcc = 0;
       this.trawlCostAcc = 0;
       this.trawlNextCatch = this.rollTrawlInterval();
-      this.hud.hint(`Trawling — $${CONFIG.TRAWL_COST_PER_M.toFixed(2)}/m`);
+      this.hud.hint(`${this.trawlNet.name} out — $${this.trawlNet.costPerM.toFixed(2)}/m`);
     } else {
       this.hud.hint('Net stowed');
     }
@@ -124,7 +141,7 @@ export class Fishing {
     if (!this.boat.trawling || moved <= 0.001) return;
 
     // Pay per meter; this accumulates the current microbet's stake.
-    const cost = moved * CONFIG.TRAWL_COST_PER_M + this.trawlCostRemainder;
+    const cost = moved * this.trawlNet.costPerM + this.trawlCostRemainder;
     const spend = Math.min(cost, this.wallet.balance);
     this.trawlCostRemainder = 0;
     if (spend > 0) {
@@ -165,7 +182,8 @@ export class Fishing {
     let total = 0;
     for (let i = 0; i < n; i++) {
       const part = payout * (cuts[i] / cutSum);
-      const maxTier = Math.random() < CONFIG.TRAWL_RARE_TIER_CHANCE ? 2 : CONFIG.TRAWL_MAX_TIER;
+      const bump = Math.random() < CONFIG.TRAWL_RARE_TIER_CHANCE ? 1 : 0;
+      const maxTier = Math.min(this.trawlNet.maxTier + bump, CONFIG.TRAWL_TIER_CAP);
       const c = this.rtp.describeCatch(part, 0, maxTier);
       catches.push(c);
       total += c.value;

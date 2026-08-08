@@ -1,7 +1,7 @@
 // DOM HUD: balance/round chips, lure selector, hints, catch cards, bite
 // indicator, plus the menu overlay.
 
-import { LURES } from './config.js';
+import { LURES, NETS } from './config.js';
 import { TIER_NAMES } from './fishdata.js';
 import { fishIconURL } from './fishicons.js';
 
@@ -14,6 +14,8 @@ export class HUD {
       round: $('round-net'),
       lures: $('lure-panel'),
       lureToggle: $('lure-toggle'),
+      nets: $('net-panel'),
+      netToggle: $('net-toggle'),
       hint: $('hint'),
       bite: $('bite'),
       toasts: $('toasts'),
@@ -26,9 +28,13 @@ export class HUD {
     };
     this.hintTimer = null;
     this.onLureSelect = null;
+    this.onNetSelect = null;
     this.bigcatchTimer = null;
     this.valueTween = null;
-    this.buildLures();
+    this.buildGearPanel(this.el.lures, LURES,
+      (l) => `$${l.cost}`, (i) => this.onLureSelect && this.onLureSelect(i));
+    this.buildGearPanel(this.el.nets, NETS,
+      (n) => `$${n.costPerM.toFixed(2)}/m`, (i) => this.onNetSelect && this.onNetSelect(i));
 
     this.el.bigcatch.classList.add('hidden');
     this.el.bigcatch.addEventListener('pointerdown', (e) => {
@@ -36,27 +42,32 @@ export class HUD {
       this.hideBigCatch();
     });
 
+    // Opening one gear panel closes the other.
     this.el.lureToggle.addEventListener('click', () => {
       this.el.lures.classList.toggle('collapsed');
+      this.el.nets.classList.add('collapsed');
+    });
+    this.el.netToggle.addEventListener('click', () => {
+      this.el.nets.classList.toggle('collapsed');
+      this.el.lures.classList.add('collapsed');
     });
   }
 
-  buildLures() {
-    this.el.lures.querySelectorAll('.lure').forEach((n) => n.remove());
-    LURES.forEach((lure, i) => {
+  buildGearPanel(panel, items, costLabel, onSelect) {
+    panel.querySelectorAll('.lure').forEach((n) => n.remove());
+    items.forEach((item, i) => {
       const btn = document.createElement('button');
       btn.className = 'lure' + (i === 0 ? ' selected' : '');
-      btn.innerHTML = `<span class="lure-emoji">${lure.emoji}</span>` +
-        `<span class="lure-name">${lure.name}</span>` +
-        `<span class="lure-cost">$${lure.cost}</span>`;
+      btn.innerHTML = `<span class="lure-emoji">${item.emoji}</span>` +
+        `<span class="lure-name">${item.name}</span>` +
+        `<span class="lure-cost">${costLabel(item)}</span>`;
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.el.lures.querySelectorAll('.lure').forEach((n) => n.classList.remove('selected'));
+        if (onSelect(i) === false) return; // rejected (e.g. net still in the water)
+        panel.querySelectorAll('.lure').forEach((n) => n.classList.remove('selected'));
         btn.classList.add('selected');
-        if (this.onLureSelect) this.onLureSelect(i);
-        this.hint(`${lure.name} — $${lure.cost} per cast`);
       });
-      this.el.lures.appendChild(btn);
+      panel.appendChild(btn);
     });
   }
 
@@ -79,8 +90,9 @@ export class HUD {
     this.el.bite.classList.toggle('show', on);
   }
 
-  setTrawling(on) {
+  setTrawling(on, net) {
     this.el.trawlBadge.classList.toggle('show', on);
+    if (on && net) this.el.trawlBadge.textContent = `${net.emoji} ${net.name.toUpperCase()}`;
   }
 
   toast(html, cls = '', ms = 3400) {

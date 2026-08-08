@@ -21,13 +21,12 @@ export const CONFIG = {
   BIGCATCH_MIN_VALUE: 50,    // $ value that triggers the big-catch reveal
 
   // --- Trawling ---
-  TRAWL_COST_PER_M: 0.06,    // $ per meter travelled with the net down
   TRAWL_CATCH_MIN_M: 9,      // distance window between trawl catch events
   TRAWL_CATCH_MAX_M: 22,
   TRAWL_FISH_MIN: 1,         // fish per catch event
   TRAWL_FISH_MAX: 3,
-  TRAWL_MAX_TIER: 1,         // trawl nets mostly scoop tier 0-1 fish
-  TRAWL_RARE_TIER_CHANCE: 0.06, // small chance a tier-2 fish ends up in the net
+  TRAWL_RARE_TIER_CHANCE: 0.06, // small chance of one tier above the net's rating
+  TRAWL_TIER_CAP: 4,         // nets never land Legend-tier fish — casting only
 
   // --- Casting / reeling ---
   CAST_MIN_DIST: 7,
@@ -66,6 +65,15 @@ export const CONFIG = {
   CAM_DIST: 30,
   CAM_FOLLOW_LERP: 4.0,
 };
+
+// Trawl nets: costPerM is the trawl bet size; maxTier caps the species a
+// net can land (never above TRAWL_TIER_CAP — legends are casting-only).
+export const NETS = [
+  { id: 'skiff', name: 'Skiff Net',  costPerM: 0.06, maxTier: 1, emoji: '🕸️', color: 0x6e7b45 },
+  { id: 'gill',  name: 'Gill Net',   costPerM: 0.30, maxTier: 2, emoji: '🥅', color: 0x4c7b6e },
+  { id: 'seine', name: 'Seine Net',  costPerM: 1.50, maxTier: 3, emoji: '🪢', color: 0x54689a },
+  { id: 'deep',  name: 'Deep Trawl', costPerM: 6.00, maxTier: 4, emoji: '⚓', color: 0x7a5a92 },
+];
 
 export const LURES = [
   { id: 'worm',      name: 'Garden Worm',   cost: 1,   tiers: [0, 1], emoji: '🪱' },

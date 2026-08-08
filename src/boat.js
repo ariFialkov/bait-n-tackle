@@ -253,12 +253,12 @@ export class Boat {
     this._backDir.set(Math.sin(this.heading), 0, Math.cos(this.heading));
   }
 
-  setTrawling(on) {
+  setTrawling(on, netDef) {
     this.trawling = on;
     this.netBundle.visible = !on;
     if (on) {
       this.towPoints();
-      this.net.deploy(this._anchorL, this._anchorR, this._backDir);
+      this.net.deploy(this._anchorL, this._anchorR, this._backDir, netDef?.color);
     } else {
       this.net.stow();
     }

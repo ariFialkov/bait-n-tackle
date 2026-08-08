@@ -35,13 +35,14 @@ distance. Once hooked, keep pulling — stop too long and the fish escapes.
 
 ### The two bets
 
-- **Trawling** costs **$0.06/m** with the net down and scoops up whatever you
-  drive over — frequent but low-value fish (minnows, panfish). Cheap per shot,
-  and it adds up over distance.
+- **Trawling** costs per meter with the net down and scoops up whatever you
+  drive over. Four nets set the stakes — $0.06/m Skiff Net up to the $6/m
+  Deep Trawl — and each net's rating caps the biggest tier it can land.
+  Legend-tier fish never end up in a net.
 - **Casting** is the high-stakes bet. Stop the boat, pick one of 8 lures
-  ($1 Garden Worm → $200 Trophy Rig) and swipe up. Pricier lures target
-  proportionally bigger prize fish, all the way up to sturgeon worth
-  four figures.
+  ($1 Garden Worm → $200 Trophy Rig) and swipe. Pricier lures target
+  proportionally bigger prize fish, and casting is the only way to land
+  the four-figure Legend-tier sturgeon.
 
 Watch for **rough water** — the rippling rings near coves, deltas and passage
 mouths mark fish activity. Casting there gets faster bites and a small value

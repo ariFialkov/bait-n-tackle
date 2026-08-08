@@ -4,7 +4,7 @@
 // catch pays).
 
 import { SPECIES, TIER_NAMES } from './fishdata.js';
-import { LURES } from './config.js';
+import { LURES, NETS } from './config.js';
 import { fishIconURL } from './fishicons.js';
 import { speciesAreas } from './fishmodels.js';
 
@@ -19,11 +19,14 @@ function kgRange(kg) {
 }
 
 function baitFor(species) {
-  const lures = LURES.filter(
+  const parts = [];
+  // Lightest net rated for this tier (legends are casting-only).
+  const net = NETS.find((n) => n.maxTier >= species.tier);
+  if (net) parts.push(`${net.emoji} ${net.name}`);
+  const lure = LURES.find(
     (l) => species.tier >= l.tiers[0] && species.tier <= l.tiers[1]);
-  const names = lures.slice(0, 2).map((l) => `${l.emoji} ${l.name}`);
-  if (species.tier <= 1) names.unshift('🕸️ Trawl net');
-  return names.slice(0, 2).join(' · ');
+  if (lure) parts.push(`${lure.emoji} ${lure.name}`);
+  return parts.join(' · ');
 }
 
 export class Dex {

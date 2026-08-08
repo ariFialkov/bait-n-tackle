@@ -66,6 +66,7 @@ if (!Number.isFinite(wallet.balance)) wallet.balance = CONFIG.START_BALANCE;
 
 const fishing = new Fishing(scene, boat, lake, rtp, hud, wallet);
 hud.onLureSelect = (i) => fishing.setLure(i);
+hud.onNetSelect = (i) => fishing.setNet(i);
 hud.bindNewRound(() => {
   rtp.reset();
   if (wallet.balance < 1) {

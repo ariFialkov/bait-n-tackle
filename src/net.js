@@ -74,7 +74,11 @@ export class TrawlNet {
   }
 
   /** Lay the net out flat behind the boat when trawling starts. */
-  deploy(anchorL, anchorR, backDir) {
+  deploy(anchorL, anchorR, backDir, color) {
+    if (color !== undefined) {
+      this.skin.material.color.set(color);
+      this.mesh.material.color.set(color).offsetHSL(0, 0.02, -0.16);
+    }
     for (let r = 0; r < NZ; r++) {
       for (let c = 0; c < NX; c++) {
         const i = r * NX + c;

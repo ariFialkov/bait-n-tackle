@@ -110,12 +110,10 @@ html, body {
 .chip.btn { pointer-events: auto; border: none; cursor: pointer; font-family: inherit; }
 .chip.btn:active { transform: scale(0.95); }
 
-/* ---------- Lure panel ---------- */
-#lure-toggle {
+/* ---------- Gear panels (lures + nets) ---------- */
+#lure-toggle, #net-toggle {
   position: absolute;
   right: max(10px, env(safe-area-inset-right));
-  top: 50%;
-  transform: translateY(-50%);
   z-index: 3;
   width: 52px; height: 52px;
   border-radius: 50%;
@@ -127,20 +125,21 @@ html, body {
   cursor: pointer;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
-#lure-panel {
+#lure-toggle { top: calc(50% - 60px); }
+#net-toggle { top: calc(50% + 8px); }
+#lure-panel, #net-panel {
   position: absolute;
-  right: max(10px, env(safe-area-inset-right));
+  right: calc(max(10px, env(safe-area-inset-right)) + 62px);
   top: 50%;
   transform: translateY(-50%) translateX(0);
   display: flex; flex-direction: column; gap: 6px;
-  padding: 64px 0 8px;
   max-height: 78vh;
   overflow-y: auto;
   pointer-events: auto;
   transition: transform 0.25s ease, opacity 0.25s ease;
 }
-#lure-panel.collapsed {
-  transform: translateY(-50%) translateX(120%);
+#lure-panel.collapsed, #net-panel.collapsed {
+  transform: translateY(-50%) translateX(35%);
   opacity: 0;
   pointer-events: none;
 }
