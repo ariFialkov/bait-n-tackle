@@ -19,6 +19,28 @@ npm start            # serves on http://localhost:8080
 Open it on a phone and “Add to Home Screen” to install; the service worker
 caches everything for offline play.
 
+## Build it
+
+There is no bundler or compile step — the game is plain ES modules with
+Three.js vendored in. `./build.sh` just assembles a clean, uploadable
+`dist/` folder (runtime files only, no `node_modules`, no git, no docs):
+
+```bash
+./build.sh                 # dist/ with the manifest as manifest.json
+./build.sh --no-manifest   # dist/ with no manifest at all
+./build.sh --zip           # also writes bait-n-tackle.zip
+```
+
+The manifest is emitted as `manifest.json` rather than
+`manifest.webmanifest` because many static hosts reject the `.webmanifest`
+extension; both filenames are equally valid to browsers. Upload the
+*contents* of `dist/` so that `index.html` lands at your site root.
+
+Hosting requirements: static files over HTTPS, `.js` served as
+`text/javascript` (ES modules are rejected under the wrong MIME type), and
+no path rewriting — every reference in the build is relative, so it works
+from a subdirectory as-is.
+
 ## How to play
 
 |            | Desktop                                | Mobile                       |

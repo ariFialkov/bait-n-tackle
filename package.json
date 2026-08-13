@@ -5,7 +5,10 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "npx --yes serve -l 8080 ."
+    "start": "npx --yes serve -l 8080 .",
+    "build": "./build.sh",
+    "build:no-manifest": "./build.sh --no-manifest",
+    "build:zip": "./build.sh --zip"
   },
   "devDependencies": {
     "playwright-core": "^1.58.0",
