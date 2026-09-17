@@ -41,6 +41,14 @@ export class HUD {
       rcRows: $('rc-rows'),
       rcTotal: $('rc-total'),
       rcClose: $('rc-close'),
+      shipToggle: $('ship-toggle'),
+      ship: $('ship-panel'),
+      tenderChip: $('tender-chip'),
+      tcBudget: $('tc-budget'),
+      tenderReport: $('tender-report'),
+      trRows: $('tr-rows'),
+      trTotal: $('tr-total'),
+      trClose: $('tr-close'),
     };
     this.hintTimer = null;
     this.onLureSelect = null;
@@ -58,6 +66,25 @@ export class HUD {
       e.stopPropagation();
       this.el.receipt.classList.add('hidden');
     });
+    this.el.trClose.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.el.tenderReport.classList.add('hidden');
+    });
+    this.el.shipToggle.addEventListener('click', () => {
+      const opening = this.el.ship.classList.contains('collapsed');
+      this.el.ship.classList.toggle('collapsed');
+      this.el.lures.classList.add('collapsed');
+      this.el.nets.classList.add('collapsed');
+      if (opening && this.onShipOpen) this.onShipOpen();
+    });
+    // Ship-systems callbacks, wired by main.js
+    this.onShipOpen = null;
+    this.onProcessing = null;
+    this.onCrew = null;
+    this.onTenderLaunch = null;
+    this.onTenderSwitch = null;
+    this.onTenderSend = null;
+    this.crewOn = false;
     this.buildGearPanel(this.el.lures, LURES,
       (l) => `$${l.cost}`, (i) => this.onLureSelect && this.onLureSelect(i));
     this.buildGearPanel(this.el.nets, NETS,
@@ -125,6 +152,119 @@ export class HUD {
   }
 
   setRodCount(n) { this.rods = n; }
+
+  setCrew(on) { this.crewOn = on; }
+
+  /**
+   * Rebuild the ship-systems panel for the current hull. Only the systems a
+   * boat actually has appear, so the panel stays empty-and-hidden on the
+   * smaller hulls.
+   */
+  buildShipPanel(spec, state = {}) {
+    const f = spec.features || {};
+    const any = f.onboard || f.crew || f.tender;
+    this.el.shipToggle.classList.toggle('hidden', !any);
+    if (!any) {
+      this.el.ship.classList.add('collapsed');
+      this.el.ship.innerHTML = '';
+      return;
+    }
+    this.el.ship.innerHTML = '';
+
+    const group = (title) => {
+      const g = document.createElement('div');
+      g.className = 'ship-group';
+      g.innerHTML = `<div class="ship-title">${title}</div>`;
+      this.el.ship.appendChild(g);
+      return g;
+    };
+    const button = (parent, label, extra, on, handler, disabled = false) => {
+      const b = document.createElement('button');
+      b.className = 'ship-btn' + (on ? ' on' : '');
+      b.innerHTML = `<span>${label}</span>` + (extra ? `<em>${extra}</em>` : '');
+      b.disabled = disabled;
+      b.addEventListener('click', (e) => { e.stopPropagation(); handler(); });
+      parent.appendChild(b);
+      return b;
+    };
+
+    if (f.onboard) {
+      const g = group('Processing line');
+      button(g, state.processing ? 'Processing: ON' : 'Processing: OFF',
+        state.processing ? 'paid at rail' : 'fills hold',
+        state.processing, () => this.onProcessing && this.onProcessing());
+      const note = document.createElement('div');
+      note.className = 'ship-note';
+      note.textContent = state.processing
+        ? 'Catches are packed and paid instantly — no dock run.'
+        : 'Catches fill the hold; sell them at a fish market.';
+      g.appendChild(note);
+    }
+
+    if (f.crew) {
+      const g = group('Crew');
+      button(g, this.crewOn ? 'Crew working' : 'Hire the crew',
+        `${spec.rods} rods`, this.crewOn,
+        () => this.onCrew && this.onCrew());
+      const note = document.createElement('div');
+      note.className = 'ship-note';
+      note.textContent = 'The crew work the rods on exactly the same terms you do.';
+      g.appendChild(note);
+    }
+
+    if (f.tender) {
+      const g = group('Tender');
+      const t = state.tender || {};
+      button(g, t.deployed ? 'Recall tender' : 'Launch tender', null, t.deployed,
+        () => this.onTenderLaunch && this.onTenderLaunch());
+      if (t.deployed) {
+        button(g, t.controlling ? 'Take the seiner' : 'Take the tender',
+          null, t.controlling, () => this.onTenderSwitch && this.onTenderSwitch(),
+          t.auto);
+        if (t.auto) {
+          const note = document.createElement('div');
+          note.className = 'ship-note';
+          note.textContent = 'Out fishing on its own — recall is available once it is back.';
+          g.appendChild(note);
+        } else {
+          const sub = document.createElement('div');
+          sub.className = 'ship-title';
+          sub.style.marginTop = '6px';
+          sub.textContent = 'Send out with bait';
+          g.appendChild(sub);
+          for (const amount of (state.budgets || [])) {
+            button(g, `Stake $${amount}`, null, false,
+              () => this.onTenderSend && this.onTenderSend(amount),
+              (state.balance || 0) < amount);
+          }
+        }
+      }
+    }
+  }
+
+  setTenderChip(tender) {
+    const on = tender && tender.state === 'auto';
+    this.el.tenderChip.classList.toggle('hidden', !on);
+    if (on) this.el.tcBudget.textContent = '$' + tender.remaining.toFixed(0);
+  }
+
+  showTenderReport({ n, value, spent, best }) {
+    if (!n) {
+      this.hint(`Tender came back empty — $${spent.toFixed(2)} of bait spent`);
+      return;
+    }
+    this.el.trRows.innerHTML =
+      `<div class="rc-row"><span class="rc-name">Fish landed</span>` +
+        `<span class="rc-val">${n}</span></div>` +
+      `<div class="rc-row"><span class="rc-name">Bait staked</span>` +
+        `<span class="rc-val">$${spent.toFixed(2)}</span></div>` +
+      (best ? `<div class="rc-row">` +
+        `<img src="${fishIconURL(best.species)}" alt="">` +
+        `<span class="rc-name">Best: ${best.species.name}</span>` +
+        `<span class="rc-val">$${best.value.toFixed(2)}</span></div>` : '');
+    this.el.trTotal.textContent = '$' + value.toFixed(2);
+    this.el.tenderReport.classList.remove('hidden');
+  }
 
   setHold(player) {
     const cap = player.capacity;
@@ -326,6 +466,8 @@ export class HUD {
     this.el.nets.classList.add('collapsed');
     this.el.hud.classList.add('hidden');
     this.el.receipt.classList.add('hidden');
+    this.el.tenderReport.classList.add('hidden');
+    this.el.ship.classList.add('collapsed');
     this.el.menu.classList.remove('hidden', 'leaving');
   }
 }

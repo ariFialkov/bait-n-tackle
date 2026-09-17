@@ -61,6 +61,14 @@ export const CONFIG = {
   HOTSPOT_BITE_BOOST: 2.4,   // bite delay divisor when on a hotspot
   SONAR_RANGE: 95,           // how far the fish-finder reads hotspots
 
+  // --- Steamboat crew (auto-fishes the rods; same odds as the player) ---
+  CREW_CAST_EVERY: 2.6,      // seconds between a crew member starting a cast
+  CREW_REEL_EVERY: 0.42,     // seconds between crew reel pulls
+  CREW_PULL_POWER: 0.55,
+
+  // --- Seiner tender ---
+  TENDER_BUDGETS: [50, 250, 1000, 5000],
+
   // --- Pots & set nets (gillnetter and up) ---
   MAX_POTS: 6,
   POT_STAKE_MULT: 55,        // stake = net's $/m * this

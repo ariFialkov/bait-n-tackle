@@ -115,17 +115,24 @@ Eight hulls, increasingly grand, each unlocking mechanics rather than odds:
 | Trawler | 3 | 220 kg | Trawl net |
 | Mud-Dredger | 4 | 520 kg | Sonar fish-finder |
 | Gillnetter | 6 | 1.1 t | Pots & set nets |
-| Paddleboat\* | 8 | 2.4 t | Onboard processing |
-| Seiner\* | 10 | 5.2 t | Launchable tender |
-| Steamboat\* | 16 | 12 t | NPC crew & restaurant |
-
-\* model pending — shown in the marina as a locked preview.
+| Paddleboat | 8 | 2.4 t | Onboard processing |
+| Seiner | 10 | 5.2 t | Launchable tender |
+| Steamboat | 16 | 12 t | NPC crew |
 
 **Boats never change the odds.** More rods and a bigger hold mean more bets
 per minute and fewer trips ashore; with an RTP below 1.0 that is faster
 churn, not a better return. The hold can never destroy value either — when
 it is full you simply cannot place new bets until you sell, so realised RTP
 is exactly the paytable's.
+
+The top three hulls automate rather than improve. **Onboard processing**
+(Paddleboat) pays catches at the rail instead of filling the hold — at face
+value, never a premium. The **tender** (Seiner) can be taken into channels
+the seiner cannot enter, or staked with bait and sent out fishing on its
+own; its autonomous casts run through the same catch roll and the same
+paytable, and its stake is charged from your cash exactly as yours is. The
+**crew** (Steamboat) work the rods through the very same `cast()` and
+`pull()` calls your swipes use — extra hands, identical bets.
 
 The **sonar** on the Mud-Dredger reads nearby hotspots and names the bait
 each one favours. That only changes how *often* a fish shows up for that
@@ -148,6 +155,7 @@ src/
   player.js    cash, owned/equipped boat, and the fish hold (persisted)
   docks.js     shoreline fish markets & marinas, generated per chunk
   marina.js    the boat store UI
+  tender.js    the Seiner's launchable / autonomous tender
   fishdata.js  the 60 species: values, weights, tiers + visual style data
   fishmodels.js procedural per-species fish prefabs (bodies, fins, skins)
   fishicons.js 2D species icons rendered from the 3D prefabs

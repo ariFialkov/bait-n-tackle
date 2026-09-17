@@ -761,3 +761,89 @@ html, body {
   opacity: 0.35;
   filter: grayscale(1);
 }
+
+/* ---------- Ship systems panel ---------- */
+#ship-toggle {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  top: calc(50% + 144px);
+  z-index: 3;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  border: none;
+  font-size: 1.35rem;
+  background: rgba(8, 40, 56, 0.78);
+  color: #fff;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+#ship-panel {
+  position: absolute;
+  right: calc(max(10px, env(safe-area-inset-right)) + 62px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 78vh;
+  overflow-y: auto;
+  pointer-events: auto;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+#ship-panel.collapsed {
+  transform: translateY(-50%) translateX(35%);
+  opacity: 0; pointer-events: none;
+}
+.ship-group {
+  background: rgba(8, 40, 56, 0.82);
+  border-radius: 12px;
+  padding: 8px 10px;
+  min-width: 196px;
+}
+.ship-title {
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.16em;
+  color: #7da8bc; text-transform: uppercase; margin-bottom: 6px;
+}
+.ship-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  border: 2px solid transparent; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #dfeef5;
+  padding: 7px 10px;
+  font-family: inherit; font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; text-align: left;
+  margin-bottom: 4px;
+}
+.ship-btn:last-child { margin-bottom: 0; }
+.ship-btn.on { border-color: #7dedae; background: rgba(125, 237, 174, 0.16); color: #c9f7dc; }
+.ship-btn:disabled { opacity: 0.45; cursor: default; }
+.ship-btn em { margin-left: auto; font-style: normal; color: #ffd166; font-weight: 800; }
+.ship-note { font-size: 0.64rem; color: #7da8bc; line-height: 1.4; margin-top: 4px; }
+
+/* ---------- Tender status chip ---------- */
+#tender-chip {
+  position: absolute;
+  left: 50%;
+  top: max(52px, calc(env(safe-area-inset-top) + 44px));
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(28, 92, 70, 0.82);
+  backdrop-filter: blur(5px);
+  border-radius: 99px;
+  padding: 5px 14px;
+  font-size: 0.75rem; font-weight: 700;
+  color: #c9f7dc;
+}
+#tender-chip b { color: #fff; }
+.tc-icon { font-size: 0.9rem; }
+
+#tender-report { position: fixed; inset: 0; z-index: 18;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5, 16, 26, 0.7); backdrop-filter: blur(6px); padding: 20px; }
+#tr-close {
+  width: 100%; margin-top: 14px;
+  border: none; border-radius: 10px; padding: 11px;
+  font-family: inherit; font-size: 0.92rem; font-weight: 800;
+  background: linear-gradient(180deg, #9ef0c0, #6fdba0);
+  color: #06342a; cursor: pointer;
+}

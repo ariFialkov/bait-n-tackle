@@ -14,6 +14,7 @@ import { Dex } from './dex.js';
 import { Marina } from './marina.js';
 import { Player } from './player.js';
 import { Docks, DOCK_HINT_RANGE } from './docks.js';
+import { Tender } from './tender.js';
 import { SPECIES } from './fishdata.js';
 
 // --- Renderer / scene ---
@@ -67,15 +68,40 @@ const hud = new HUD();
 const dex = new Dex();
 const rtp = new RTPEngine();
 const fishing = new Fishing(scene, boat, lake, rtp, hud, player);
+const tender = new Tender(scene, lake, rtp, player, hud);
+
+// Which vessel the player is steering right now.
+let helm = boat;
+const atHelmOfTender = () => helm === tender;
 
 // --- Boat swapping ---
 async function equipBoat(id) {
   if (player.boatId !== id && player.has(id)) player.equip(id);
+  // Any tender belongs to the old hull — bring it home first.
+  if (tender.deployed) { tender.stow(); }
+  helm = boat;
+  fishing.setVessel(boat);
   await boat.setBoat(id);
   fishing.syncRods();
   hud.setBoat(boat.spec);
   rig.setBoatLength(boat.spec.length);
   if (!boat.spec.features.trawl && boat.trawling) fishing.stopTrawl();
+  if (boat.spec.tender) await tender.prepare(boat.spec.tender);
+  refreshShipPanel();
+}
+
+function refreshShipPanel() {
+  hud.buildShipPanel(boat.spec, {
+    processing: player.processing,
+    balance: player.balance,
+    budgets: CONFIG.TENDER_BUDGETS,
+    tender: {
+      deployed: tender.deployed,
+      auto: tender.state === 'auto',
+      controlling: atHelmOfTender(),
+      remaining: tender.remaining,
+    },
+  });
 }
 boat.onBoatChanged = (spec) => hud.setBoat(spec);
 equipBoat(player.boatId);
@@ -85,6 +111,62 @@ const marina = new Marina(player, (id) => { equipBoat(id); });
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);
 hud.onPot = () => fishing.dropPot();
+
+// --- ship systems ---
+hud.onShipOpen = () => refreshShipPanel();
+hud.onProcessing = () => {
+  player.onboardProcessing = !player.onboardProcessing;
+  player.save();
+  hud.hint(player.processing
+    ? 'Processing line running — catches paid at the rail'
+    : 'Processing line idle — catches fill the hold');
+  refreshShipPanel();
+};
+
+hud.onCrew = () => {
+  fishing.setCrew(!fishing.crew);
+  refreshShipPanel();
+};
+
+hud.onTenderLaunch = () => {
+  if (!boat.spec.features.tender) {
+    hud.hint(`A ${boat.spec.name} carries no tender — upgrade at a marina`);
+    return;
+  }
+  if (tender.deployed) {
+    if (tender.state === 'auto') { hud.hint('The tender is still out fishing'); return; }
+    if (tender.distanceTo(boat) > 14) { hud.hint('Bring the tender alongside first'); return; }
+    if (atHelmOfTender()) { helm = boat; fishing.setVessel(boat); }
+    tender.stow();
+    hud.hint('Tender craned back aboard');
+  } else if (tender.launch(boat)) {
+    hud.hint('Tender in the water');
+  } else {
+    hud.hint('No room alongside to launch');
+  }
+  refreshShipPanel();
+};
+
+hud.onTenderSwitch = () => {
+  if (!tender.deployed || tender.state === 'auto') return;
+  helm = atHelmOfTender() ? boat : tender;
+  fishing.setVessel(helm);
+  rig.setBoatLength(helm === tender ? tender.spec.length : boat.spec.length);
+  hud.setBoat(helm === tender ? tender.spec : boat.spec);
+  hud.hint(atHelmOfTender() ? 'At the tender\u2019s helm' : 'Back on the seiner');
+  refreshShipPanel();
+};
+
+hud.onTenderSend = (amount) => {
+  if (!tender.deployed || tender.state === 'auto') return;
+  if (player.balance < amount) { hud.hint('Not enough cash for that much bait'); return; }
+  if (atHelmOfTender()) { helm = boat; fishing.setVessel(boat); rig.setBoatLength(boat.spec.length); hud.setBoat(boat.spec); }
+  // The budget is a spending limit, not a charge: each landed fish draws its
+  // stake from it exactly as a player cast would.
+  tender.sendOut(amount, fishing.lureIndex);
+  hud.hint(`Tender away with $${amount} of ${LURES[fishing.lureIndex].name}`);
+  refreshShipPanel();
+};
 hud.bindNewRound(() => {
   rtp.reset();
   if (player.balance < 1 && !player.hold.length) {
@@ -118,6 +200,7 @@ hud.bindMenu(() => {
   state = 'menu';
   fishing.endAll();
   if (boat.trawling) fishing.stopTrawl();
+  if (helm === tender) { helm = boat; fishing.setVessel(boat); rig.setBoatLength(boat.spec.length); hud.setBoat(boat.spec); }
   marina.close();
   input.enabled = false;
   rig.backToMenu();
@@ -132,7 +215,8 @@ let dockCooldown = 0;
 
 function updateDocks(dt) {
   if (dockCooldown > 0) dockCooldown -= dt;
-  const here = docks.dockAt(boat.pos.x, boat.pos.z);
+  const at = helm === tender ? tender.pos : boat.pos;
+  const here = docks.dockAt(at.x, at.z);
   if (!here) {
     if (lastDock) { lastDock = null; }
     return;
@@ -163,11 +247,12 @@ function updateSonar(dt) {
   sonarAcc += dt;
   if (sonarAcc < 0.4) return;
   sonarAcc = 0;
-  const near = lake.hotspotsNear(boat.pos.x, boat.pos.z, CONFIG.SONAR_RANGE).slice(0, 4);
+  const at = helm === tender ? tender.pos : boat.pos;
+  const near = lake.hotspotsNear(at.x, at.z, CONFIG.SONAR_RANGE).slice(0, 4);
   hud.setSonar(near.map((e) => ({
     dist: e.dist,
     lure: LURES.find((l) => l.id === e.hotspot.lureId) || LURES[0],
-    bearing: Math.atan2(e.hotspot.x - boat.pos.x, -(e.hotspot.z - boat.pos.z)),
+    bearing: Math.atan2(e.hotspot.x - at.x, -(e.hotspot.z - at.z)),
   })));
 }
 
@@ -182,27 +267,30 @@ function frame() {
 
   const driving = state === 'play' && !marina.open;
   const move = driving ? input.moveVector() : { x: 0, z: 0 };
-  boat.update(dt, move, t);
-  lake.update(t, boat.pos.x, boat.pos.z);
-  ambientFish.setFocus(boat.pos.x, boat.pos.z);
+  boat.update(dt, helm === boat ? move : { x: 0, z: 0 }, t);
+  tender.update(dt, t, helm === tender ? move : { x: 0, z: 0 }, boat);
+  const eye = helm === tender ? tender.pos : boat.pos;
+  lake.update(t, eye.x, eye.z);
+  ambientFish.setFocus(eye.x, eye.z);
   ambientFish.update(t, dt);
   if (state === 'play') {
     fishing.update(dt, t);
     updateDocks(dt);
     updateSonar(dt);
   }
-  rig.update(dt, t, boat.group.position);
+  rig.update(dt, t, (helm === tender ? tender : boat).group.position);
 
   // Keep the sun (and its shadow frustum) centered on the boat.
-  sun.position.set(boat.pos.x + SUN_OFFSET.x, SUN_OFFSET.y, boat.pos.z + SUN_OFFSET.z);
-  sun.target.position.set(boat.pos.x, 0, boat.pos.z);
+  sun.position.set(eye.x + SUN_OFFSET.x, SUN_OFFSET.y, eye.z + SUN_OFFSET.z);
+  sun.target.position.set(eye.x, 0, eye.z);
 
   hud.setWallet(player.balance, rtp.netRound());
   hud.setHold(player);
+  hud.setTenderChip(tender);
   if (state === 'play') {
-    const market = docks.nearest(boat.pos.x, boat.pos.z, 'market');
-    const mar = docks.nearest(boat.pos.x, boat.pos.z, 'marina');
-    hud.setFinders(boat.pos,
+    const market = docks.nearest(eye.x, eye.z, 'market');
+    const mar = docks.nearest(eye.x, eye.z, 'marina');
+    hud.setFinders(eye,
       market.dist <= DOCK_HINT_RANGE ? market : null,
       mar.dist <= DOCK_HINT_RANGE ? mar : null);
   }
@@ -215,7 +303,11 @@ function frame() {
 frame();
 
 // Debug/test handle (harmless in production).
-window.BNT = { hud, rtp, fishing, boat, player, dex, marina, docks, lake, SPECIES, equipBoat };
+window.BNT = {
+  hud, rtp, fishing, boat, tender, player, dex, marina, docks, lake, SPECIES,
+  equipBoat, refreshShipPanel,
+  get helm() { return helm; },
+};
 
 // --- PWA ---
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

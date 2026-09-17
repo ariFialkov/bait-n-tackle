@@ -91,6 +91,14 @@
     <button id="net-toggle" title="Nets">🕸️</button>
     <div id="net-panel" class="collapsed"></div>
     <button id="pot-btn" class="hidden" title="Drop a pot">🦀<span id="pot-count">0</span></button>
+    <button id="ship-toggle" class="hidden" title="Ship systems">⚙️</button>
+    <div id="ship-panel" class="collapsed"></div>
+
+    <!-- Tender status, while it is out on its own -->
+    <div id="tender-chip" class="hidden">
+      <span class="tc-icon">🚤</span>
+      <span class="tc-text">Tender working · <b id="tc-budget">$0</b> left</span>
+    </div>
 
     <div id="joystick">
       <div id="joystick-thumb"></div>
@@ -109,6 +117,16 @@
       <button id="marina-close">✕</button>
     </div>
     <div id="marina-grid"></div>
+  </div>
+
+  <!-- Tender report -->
+  <div id="tender-report" class="hidden">
+    <div class="rc-card">
+      <div class="rc-head">🚤 Tender is back</div>
+      <div class="rc-rows" id="tr-rows"></div>
+      <div class="rc-total"><span>Landed</span><b id="tr-total">$0.00</b></div>
+      <button id="tr-close">Nice work</button>
+    </div>
   </div>
 
   <!-- Fish market receipt -->

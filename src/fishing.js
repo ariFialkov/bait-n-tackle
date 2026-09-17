@@ -131,6 +131,10 @@ export class Fishing {
     this.trawlCostRemainder = 0;
     this.lastPos = new THREE.Vector2(boat.pos.x, boat.pos.z);
 
+    this.crew = false;
+    this.crewCastTimer = 0;
+    this.crewReelTimer = 0;
+
     this.pots = [];
     this.potGroup = new THREE.Group();
     scene.add(this.potGroup);
@@ -158,6 +162,16 @@ export class Fishing {
     this.netIndex = clamp(i, 0, NETS.length - 1);
     this.hud.hint(`${this.trawlNet.name} — $${this.trawlNet.costPerM.toFixed(2)}/m`);
     return true;
+  }
+
+  /** Point the rod pool at a different vessel (mother ship or tender). */
+  setVessel(vessel) {
+    if (this.boat === vessel) return;
+    this.endAll();
+    if (this.boat.trawling) this.stopTrawl();
+    this.boat = vessel;
+    this.crew = false;
+    this.syncRods();
   }
 
   /** Rebuild the line pool to match the current boat's rod count. */
@@ -223,17 +237,18 @@ export class Fishing {
     return best;
   }
 
-  cast(s) {
-    if (this.boat.trawling) { this.hud.hint('Stow the net to cast'); return false; }
-    if (this.boat.speed >= CONFIG.CAST_MAX_SPEED) { this.hud.hint('Stop the boat to cast'); return false; }
+  cast(s, quiet = false) {
+    const say = (msg) => { if (!quiet) this.hud.hint(msg); };
+    if (this.boat.trawling) { say('Stow the net to cast'); return false; }
+    if (this.boat.speed >= CONFIG.CAST_MAX_SPEED) { say('Stop the boat to cast'); return false; }
     if (!this.player.canFish()) {
-      this.hud.hint('Hold is full — find a fish market to sell');
+      say('Hold is full — find a fish market to sell');
       return false;
     }
     const line = this.lines.find((l) => !l.busy);
-    if (!line) { this.hud.hint('Every rod is already out'); return false; }
+    if (!line) { say('Every rod is already out'); return false; }
     if (this.player.balance < this.lure.cost) {
-      this.hud.hint(`Need $${this.lure.cost} to land a fish on the ${this.lure.name}`);
+      say(`Need $${this.lure.cost} to land a fish on the ${this.lure.name}`);
       return false;
     }
 
@@ -243,7 +258,7 @@ export class Fishing {
     const target = new THREE.Vector3().copy(this.boat.pos).addScaledVector(dir, dist);
     target.y = CONFIG.WATER_LEVEL;
     if (waterDepth(target.x, target.z) < 0.3) {
-      this.hud.hint('That would land on shore!');
+      say('That would land on shore!');
       return false;
     }
 
@@ -500,6 +515,49 @@ export class Fishing {
     if (best.value >= CONFIG.BIGCATCH_MIN_VALUE) this.hud.showBigCatch(best);
   }
 
+  // ---------- steamboat crew ----------
+  /**
+   * The hired crew works the rods for you. It deliberately goes through the
+   * very same cast() and pull() the player's swipes use, so a crewed rod and
+   * a hand-worked rod are the identical bet — the crew is extra hands, not
+   * better odds.
+   */
+  setCrew(on) {
+    if (on && !this.spec.features.crew) {
+      this.hud.hint(`A ${this.spec.name} has no crew quarters — upgrade at a marina`);
+      return false;
+    }
+    this.crew = on;
+    this.hud.setCrew(on);
+    this.hud.hint(on ? 'Crew on deck — they will work the rods'
+      : 'Crew stood down');
+    return true;
+  }
+
+  updateCrew(dt) {
+    if (!this.crew || !this.spec.features.crew) return;
+
+    this.crewReelTimer -= dt;
+    if (this.crewReelTimer <= 0) {
+      this.crewReelTimer = CONFIG.CREW_REEL_EVERY;
+      for (const l of this.lines) {
+        if (l.biting || l.hooked) this.pull(l, CONFIG.CREW_PULL_POWER);
+        else if (l.state === 'out' && l.nibbles >= 2) this.pull(l, 0.9);
+      }
+    }
+
+    this.crewCastTimer -= dt;
+    if (this.crewCastTimer <= 0) {
+      // More hands work more rods: the gap shrinks with the rod count so a
+      // sixteen-rod steamboat actually fills its rails.
+      this.crewCastTimer = CONFIG.CREW_CAST_EVERY * 4 / Math.max(4, this.spec.rods);
+      if (this.lines.some((l) => !l.busy)) {
+        const a = Math.random() * Math.PI * 2;
+        this.cast({ x: Math.cos(a), z: Math.sin(a), power: 0.35 + Math.random() * 0.5 }, true);
+      }
+    }
+  }
+
   // ---------- per-frame ----------
   updateLine(line, dt, t) {
     if (!line.busy) return;
@@ -631,6 +689,7 @@ export class Fishing {
 
   update(dt, t) {
     this.updateTrawl(dt);
+    this.updateCrew(dt);
     this.updatePots(dt, t);
     for (const l of this.lines) this.updateLine(l, dt, t);
   }

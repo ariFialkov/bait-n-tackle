@@ -94,7 +94,6 @@ export const BOATS = [
     length: 12.0,
     features: { trawl: true, sonar: true, pots: true },
   },
-  // --- models still to come; shown in the marina as locked previews ---
   {
     id: 'paddleboat',
     name: 'Paddleboat',
@@ -111,7 +110,6 @@ export const BOATS = [
     turn: 2.2,
     length: 15.0,
     features: { trawl: true, sonar: true, pots: true, onboard: true },
-    comingSoon: true,
   },
   {
     id: 'seiner',
@@ -129,7 +127,7 @@ export const BOATS = [
     turn: 2.7,
     length: 19.0,
     features: { trawl: true, sonar: true, pots: true, onboard: true, tender: true },
-    comingSoon: true,
+    tender: { model: 'cuddy', length: 5.4, rods: 2 },
   },
   {
     id: 'steamboat',
@@ -147,7 +145,6 @@ export const BOATS = [
     turn: 1.8,
     length: 26.0,
     features: { trawl: true, sonar: true, pots: true, onboard: true, crew: true },
-    comingSoon: true,
   },
 ];
 
