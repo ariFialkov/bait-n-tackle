@@ -13,7 +13,10 @@
   <link rel="apple-touch-icon" href="./assets/icon-192.png" />
   <link rel="stylesheet" href="./styles.css" />
   <script type="importmap">
-    { "imports": { "three": "./vendor/three.module.js" } }
+    { "imports": {
+      "three": "./vendor/three.module.js",
+      "three/addons/": "./vendor/addons/"
+    } }
   </script>
 </head>
 <body>
@@ -52,10 +55,42 @@
       <button class="chip btn" id="menu-btn">⛵ Menu</button>
     </div>
 
+    <!-- Boat hold -->
+    <div id="hold">
+      <div class="hold-row">
+        <span class="hold-label" id="hold-boat">Skiff</span>
+        <span class="hold-kg" id="hold-kg">0 / 28 kg</span>
+      </div>
+      <div class="hold-bar"><div class="hold-fill" id="hold-fill"></div></div>
+      <div class="hold-row">
+        <span class="hold-rods" id="hold-rods">🎣 1 rod</span>
+        <span class="hold-value" id="hold-value">$0.00 aboard</span>
+      </div>
+    </div>
+
+    <!-- Direction finders for nearby outposts -->
+    <div id="finders">
+      <div class="finder" id="finder-market">
+        <span class="finder-arrow">➤</span>
+        <span class="finder-text">Fish Market <b>120m</b></span>
+      </div>
+      <div class="finder" id="finder-marina">
+        <span class="finder-arrow">➤</span>
+        <span class="finder-text">Marina <b>120m</b></span>
+      </div>
+    </div>
+
+    <!-- Sonar fish-finder (Mud-Dredger and up) -->
+    <div id="sonar" class="hidden">
+      <div class="sonar-head">📡 SONAR</div>
+      <div id="sonar-rows"></div>
+    </div>
+
     <button id="lure-toggle" title="Lures">🎣</button>
     <div id="lure-panel" class="collapsed"></div>
     <button id="net-toggle" title="Nets">🕸️</button>
     <div id="net-panel" class="collapsed"></div>
+    <button id="pot-btn" class="hidden" title="Drop a pot">🦀<span id="pot-count">0</span></button>
 
     <div id="joystick">
       <div id="joystick-thumb"></div>
@@ -64,6 +99,26 @@
     <div id="bite">❗</div>
     <div id="hint"></div>
     <div id="toasts"></div>
+  </div>
+
+  <!-- Marina / boat store -->
+  <div id="marina" class="hidden">
+    <div class="dex-head">
+      <h2>⚓ Marina</h2>
+      <span class="dex-count" id="marina-cash">$0.00</span>
+      <button id="marina-close">✕</button>
+    </div>
+    <div id="marina-grid"></div>
+  </div>
+
+  <!-- Fish market receipt -->
+  <div id="receipt" class="hidden">
+    <div class="rc-card">
+      <div class="rc-head">🐟 Fish Market</div>
+      <div class="rc-rows" id="rc-rows"></div>
+      <div class="rc-total"><span>Paid out</span><b id="rc-total">$0.00</b></div>
+      <button id="rc-close">Cast off</button>
+    </div>
   </div>
 
   <!-- Big catch reveal -->

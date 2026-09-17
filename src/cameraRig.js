@@ -7,13 +7,14 @@
 
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
+import { clamp } from './noise.js';
 
 const MENU_OFFSET = new THREE.Vector3(5.4, 2.5, 8.6);
 const MENU_LOOK = new THREE.Vector3(0, 0.55, 0);
 
-function playOffset() {
+function playOffset(dist = CONFIG.CAM_DIST) {
   const el = THREE.MathUtils.degToRad(CONFIG.CAM_ELEV_DEG);
-  return new THREE.Vector3(0, Math.sin(el) * CONFIG.CAM_DIST, Math.cos(el) * CONFIG.CAM_DIST);
+  return new THREE.Vector3(0, Math.sin(el) * dist, Math.cos(el) * dist);
 }
 
 function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
@@ -23,6 +24,7 @@ export class CameraRig {
     this.camera = camera;
     this.mode = 'menu';
     this.playOff = playOffset();
+    this.targetDist = CONFIG.CAM_DIST;
     this.transT = 0;
     this.transFrom = new THREE.Vector3();
     this.transFromQuat = new THREE.Quaternion();
@@ -30,6 +32,11 @@ export class CameraRig {
     this.tmpPos = new THREE.Vector3();
     this.tmpQuat = new THREE.Quaternion();
     this.tmpM = new THREE.Matrix4();
+  }
+
+  /** Frame the boat: bigger hulls need the camera further back. */
+  setBoatLength(len) {
+    this.targetDist = CONFIG.CAM_DIST * clamp(0.82 + len / 16, 0.9, 2.1);
   }
 
   startGame() {
@@ -85,7 +92,12 @@ export class CameraRig {
         this.followPos.copy(boatPos);
       }
     } else {
-      // Fixed-rotation follow.
+      // Fixed-rotation follow, easing toward the current hull's framing.
+      const cur = Math.hypot(this.playOff.y, this.playOff.z);
+      if (Math.abs(cur - this.targetDist) > 0.01) {
+        const next = cur + (this.targetDist - cur) * Math.min(1, 2.2 * dt);
+        this.playOff.copy(playOffset(next));
+      }
       this.followPos.lerp(boatPos, Math.min(1, CONFIG.CAM_FOLLOW_LERP * dt));
       cam.position.set(
         this.followPos.x + this.playOff.x,

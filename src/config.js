@@ -59,6 +59,13 @@ export const CONFIG = {
   // --- Hotspots (affect catch frequency & bite speed only, never payout) ---
   HOTSPOT_RADIUS: 7,         // within this radius casting is "hot"
   HOTSPOT_BITE_BOOST: 2.4,   // bite delay divisor when on a hotspot
+  SONAR_RANGE: 95,           // how far the fish-finder reads hotspots
+
+  // --- Pots & set nets (gillnetter and up) ---
+  MAX_POTS: 6,
+  POT_STAKE_MULT: 55,        // stake = net's $/m * this
+  POT_SOAK_S: 45,            // how long a pot must sit before it is worth pulling
+  POT_COLLECT_RADIUS: 6,
 
   // --- Camera ---
   CAM_ELEV_DEG: 60,          // elevation above horizontal => 30 deg off top-down

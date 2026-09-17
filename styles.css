@@ -502,3 +502,262 @@ html, body {
 }
 .dex-row span { color: #7da8bc; flex-shrink: 0; }
 .dex-row b { text-align: right; font-weight: 600; }
+
+/* ---------- Boat hold ---------- */
+#hold {
+  position: absolute;
+  top: max(52px, calc(env(safe-area-inset-top) + 44px));
+  left: max(10px, env(safe-area-inset-left));
+  width: 208px;
+  background: rgba(8, 40, 56, 0.72);
+  backdrop-filter: blur(6px);
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.hold-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: #a9c9d8;
+}
+.hold-label { font-weight: 800; color: #fff; font-size: 0.82rem; }
+.hold-kg { font-weight: 700; }
+.hold-bar {
+  height: 7px;
+  margin: 5px 0 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.hold-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #6db7d4, #7dedae);
+  transition: width 0.25s ease;
+}
+.hold-fill.warn { background: linear-gradient(90deg, #ffd166, #ffb347); }
+.hold-fill.full { background: linear-gradient(90deg, #ff9a8a, #e8574a); }
+.hold-fill.processing { background: linear-gradient(90deg, #8fd0a0, #7dedae); opacity: 0.55; }
+.hold-value { color: #ffd166; font-weight: 700; }
+.hold-rods { font-weight: 600; }
+
+/* ---------- Direction finders ---------- */
+#finders {
+  position: absolute;
+  top: max(52px, calc(env(safe-area-inset-top) + 44px));
+  right: max(10px, env(safe-area-inset-right));
+  display: flex; flex-direction: column; gap: 6px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.finder {
+  display: none;
+  align-items: center; gap: 7px;
+  background: rgba(8, 40, 56, 0.6);
+  backdrop-filter: blur(5px);
+  border-radius: 99px;
+  padding: 5px 11px 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #dfeef5;
+  opacity: 0.8;
+}
+.finder.show { display: flex; }
+.finder.near { opacity: 1; background: rgba(28, 92, 70, 0.8); color: #c9f7dc; }
+.finder-arrow {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: #ffd166;
+  transform-origin: 50% 50%;
+}
+#finder-marina .finder-arrow { color: #7fd8ff; }
+.finder-text b { color: #fff; }
+
+/* ---------- Sonar ---------- */
+#sonar {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  bottom: max(150px, calc(env(safe-area-inset-bottom) + 146px));
+  width: 208px;
+  background: rgba(8, 40, 56, 0.66);
+  backdrop-filter: blur(6px);
+  border-radius: 12px;
+  padding: 7px 10px 8px;
+}
+.sonar-head {
+  font-size: 0.64rem; font-weight: 800; letter-spacing: 0.18em;
+  color: #7dedae; margin-bottom: 4px;
+}
+.sonar-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.7rem; color: #dfeef5; line-height: 1.6;
+}
+.sonar-bear { display: inline-block; color: #7dedae; font-size: 0.7rem; }
+.sonar-lure { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sonar-dist { color: #a9c9d8; font-weight: 700; }
+.sonar-empty { font-size: 0.68rem; color: #7da8bc; font-style: italic; }
+
+/* ---------- Pot button ---------- */
+#pot-btn {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  top: calc(50% + 76px);
+  z-index: 3;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  border: none;
+  font-size: 1.4rem;
+  background: rgba(8, 40, 56, 0.78);
+  color: #fff;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+#pot-count {
+  position: absolute;
+  right: 4px; bottom: 3px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  background: #ffd166;
+  color: #063346;
+  border-radius: 99px;
+  padding: 0 5px;
+}
+
+/* ---------- Marina store ---------- */
+#marina {
+  position: fixed; inset: 0;
+  z-index: 16;
+  display: flex; flex-direction: column;
+  background: rgba(7, 26, 38, 0.95);
+  backdrop-filter: blur(8px);
+}
+#marina-grid {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  padding: 16px max(14px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+}
+.boat-card {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  padding: 10px 14px 14px;
+  color: #dfeef5;
+  display: flex; flex-direction: column;
+}
+.boat-card.equipped { border-color: #ffd166; background: rgba(255, 209, 102, 0.09); }
+.boat-card.locked { opacity: 0.55; }
+.boat-img-wrap {
+  position: relative;
+  height: 128px;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 62%, rgba(255, 255, 255, 0.08), transparent 70%);
+}
+.boat-img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.45)); }
+.boat-flag {
+  position: absolute; top: 2px; right: 2px;
+  font-size: 0.56rem; font-weight: 800; letter-spacing: 0.14em;
+  background: #ffd166; color: #063346;
+  border-radius: 99px; padding: 3px 9px;
+}
+.boat-flag.owned { background: #7dedae; }
+.boat-flag.soon { background: rgba(255, 255, 255, 0.25); color: #eaf6fb; }
+.boat-name { font-size: 1.15rem; font-weight: 800; color: #fff; margin-top: 4px; }
+.boat-tag { font-size: 0.74rem; color: #ffd166; font-weight: 700; margin-bottom: 8px; }
+.boat-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.bs { display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.72rem; }
+.bs span { color: #7da8bc; }
+.bs b { color: #fff; font-weight: 700; }
+.bs em { display: flex; gap: 2px; }
+.bs em i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+.bs em i.on { background: #6db7d4; }
+.boat-feats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.boat-feats span {
+  font-size: 0.62rem; font-weight: 700;
+  background: rgba(109, 183, 212, 0.18);
+  color: #9fe0f5;
+  border-radius: 99px; padding: 2px 8px;
+}
+.boat-blurb { font-size: 0.72rem; line-height: 1.45; color: #a9c9d8; flex: 1; }
+.boat-actions { margin-top: 10px; }
+.boat-btn {
+  width: 100%;
+  border: none; border-radius: 10px;
+  padding: 9px 12px;
+  font-family: inherit; font-size: 0.85rem; font-weight: 800;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6fb;
+}
+.boat-btn.buy { background: linear-gradient(180deg, #ffe08a, #ffc94d); color: #063346; }
+.boat-btn.go { background: linear-gradient(180deg, #9ef0c0, #6fdba0); color: #06342a; }
+.boat-btn.poor { background: rgba(255, 255, 255, 0.08); color: #7da8bc; }
+.boat-btn:disabled { cursor: default; opacity: 0.7; }
+.boat-warn { margin-top: 6px; font-size: 0.66rem; color: #ffb347; text-align: center; }
+
+/* ---------- Fish market receipt ---------- */
+#receipt {
+  position: fixed; inset: 0;
+  z-index: 18;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5, 16, 26, 0.7);
+  backdrop-filter: blur(6px);
+  padding: 20px;
+}
+.rc-card {
+  width: min(380px, 92vw);
+  background: #0e3b4d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 18px;
+  color: #eaf6fb;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  animation: bcPop 0.4s cubic-bezier(0.18, 1.4, 0.4, 1);
+}
+.rc-head { font-size: 1.15rem; font-weight: 800; margin-bottom: 10px; }
+.rc-rows { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.rc-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  padding: 5px 9px;
+}
+.rc-row img { width: 30px; height: 30px; object-fit: contain; }
+.rc-name { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-n { color: #7da8bc; font-weight: 700; }
+.rc-val { color: #ffd166; font-weight: 800; min-width: 62px; text-align: right; }
+.rc-total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.86rem; font-weight: 700; color: #a9c9d8;
+}
+.rc-total b { font-size: 1.5rem; color: #7dedae; }
+#rc-close {
+  width: 100%; margin-top: 14px;
+  border: none; border-radius: 10px; padding: 11px;
+  font-family: inherit; font-size: 0.92rem; font-weight: 800;
+  background: linear-gradient(180deg, #ffe08a, #ffc94d);
+  color: #063346; cursor: pointer;
+}
+.toast.pot { border-left-color: #c8a35f; }
+.boat-img-soon {
+  font-size: 3.4rem;
+  opacity: 0.35;
+  filter: grayscale(1);
+}

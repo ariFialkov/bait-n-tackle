@@ -11,7 +11,7 @@
     "build:zip": "./build.sh --zip"
   },
   "devDependencies": {
-    "playwright-core": "^1.58.0",
-    "three": "0.160.1"
+    "playwright-core": "^1.63.0",
+    "three": "^0.160.1"
   }
 }

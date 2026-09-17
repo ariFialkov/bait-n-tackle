@@ -6,8 +6,9 @@
 // rough-water ripple FX.
 
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { CONFIG, LURES } from './config.js';
 import { fbm, hash2, mulberry32, clamp } from './noise.js';
+import { chunkDocks } from './docks.js';
 
 const S = CONFIG.SEED;
 
@@ -122,6 +123,7 @@ class Chunk {
 
     this.trees = this.buildTrees(ox, oz, size, treeMaterials, parentGroup);
     this.hotspots = this.buildHotspots(ox, oz, size);
+    this.docks = chunkDocks(cx, cz);
   }
 
   buildTrees(ox, oz, size, mats, parentGroup) {
@@ -194,7 +196,15 @@ class Chunk {
         if (terrainHeight(x + Math.cos(ang) * 13, z + Math.sin(ang) * 13) > 0.3) shore++;
       }
       if (shore >= 2 && shore <= 6) {
-        found.push({ x, z, strength: 0.8 + rng() * 0.6, phase: rng() * Math.PI * 2 });
+        // Each spot favours one bait. This only changes how OFTEN fish show
+        // up for that bait, never what a catch is worth, so the sonar that
+        // reveals it cannot shift the expected value of a bet.
+        found.push({
+          x, z,
+          strength: 0.8 + rng() * 0.6,
+          phase: rng() * Math.PI * 2,
+          lureId: LURES[Math.floor(rng() * LURES.length)].id,
+        });
       }
     }
     return found;
@@ -332,6 +342,8 @@ export class Lake {
     scene.add(this.water);
     this.fx = new HotspotFX(scene);
     this.hotspots = [];
+    this.docks = [];
+    this.onDocksChanged = null;
     this.ensureChunks(0, 0);
   }
 
@@ -359,8 +371,13 @@ export class Lake {
     }
     if (changed) {
       this.hotspots = [];
-      for (const chunk of this.chunks.values()) this.hotspots.push(...chunk.hotspots);
+      this.docks = [];
+      for (const chunk of this.chunks.values()) {
+        this.hotspots.push(...chunk.hotspots);
+        this.docks.push(...chunk.docks);
+      }
       this.fx.sync(this.hotspots);
+      if (this.onDocksChanged) this.onDocksChanged(this.docks);
     }
     // Water follows the boat in whole-tile steps to appear infinite.
     this.water.position.x = ccx * size;
@@ -378,9 +395,24 @@ export class Lake {
 
   // 0..1 hotness at a position (1 = dead center of a strong hotspot)
   hotness(x, z) {
+    const spot = this.hotspotAt(x, z);
+    return spot ? spot.hotness : 0;
+  }
+
+  /** The hotspot covering a point, with its 0..1 hotness, or null. */
+  hotspotAt(x, z) {
     const { hotspot, dist } = this.nearestHotspot(x, z);
-    if (!hotspot) return 0;
-    return clamp(1 - dist / (CONFIG.HOTSPOT_RADIUS * hotspot.strength), 0, 1);
+    if (!hotspot) return null;
+    const hotness = clamp(1 - dist / (CONFIG.HOTSPOT_RADIUS * hotspot.strength), 0, 1);
+    return hotness > 0 ? { hotspot, dist, hotness } : null;
+  }
+
+  /** Hotspots within `range` of a point, nearest first (sonar readout). */
+  hotspotsNear(x, z, range) {
+    return this.hotspots
+      .map((hs) => ({ hotspot: hs, dist: Math.hypot(hs.x - x, hs.z - z) }))
+      .filter((e) => e.dist <= range)
+      .sort((a, b) => a.dist - b.dist);
   }
 
   update(t, boatX, boatZ) {

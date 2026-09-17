@@ -26,12 +26,38 @@ export class HUD {
       newRound: $('new-round'),
       menuBtn: $('menu-btn'),
       bigcatch: $('bigcatch'),
+      holdBoat: $('hold-boat'),
+      holdKg: $('hold-kg'),
+      holdFill: $('hold-fill'),
+      holdRods: $('hold-rods'),
+      holdValue: $('hold-value'),
+      finderMarket: $('finder-market'),
+      finderMarina: $('finder-marina'),
+      sonar: $('sonar'),
+      sonarRows: $('sonar-rows'),
+      potBtn: $('pot-btn'),
+      potCount: $('pot-count'),
+      receipt: $('receipt'),
+      rcRows: $('rc-rows'),
+      rcTotal: $('rc-total'),
+      rcClose: $('rc-close'),
     };
     this.hintTimer = null;
     this.onLureSelect = null;
     this.onNetSelect = null;
     this.bigcatchTimer = null;
     this.valueTween = null;
+    this.onPot = null;
+    this.rods = 1;
+    this._sonarKey = '';
+    this.el.potBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onPot) this.onPot();
+    });
+    this.el.rcClose.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.el.receipt.classList.add('hidden');
+    });
     this.buildGearPanel(this.el.lures, LURES,
       (l) => `$${l.cost}`, (i) => this.onLureSelect && this.onLureSelect(i));
     this.buildGearPanel(this.el.nets, NETS,
@@ -87,6 +113,95 @@ export class HUD {
     this.hintTimer = setTimeout(() => this.el.hint.classList.remove('show'), ms);
   }
 
+  // --- boat / hold ---
+  setBoat(spec) {
+    this.rods = spec.rods;
+    this.el.holdBoat.textContent = spec.name;
+    this.el.holdRods.textContent = `🎣 ${spec.rods} rod${spec.rods > 1 ? 's' : ''}`;
+    this.el.netToggle.classList.toggle('hidden', !spec.features.trawl);
+    this.el.potBtn.classList.toggle('hidden', !spec.features.pots);
+    this.el.sonar.classList.toggle('hidden', !spec.features.sonar);
+    if (!spec.features.trawl) this.el.nets.classList.add('collapsed');
+  }
+
+  setRodCount(n) { this.rods = n; }
+
+  setHold(player) {
+    const cap = player.capacity;
+    if (player.processing) {
+      this.el.holdKg.textContent = 'onboard processing';
+      this.el.holdFill.style.width = '100%';
+      this.el.holdFill.className = 'hold-fill processing';
+      this.el.holdValue.textContent = 'paid at the rail';
+      return;
+    }
+    const kg = player.holdKg;
+    const frac = player.holdFrac;
+    this.el.holdKg.textContent =
+      `${kg < 10 ? kg.toFixed(1) : Math.round(kg)} / ${cap >= 1000 ? (cap / 1000).toFixed(1) + 't' : cap + 'kg'}`;
+    this.el.holdFill.style.width = (frac * 100).toFixed(1) + '%';
+    this.el.holdFill.className = 'hold-fill' +
+      (frac >= 1 ? ' full' : frac > 0.8 ? ' warn' : '');
+    this.el.holdValue.textContent = `$${player.holdValue.toFixed(2)} aboard`;
+  }
+
+  setPots(n) { this.el.potCount.textContent = String(n); }
+
+  // --- direction finders ---
+  /**
+   * Point the non-intrusive chips at the nearest outpost of each kind.
+   * `boat` supplies position; entries are { dock, dist } or null.
+   */
+  setFinders(boatPos, market, marina) {
+    const one = (el, entry, atDock) => {
+      if (!entry || !entry.dock) { el.classList.remove('show'); return; }
+      el.classList.add('show');
+      el.classList.toggle('near', atDock);
+      const d = entry.dock;
+      // Screen-space bearing: the camera never rotates, so world -Z is up.
+      const ang = Math.atan2(d.headX - boatPos.x, -(d.headZ - boatPos.z));
+      el.querySelector('.finder-arrow').style.transform = `rotate(${ang}rad)`;
+      el.querySelector('.finder-text b').textContent =
+        atDock ? 'here' : `${Math.round(entry.dist)}m`;
+    };
+    one(this.el.finderMarket, market, market && market.dist < 9);
+    one(this.el.finderMarina, marina, marina && marina.dist < 9);
+  }
+
+  // --- sonar ---
+  setSonar(entries) {
+    const key = entries.map((e) => e.lure.id + Math.round(e.dist / 5)).join(',');
+    if (key === this._sonarKey) return;   // avoid rebuilding the DOM every frame
+    this._sonarKey = key;
+    if (!entries.length) {
+      this.el.sonarRows.innerHTML = '<div class="sonar-empty">no activity in range</div>';
+      return;
+    }
+    this.el.sonarRows.innerHTML = entries.map((e) =>
+      `<div class="sonar-row">` +
+        `<span class="sonar-bear" style="transform:rotate(${e.bearing}rad)">➤</span>` +
+        `<span class="sonar-lure">${e.lure.emoji} ${e.lure.name}</span>` +
+        `<span class="sonar-dist">${Math.round(e.dist)}m</span>` +
+      `</div>`).join('');
+  }
+
+  // --- fish market receipt ---
+  showReceipt(result) {
+    if (!result.count) {
+      this.hint('Hold is empty — nothing to sell');
+      return;
+    }
+    this.el.rcRows.innerHTML = result.rows.map((r) =>
+      `<div class="rc-row">` +
+        `<img src="${fishIconURL(r.species)}" alt="">` +
+        `<span class="rc-name">${r.species.name}</span>` +
+        `<span class="rc-n">x${r.n}</span>` +
+        `<span class="rc-val">$${r.value.toFixed(2)}</span>` +
+      `</div>`).join('');
+    this.el.rcTotal.textContent = '$' + result.value.toFixed(2);
+    this.el.receipt.classList.remove('hidden');
+  }
+
   setBite(on) {
     this.el.bite.classList.toggle('show', on);
   }
@@ -108,24 +223,33 @@ export class HUD {
     }, ms);
   }
 
-  showCatch(c, wager) {
+  showCatch(c, wager, how = 'stored') {
     const profit = c.value - wager;
     const cls = profit >= 0 ? 'win' : 'meh';
     this.toast(
       `<img class="catch-icon" src="${fishIconURL(c.species)}" alt="">` +
       `<div class="catch-body"><div class="catch-name">${c.species.name}</div>` +
-      `<div class="catch-sub">${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg</div></div>` +
+      `<div class="catch-sub">${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg · ` +
+        `${how === 'paid' ? 'processed' : 'in the hold'}</div></div>` +
       `<div class="catch-value">$${c.value.toFixed(2)}</div>`, cls, 4200);
   }
 
-  showTrawlHaul(catches, total) {
+  showTrawlHaul(catches, total, paid = false) {
+    this.haulToast('Net haul', catches, total, paid, 'trawl');
+  }
+
+  showPotHaul(catches, total, paid = false) {
+    this.haulToast('Pot pulled', catches, total, paid, 'pot');
+  }
+
+  haulToast(title, catches, total, paid, cls) {
     const best = catches.reduce((a, b) => (b.value > a.value ? b : a));
     const names = catches.map((c) => c.species.name).join(', ');
     this.toast(
       `<img class="catch-icon" src="${fishIconURL(best.species)}" alt="">` +
-      `<div class="catch-body"><div class="catch-name">Net haul ×${catches.length}</div>` +
+      `<div class="catch-body"><div class="catch-name">${title} ×${catches.length}</div>` +
       `<div class="catch-sub">${names}</div></div>` +
-      `<div class="catch-value">$${total.toFixed(2)}</div>`, 'trawl', 3200);
+      `<div class="catch-value">$${total.toFixed(2)}</div>`, cls, 3200);
   }
 
   /** Pack-opening style reveal for high-value catches. */
@@ -201,6 +325,7 @@ export class HUD {
     this.el.lures.classList.add('collapsed');
     this.el.nets.classList.add('collapsed');
     this.el.hud.classList.add('hidden');
+    this.el.receipt.classList.add('hidden');
     this.el.menu.classList.remove('hidden', 'leaving');
   }
 }

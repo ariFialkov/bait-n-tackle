@@ -50,7 +50,13 @@ from a subdirectory as-is.
 | Reel       | drag again (2-3 pulls for a long cast) | swipe again                  |
 | Hook       | drag while the bobber dunks (❗)        | swipe while the bobber dunks |
 | Trawl      | click the net on the boat’s stern      | tap the net                  |
-| Pick lure  | 🎣 button, right edge                  | 🎣 button, right edge        |
+| Drop a pot | 🦀 button, right edge                  | 🦀 button, right edge        |
+| Pick gear  | 🎣 / 🕸️ buttons, right edge            | same                         |
+
+With more than one rod, a swipe resolves by urgency: set the hook on a
+biting line, else keep cranking a hooked one, else cast from whichever
+**free rod is nearest where the cast will land**, else reel the line you
+swiped toward.
 
 Casts fly in the direction you swipe; swipe length and speed set the
 distance. Once hooked, keep pulling — stop too long and the fish escapes.
@@ -67,8 +73,8 @@ distance. Once hooked, keep pulling — stop too long and the fish escapes.
   the four-figure Legend-tier sturgeon.
 
 Watch for **rough water** — the rippling rings near coves, deltas and passage
-mouths mark fish activity. Casting there gets faster bites and a small value
-edge.
+mouths mark fish activity. Casting there gets faster bites and a better
+chance of a fish showing up at all, but never a bigger payout.
 
 ### The economy
 
@@ -84,11 +90,47 @@ your skill:
 - **Trawling** — each stretch of paid distance between catch events is its
   own microbet, resolved against that stretch's cost alone. Location never
   affects trawl results.
+- **Pots** — the stake is paid when a pot is dropped and the bet resolves
+  when it is collected, against that stake alone.
 
 The fish is chosen to fit the drawn payout (species weighted by how close
 their inherent value is, size roll makes the catch worth exactly the
 payout), not the other way around. A million-draw simulation of the
 paytable converges to 0.940.
+
+### Boats, the hold, and the shore
+
+Catches go into the boat's **hold**, not straight into cash. Pull up to a
+**fish market** on the shoreline and the hold sells automatically; pull up to
+a **marina** and the boat store opens. Both generate deterministically along
+the shore as the river streams in, and the HUD keeps a non-intrusive compass
+chip pointing at the nearest of each.
+
+Eight hulls, increasingly grand, each unlocking mechanics rather than odds:
+
+| Boat | Rods | Hold | Unlocks |
+| --- | --- | --- | --- |
+| Skiff | 1 | 28 kg | — (casting only) |
+| Cuddy | 2 | 85 kg | — |
+| Trawler | 3 | 220 kg | Trawl net |
+| Mud-Dredger | 4 | 520 kg | Sonar fish-finder |
+| Gillnetter | 6 | 1.1 t | Pots & set nets |
+| Paddleboat\* | 8 | 2.4 t | Onboard processing |
+| Seiner\* | 10 | 5.2 t | Launchable tender |
+| Steamboat\* | 16 | 12 t | NPC crew & restaurant |
+
+\* model pending — shown in the marina as a locked preview.
+
+**Boats never change the odds.** More rods and a bigger hold mean more bets
+per minute and fewer trips ashore; with an RTP below 1.0 that is faster
+churn, not a better return. The hold can never destroy value either — when
+it is full you simply cannot place new bets until you sell, so realised RTP
+is exactly the paytable's.
+
+The **sonar** on the Mud-Dredger reads nearby hotspots and names the bait
+each one favours. That only changes how *often* a fish shows up for that
+bait — the payout is still drawn from the same paytable against the same
+stake — so it cannot be played for an edge.
 
 ## Project layout
 
@@ -98,8 +140,14 @@ styles.css            menu / HUD styling
 sw.js                 service worker (offline precache)
 manifest.webmanifest  PWA manifest
 vendor/three.module.js  vendored Three.js
+vendor/addons/          vendored GLTFLoader
+assets/boats/           boat models (.glb) + store portraits (.png)
 src/
-  config.js    all tuning knobs: RTP paytable, costs, lures, boat, camera
+  config.js    all tuning knobs: RTP paytable, costs, lures, nets, camera
+  boats.js     the eight-hull catalog: stats, unlocks, rod mounts
+  player.js    cash, owned/equipped boat, and the fish hold (persisted)
+  docks.js     shoreline fish markets & marinas, generated per chunk
+  marina.js    the boat store UI
   fishdata.js  the 60 species: values, weights, tiers + visual style data
   fishmodels.js procedural per-species fish prefabs (bodies, fins, skins)
   fishicons.js 2D species icons rendered from the 3D prefabs
