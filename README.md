@@ -49,7 +49,7 @@ from a subdirectory as-is.
 | Cast       | click + drag in any direction          | swipe in any direction       |
 | Reel       | drag again (2-3 pulls for a long cast) | swipe again                  |
 | Hook       | drag while the bobber dunks (❗)        | swipe while the bobber dunks |
-| Autoreel   | 🔄 button, right edge                  | 🔄 button, right edge        |
+| Auto reel  | reel button, right edge                | reel button, right edge      |
 | Trawl      | click the net on the boat’s stern      | tap the net                  |
 | Drop a pot | 🦀 button, right edge                  | 🦀 button, right edge        |
 | Pick gear  | 🎣 / 🕸️ buttons, right edge            | same                         |
@@ -65,9 +65,9 @@ under the surface as you crank it in, and it breaks the water alongside before
 you swing it aboard. Stop reeling and it just tires and works its own way in,
 slowly; it can never be lost.
 
-Don't fancy working the rods? **Autoreel** (🔄) sets the hook and cranks for
-you the moment a rod goes down, and brings back a lure nothing is interested
-in. It changes how many bets you place, never what one pays.
+Don't fancy working the rods? **Auto reel** sets the hook and cranks for you
+the moment a rod goes down, and brings back a lure nothing is interested in.
+It changes how many bets you place, never what one pays.
 
 ### The two bets
 
@@ -150,11 +150,17 @@ ramp, and the game turns that back into colour at load time
 **Boats never change the odds.** More rods, more speed and sharper handling
 mean more bets per minute; with an RTP below 1.0 that is faster churn, not a
 better return. A Signature skin gets you between spots sooner — it cannot win
-you more per wager. Wake size is pure decoration
-([`src/wake.js`](src/wake.js)): the trail is a ribbon laid from the transom
-whose half-width grows at the Kelvin angle, so it opens into the correct V on
-its own, and hull displacement and engine power set how wide it spreads and
-how white it churns.
+you more per wager.
+
+Wake size is pure decoration ([`src/wake.js`](src/wake.js)). The trail is a
+ribbon laid from the transom whose half-width grows at the Kelvin angle, so it
+opens into the correct V on its own. It is nine vertices wide rather than two,
+which gives it a cross-section: a hollow lane down the centreline with a
+raised, curling crest riding each edge, lifted above the water in the vertex
+shader and lit in the fragment shader so the arms read as waves with height.
+Hull displacement sets how wide the V opens and how tall the crests stand;
+engine power sets how white and noisy it churns and how much spray the transom
+throws.
 
 The top two hulls automate rather than improve. The **tender** (Seiner) can be
 taken into channels the seiner cannot enter, or staked with bait and sent out

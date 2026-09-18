@@ -114,8 +114,8 @@ hud.onAutoReel = () => {
   const on = fishing.setAutoReel(!fishing.autoReel);
   hud.setAutoReel(on);
   hud.hint(on
-    ? 'Autoreel on — rods set the hook and reel themselves'
-    : 'Autoreel off — swipe to set the hook and reel in');
+    ? 'Auto reel on — rods set the hook and reel themselves'
+    : 'Auto reel off — swipe to set the hook and reel in');
 };
 hud.setAutoReel(fishing.autoReel);
 

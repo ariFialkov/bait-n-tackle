@@ -51,7 +51,7 @@ export const CONFIG = {
   HOOKED_FISH_SCALE: 2.6,
   HOOKED_FISH_MAX_M: 6,
 
-  // --- Autoreel (optional assist; changes bet frequency, never payouts) ---
+  // --- Auto reel (optional assist; changes bet frequency, never payouts) ---
   AUTOREEL_EVERY: 0.34,      // seconds between automatic cranks
   AUTOREEL_POWER: 0.7,
 

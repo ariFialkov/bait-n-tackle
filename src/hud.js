@@ -251,8 +251,8 @@ export class HUD {
   setAutoReel(on) {
     this.el.autoReel.classList.toggle('on', !!on);
     this.el.autoReel.title = on
-      ? 'Autoreel ON — rods hook and reel themselves'
-      : 'Autoreel OFF — swipe to hook and reel';
+      ? 'Auto reel ON — rods hook and reel themselves'
+      : 'Auto reel OFF — swipe to hook and reel';
   }
 
   // --- direction finders ---

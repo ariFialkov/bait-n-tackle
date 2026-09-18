@@ -725,7 +725,7 @@ export class Fishing {
   }
 
   /**
-   * Autoreel: set the hook and crank the moment a rod goes down, so the reel
+   * Auto reel: set the hook and crank the moment a rod goes down, so the reel
    * never has to be played well. It changes how many bets get placed, never
    * what one pays — the same reason the crew are allowed to work the rods.
    */

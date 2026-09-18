@@ -595,16 +595,26 @@ html, body {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
+#autoreel-btn {
+  display: flex; align-items: center; justify-content: center;
+}
+.ar-icon {
+  width: 25px; height: 25px;
+  /* the spool sits left of the crank and the foot hangs low, so nudge the
+     glyph to sit optically centred rather than box-centred */
+  margin: -2px 0 0 2px;
+}
 #autoreel-btn .ar-tag {
   position: absolute;
-  left: 50%; bottom: -3px;
+  left: 50%; bottom: -4px;
   transform: translateX(-50%);
-  font-size: 0.5rem;
+  white-space: nowrap;
+  font-size: 0.48rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   background: rgba(8, 40, 56, 0.95);
   border-radius: 99px;
-  padding: 1px 5px;
+  padding: 1px 6px;
   color: inherit;
 }
 #autoreel-btn.on {
