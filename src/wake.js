@@ -50,6 +50,7 @@ const VERT = /* glsl */`
   attribute float aDist;
   attribute float aWaveK;
   attribute float aSeed;
+  attribute float aLat;
   uniform float uTime;
   uniform float uCrestH;
   uniform float uWashLen;
@@ -62,10 +63,12 @@ const VERT = /* glsl */`
   varying float vCrest;
   varying float vHollow;
   varying float vH;
+  varying vec2  vWorld;
+  varying float vLat;
 
   void main() {
     vSide = aSide; vAge = aAge; vFoam = aFoam;
-    vDist = aDist; vWaveK = aWaveK; vSeed = aSeed;
+    vDist = aDist; vWaveK = aWaveK; vSeed = aSeed; vLat = aLat;
 
     float a = abs(aSide);
     // Cross-section: a crest riding each edge, a hollow lane between them.
@@ -83,6 +86,9 @@ const VERT = /* glsl */`
     vH = h / max(0.0001, uCrestH);
 
     vec3 p = position;
+    // Sampled in world metres by the fragment shader, so the water texture
+    // has a fixed physical scale instead of stretching as the ribbon widens.
+    vWorld = p.xz;
     p.y += h;
     // Ride the same swell the water surface uses, so the ribbon sits on it.
     p.y += sin(p.x * 0.35 + uTime * 1.1) * 0.05
@@ -108,6 +114,8 @@ const FRAG = /* glsl */`
   varying float vCrest;
   varying float vHollow;
   varying float vH;
+  varying vec2  vWorld;
+  varying float vLat;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise(vec2 p) {
@@ -116,46 +124,73 @@ const FRAG = /* glsl */`
     return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
                mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
   }
+  float fbm(vec2 p) {
+    float v = 0.0, amp = 0.5;
+    for (int i = 0; i < 3; i++) { v += amp * noise(p); p *= 2.03; amp *= 0.5; }
+    return v / 0.875;
+  }
 
   void main() {
     float a = abs(vSide);
-    float fade = pow(max(0.0, 1.0 - vAge), 1.25);
+    float fade = pow(max(0.0, 1.0 - vAge), 1.15);
     if (fade <= 0.002) discard;
 
-    // No wake is tidy: break the crest up along its length so it curls and
-    // spills instead of running as one clean ridge.
-    float curl  = noise(vec2(vDist * 0.75 + vSeed, vSide * 1.6) + uTime * vec2(0.18, 0.04));
-    float curl2 = noise(vec2(vDist * 2.6 + vSeed, vSide * 5.0) - uTime * vec2(0.7, 0.2));
-    float curl3 = noise(vec2(vDist * 6.5 + vSeed, vSide * 11.0) + uTime * vec2(0.3, 0.6));
-    float breakup = 0.30 + curl * 1.05 + curl2 * 0.45 + curl3 * 0.25;
+    // Water texture sampled in WORLD metres, so it stays a fixed physical
+    // size however wide the wake has opened, and stays put on the water as
+    // the boat drives away from it.
+    vec2 w = vWorld;
+    float nA = fbm(w * 0.55 + uTime * vec2(0.05, -0.03));   // broad patches
+    float nB = fbm(w * 1.75 - uTime * vec2(0.13, 0.09));    // chop
+    float nC = noise(w * 5.5 + uTime * vec2(0.45, 0.28));   // fizz
 
-    // Wander the ridge a little along its length: a curling wave is never a
-    // ruled line, and the wobble is what makes it read as breaking.
-    float wobble = (curl - 0.5) * 0.10;
-    float crestFoam = exp(-pow((a - (0.80 + wobble)) / 0.19, 2.0)) * breakup;
-    // Foam spilling down the outer face of each crest.
-    float lip = exp(-pow((a - 0.95) / 0.07, 2.0)) * (0.5 + curl * 0.9);
+    // --- the curling arms: a ridge that wanders and breaks into clumps
+    // rather than running as one clean band ---
+    float ridge = 0.74 + (nA - 0.5) * 0.18;
+    float crest = exp(-pow((a - ridge) / 0.26, 2.0));
+    float clump = smoothstep(0.22, 0.68, nB * 0.65 + nA * 0.55);
+    float arm = crest * (0.55 + clump * 1.10);
 
-    // Transverse arcs strung across the V, cusped toward the stern.
+    // --- laminar ripples: smooth streamwise lines running from mid-lane out
+    // through the arm, bent around the chop by the broad noise, so the
+    // choppy clumps sit inside curling flow rather than floating on nothing ---
+    float lam = sin(vLat * 1.9 + (nA - 0.5) * 8.0 + vSeed);
+    lam = smoothstep(0.35, 1.0, lam)
+        * smoothstep(0.25, 0.55, a) * (1.0 - smoothstep(0.92, 1.06, a));
+
+    // --- transverse arcs across the V, cusped toward the stern ---
     float d = vDist + a * a * 2.2;
     float tw = sin(d * vWaveK - vAge * 1.8 + vSeed);
     tw = smoothstep(0.45, 1.0, tw) * (1.0 - smoothstep(0.62, 0.86, a));
+    tw *= 0.5 + nB * 0.9;
 
-    // The split: the hull's own track down the centreline stays open water,
-    // so the wake reads as two curling arms with a lane between them rather
-    // than one filled-in triangle. Only the prop wash crosses it.
+    // The split: the hull's own track stays open water, so the wake reads as
+    // two arms with a lane between them. Only the prop wash crosses it.
     float lane = smoothstep(0.06, 0.46, a);
 
-    // Prop wash boiling off the transom, over a fixed distance so it does not
-    // stretch as the wake lengthens.
+    // --- prop wash boiling off the transom, over a fixed distance ---
     float wash = smoothstep(uWashLen, 0.0, vDist) * (1.0 - smoothstep(0.25, 0.95, a));
-    wash *= 0.65 + curl2 * 0.7;
+    wash *= 0.45 + nB * 1.1 + nC * 0.4;
 
-    float foam = ((crestFoam * 1.15 + lip * 0.8 + tw * 0.3) * lane + wash * 1.3)
-      * vFoam * fade;
+    // Granular chop over everything, so no part of it is a smooth gradient.
+    float chop = 0.55 + nB * 0.7 + nC * 0.5;
+
+    // Die out before the ribbon's own edge, otherwise the geometry boundary
+    // shows up as a straight cut through live foam.
+    float edge = 1.0 - smoothstep(0.86, 1.0, a);
+
+    float foam = ((arm + lam * 0.45 + tw * 0.32) * lane * edge + wash * 1.35)
+      * vFoam * fade * chop;
     // The hull-power gate: a little outboard creases the surface, a steamboat
     // throws a wall of white.
     foam *= 0.26 + uPower * 0.85;
+
+    // Foam DISSOLVES: the threshold climbs with age, so the sheet breaks into
+    // shrinking islands the way real foam does instead of dimming uniformly.
+    float dis = nB * 0.55 + nC * 0.45;
+    // Nothing starts breaking up until the wake has had a moment to settle,
+    // so the water right behind the hull stays solid white.
+    float alive = 1.0 - smoothstep(dis * 0.8 + 0.30, dis * 0.8 + 0.72, vAge * 1.15);
+    foam *= alive;
     foam = clamp(foam, 0.0, 1.6);
 
     // Height shading: the crest catches the light, the hollow inboard of it
@@ -163,17 +198,17 @@ const FRAG = /* glsl */`
     float lit = clamp(vH, 0.0, 1.0);
     float shade = vHollow * (1.0 - vCrest) * vFoam * fade;
 
-    vec3 col = mix(uTrough, uFoam, clamp(foam * 1.25 + lit * 0.4, 0.0, 1.0));
-    col = mix(col, uShadow, clamp(shade * 0.95, 0.0, 0.65));
+    vec3 col = mix(uTrough, uFoam, clamp(foam * 1.3 + lit * 0.4, 0.0, 1.0));
+    col = mix(col, uShadow, clamp(shade * 0.9 * (0.6 + nA * 0.8), 0.0, 0.65));
 
-    float alpha = clamp(foam * 0.95 + shade * (0.26 + uPower * 0.24), 0.0, 0.94);
+    float alpha = clamp(foam * 0.95 + shade * (0.24 + uPower * 0.24) * alive, 0.0, 0.94);
     if (alpha <= 0.004) discard;
     gl_FragColor = vec4(col, alpha);
   }`;
 
 // --- stern spray -----------------------------------------------------------
 
-const SPRAY_MAX = 140;
+const SPRAY_MAX = 280;
 
 const SPRAY_VERT = /* glsl */`
   attribute float aLife;
@@ -254,16 +289,16 @@ class SternSpray {
     // (sin h, cos h) points astern, matching the hull's own convention.
     const bx = Math.sin(heading), bz = Math.cos(heading);
     const nx = -bz, nz = bx;
-    const lateral = (Math.random() - 0.5) * this.beam * 2.4;
+    // Two uniforms averaged give a centre-weighted spread, so the spray
+    // boils out of the middle of the transom rather than along its full beam.
+    const lateral = (Math.random() + Math.random() - 1) * this.beam * 0.75;
     const o = i * 3;
-    this.pos[o] = pos.x + bx * this.beam * 1.9 + nx * lateral;
+    this.pos[o] = pos.x + bx * this.beam * 1.75 + nx * lateral;
     this.pos[o + 1] = CONFIG.WATER_LEVEL + 0.08;
-    this.pos[o + 2] = pos.z + bz * this.beam * 1.9 + nz * lateral;
+    this.pos[o + 2] = pos.z + bz * this.beam * 1.75 + nz * lateral;
 
     const kick = (0.8 + Math.random() * 2.4) * (0.6 + frac * 0.9);
-    // Some droplets are flung well outboard, where they read against open
-    // water instead of disappearing into the white behind the transom.
-    const out = (Math.random() - 0.5) * (3.0 + this.beam * 1.6);
+    const out = (Math.random() - 0.5) * (1.7 + this.beam * 0.55);
     this.vel[o] = bx * kick + nx * out;
     this.vel[o + 1] = (1.8 + Math.random() * 2.8) * (0.62 + this.power * 0.8);
     this.vel[o + 2] = bz * kick + nz * out;
@@ -276,13 +311,13 @@ class SternSpray {
   update(dt, vessel, moving, frac) {
     if (moving) {
       // Faster and heavier hulls tear more water off the transom.
-      this.emitAcc += (10 + this.power * 52) * frac * dt;
-      let guard = 24;
+      this.emitAcc += (26 + this.power * 110) * frac * dt;
+      let guard = 40;
       while (this.emitAcc >= 1 && guard-- > 0) {
         this.emitAcc -= 1;
         this.spawn(vessel, frac);
       }
-      this.emitAcc = Math.min(this.emitAcc, 2);
+      this.emitAcc = Math.min(this.emitAcc, 3);
     }
     let any = false;
     for (let i = 0; i < SPRAY_MAX; i++) {
@@ -337,6 +372,7 @@ export class WakeTrail {
       aDist: new THREE.BufferAttribute(new Float32Array(n), 1),
       aWaveK: new THREE.BufferAttribute(new Float32Array(n), 1),
       aSeed: new THREE.BufferAttribute(new Float32Array(n), 1),
+      aLat: new THREE.BufferAttribute(new Float32Array(n), 1),
     };
     for (const [name, a] of Object.entries(this.attr)) {
       a.setUsage(THREE.DynamicDrawUsage);
@@ -484,7 +520,7 @@ export class WakeTrail {
     const n = this.samples.length + (this.head ? 1 : 0);
     if (n < 2) { this.mesh.geometry.setDrawRange(0, 0); return; }
 
-    const { position, aSide, aAge, aFoam, aDist, aWaveK, aSeed } = this.attr;
+    const { position, aSide, aAge, aFoam, aDist, aWaveK, aSeed, aLat } = this.attr;
     const pos = position.array;
     const m = this.samples.length;
     // k = 0 is the newest (the live head if there is one), walking backwards.
@@ -519,6 +555,8 @@ export class WakeTrail {
         aDist.array[v] = dist;
         aWaveK.array[v] = s.waveK;
         aSeed.array[v] = s.seed;
+        aLat.array[v] = side * half;     // metres off the centreline
+
       }
     }
 
@@ -529,6 +567,7 @@ export class WakeTrail {
     aDist.needsUpdate = true;
     aWaveK.needsUpdate = true;
     aSeed.needsUpdate = true;
+    aLat.needsUpdate = true;
     this.mesh.geometry.setDrawRange(0, (n - 1) * (COLS - 1) * 6);
   }
 

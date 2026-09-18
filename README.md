@@ -158,9 +158,16 @@ opens into the correct V on its own. It is nine vertices wide rather than two,
 which gives it a cross-section: a hollow lane down the centreline with a
 raised, curling crest riding each edge, lifted above the water in the vertex
 shader and lit in the fragment shader so the arms read as waves with height.
-Hull displacement sets how wide the V opens and how tall the crests stand;
-engine power sets how white and noisy it churns and how much spray the transom
-throws.
+
+The water texture is sampled in **world metres**, not across the ribbon, so it
+keeps a fixed physical scale however wide the wake has opened and stays put on
+the lake as you drive away from it — that is what stops it reading as a
+stretched stripe. Foam then *dissolves* rather than fading: a noise threshold
+climbs with age, so the sheet breaks into shrinking islands of chop the way
+real foam does, with smooth laminar ripples curling around them. Hull
+displacement sets how wide the V opens and how tall the crests stand; engine
+power sets how white and noisy it churns and how hard the transom throws
+spray.
 
 The top two hulls automate rather than improve. The **tender** (Seiner) can be
 taken into channels the seiner cannot enter, or staked with bait and sent out
