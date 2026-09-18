@@ -13,6 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
 import { boatModelURL, rodMounts } from './boats.js';
+import { WakeTrail } from './wake.js';
 import { applySkin } from './skinner.js';
 import { clamp } from './noise.js';
 
@@ -59,6 +60,8 @@ export class Tender {
 
     this._v = new THREE.Vector3();
     this.lineFx = this.buildLineFx();
+    this.wake = new WakeTrail(scene);
+    this.wake.setVisible(false);
   }
 
   buildLineFx() {
@@ -125,14 +128,21 @@ export class Tender {
     const scale = def.length / Math.max(0.001, box.max.z - box.min.z);
     hull.scale.setScalar(scale);
     hull.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+
+    // Measured detached, in the hull's own space — see the note in boat.js.
+    const b2 = new THREE.Box3().setFromObject(hull);
     this.group.add(hull);
 
-    const b2 = new THREE.Box3().setFromObject(hull);
     this.hullBounds = {
       halfBeam: (b2.max.x - b2.min.x) / 2,
       deckY: Math.max(0.2, b2.max.y * 0.25),
       length: b2.max.z - b2.min.z,
     };
+    // A runabout creases the surface; it does not throw a seiner's wall of
+    // white. Borrow the mother ship's wake stat so the pair look related.
+    this.wake.setSpec({ ...this.spec, wake: (motherSpec?.wake ?? 1) * 0.7 },
+      this.hullBounds);
+    this.wake.setVisible(this.deployed);
 
     // A short rod at each mount so the tender reads as a fishing boat.
     for (const m of rodMounts(this.spec, this.hullBounds)) {
@@ -172,6 +182,8 @@ export class Tender {
         this.heading = mother.heading;
         this.state = 'manual';
         this.group.visible = true;
+        this.wake.reset();
+        this.wake.setVisible(true);
         return true;
       }
     }
@@ -181,6 +193,8 @@ export class Tender {
   stow() {
     this.state = 'stowed';
     this.group.visible = false;
+    this.wake.setVisible(false);
+    this.wake.reset();
     this.lineFx.line.visible = false;
     this.lineFx.bob.visible = false;
     this.budget = 0;
@@ -357,6 +371,8 @@ export class Tender {
       while (d < -Math.PI) d += Math.PI * 2;
       this.heading += d * Math.min(1, s.turn * dt);
     }
+
+    this.wake.update(dt, t, this);
 
     const bob = this.lake.waveHeight(this.pos.x, this.pos.z, t);
     this.group.position.set(this.pos.x, bob + 0.02, this.pos.z);

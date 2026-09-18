@@ -32,6 +32,7 @@ export class Player {
     this.balance = CONFIG.START_BALANCE;
     this.boatId = DEFAULT_BOAT;
     this.owned = [DEFAULT_BOAT];
+    this.autoReel = false;
     this.load();
   }
 
@@ -69,6 +70,7 @@ export class Player {
         balance: Math.round(this.balance * 100) / 100,
         boatId: this.boatId,
         owned: this.owned,
+        autoReel: this.autoReel,
       }));
     } catch { /* private mode / quota — play on without persistence */ }
   }
@@ -99,6 +101,7 @@ export class Player {
       }
       const boatKey = migrateKey(s.boatId);
       if (boatKey && this.owned.includes(boatKey)) this.boatId = boatKey;
+      if (typeof s.autoReel === 'boolean') this.autoReel = s.autoReel;
       // A save from before auto-cashout may still carry a `hold` array. Those
       // fish were won but never cashed, so pay them out now at face value —
       // exactly what pulling up to a market would have done. Dropping them

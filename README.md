@@ -49,6 +49,7 @@ from a subdirectory as-is.
 | Cast       | click + drag in any direction          | swipe in any direction       |
 | Reel       | drag again (2-3 pulls for a long cast) | swipe again                  |
 | Hook       | drag while the bobber dunks (❗)        | swipe while the bobber dunks |
+| Autoreel   | 🔄 button, right edge                  | 🔄 button, right edge        |
 | Trawl      | click the net on the boat’s stern      | tap the net                  |
 | Drop a pot | 🦀 button, right edge                  | 🦀 button, right edge        |
 | Pick gear  | 🎣 / 🕸️ buttons, right edge            | same                         |
@@ -59,7 +60,14 @@ biting line, else keep cranking a hooked one, else cast from whichever
 swiped toward.
 
 Casts fly in the direction you swipe; swipe length and speed set the
-distance. Once hooked, keep pulling — stop too long and the fish escapes.
+distance. **Once the hook sets the fish is yours** — you can watch it fighting
+under the surface as you crank it in, and it breaks the water alongside before
+you swing it aboard. Stop reeling and it just tires and works its own way in,
+slowly; it can never be lost.
+
+Don't fancy working the rods? **Autoreel** (🔄) sets the hook and cranks for
+you the moment a rod goes down, and brings back a lure nothing is interested
+in. It changes how many bets you place, never what one pays.
 
 ### The two bets
 
@@ -84,9 +92,16 @@ RTP (default **94%**, see [`src/config.js`](src/config.js)), applied to that
 bet's stake alone. No outcome depends on your history, your position, or
 your skill:
 
-- **Casting** — the bet is only placed when a fish is actually landed; an
-  empty cast costs nothing. Hotspots raise the *catch chance* (80% → 95%)
-  and bite speed, but never what a catch pays.
+- **Casting** — the bet is placed the instant the hook sets, and settles right
+  there: stake charged, payout drawn, winnings banked. An empty cast still
+  costs nothing. Hotspots raise the *catch chance* (80% → 95%) and bite
+  speed, but never what a catch pays.
+
+  Settling at the hook is what makes it safe to *show* you the fish while you
+  reel. If a hooked fish could still be lost, seeing a small one would be an
+  invitation to drop it for free and keep only the winners — cherry-picking
+  your way past the paytable. So the hook is the point of no return, and the
+  reel is presentation.
 - **Trawling** — each stretch of paid distance between catch events is its
   own microbet, resolved against that stretch's cost alone. Location never
   affects trawl results.
@@ -135,7 +150,11 @@ ramp, and the game turns that back into colour at load time
 **Boats never change the odds.** More rods, more speed and sharper handling
 mean more bets per minute; with an RTP below 1.0 that is faster churn, not a
 better return. A Signature skin gets you between spots sooner — it cannot win
-you more per wager.
+you more per wager. Wake size is pure decoration
+([`src/wake.js`](src/wake.js)): the trail is a ribbon laid from the transom
+whose half-width grows at the Kelvin angle, so it opens into the correct V on
+its own, and hull displacement and engine power set how wide it spreads and
+how white it churns.
 
 The top two hulls automate rather than improve. The **tender** (Seiner) can be
 taken into channels the seiner cannot enter, or staked with bait and sent out
@@ -175,7 +194,9 @@ src/
   rtp.js       RTP engine: wager/earn ledger + catch resolution
   noise.js     seeded value noise / fbm
   lake.js      infinite chunked lake, water shader, hotspots + ripple FX
-  boat.js      boat mesh, trawl net, drifty movement, wake particles
+  boat.js      boat mesh, trawl net, drifty movement
+  wake.js      the Kelvin-angle wake ribbon and its foam shader
+  hookedfish.js the fish on your line: fighting, breaching, swung aboard
   fishing.js   trawl + cast/bite/reel state machines
   fish.js      ambient fish swimming under the surface
   cameraRig.js menu cam ↔ 30°-off-top-down gameplay cam

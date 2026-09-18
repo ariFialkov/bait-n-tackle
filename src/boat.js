@@ -10,6 +10,7 @@ import { isNavigable } from './lake.js';
 import { TrawlNet } from './net.js';
 import { BOAT_BY_ID, boatModelURL, resolveBoat, rodMounts } from './boats.js';
 import { applySkin } from './skinner.js';
+import { WakeTrail } from './wake.js';
 
 const loader = new GLTFLoader();
 const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
@@ -138,7 +139,7 @@ export class Boat {
     this.netBundle = this.buildNetBundle();
     this.group.add(this.netBundle);
 
-    this.wake = this.buildWake(scene);
+    this.wake = new WakeTrail(scene);
     this.onBoatChanged = null;
   }
 
@@ -174,10 +175,16 @@ export class Boat {
     }
     if (!hull) hull = fallbackHull(spec.length);
 
+    // Measure while the hull is still detached, so the box is in the hull's
+    // own space. Box3.setFromObject works in WORLD space: measuring after
+    // parenting it under a group that carries the boat's heading would report
+    // a different beam depending on which way the boat happened to be
+    // pointing, and drag the rod mounts and tow points around with it.
+    const box = new THREE.Box3().setFromObject(hull);
+
     this.hullHolder.clear();
     this.hullHolder.add(hull);
 
-    const box = new THREE.Box3().setFromObject(hull);
     this.hullBounds = {
       halfBeam: (box.max.x - box.min.x) / 2,
       deckY: Math.max(0.2, box.max.y * 0.22),
@@ -204,27 +211,10 @@ export class Boat {
     this.netBundle.visible = !!spec.features.trawl;
     if (this.trawling) this.setTrawling(false);
 
-    // Wake presence is a cosmetic per-skin signature.
-    this.wake.points.material.size = 0.42 * (0.75 + (spec.wake ?? 1) * 0.45);
-    this.wake.points.material.opacity = 0.42 + (spec.wake ?? 1) * 0.14;
+    // Wake size and churn are a cosmetic per-hull/per-skin signature.
+    this.wake.setSpec(spec, this.hullBounds);
 
     if (this.onBoatChanged) this.onBoatChanged(spec);
-  }
-
-  buildWake(scene) {
-    const N = 110;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3).fill(9999), 3));
-    const mat = new THREE.PointsMaterial({
-      color: 0xffffff, size: 0.5, transparent: true, opacity: 0.55,
-      // size is scaled per boat in setBoat via the skin's wake stat
-      depthWrite: false, sizeAttenuation: true,
-    });
-    const points = new THREE.Points(geo, mat);
-    points.renderOrder = 3;
-    points.frustumCulled = false;
-    scene.add(points);
-    return { points, life: new Float32Array(N).fill(0), idx: 0, emitAcc: 0 };
   }
 
   towPoints() {
@@ -305,37 +295,10 @@ export class Boat {
       Math.sin(t * 1.3) * 0.025 * scaleBob,
     );
 
-    this.updateWake(dt);
+    this.wake.update(dt, t, this);
     if (this.trawling) {
       this.towPoints();
       this.net.update(dt, t, this._anchorL, this._anchorR, this._ropeL, this._ropeR);
     }
-  }
-
-  updateWake(dt) {
-    const w = this.wake;
-    const posAttr = w.points.geometry.attributes.position;
-    const wakeStat = this.spec.wake ?? 1;
-    const rate = this.speed > 0.6 ? (this.trawling ? 34 : 18) * wakeStat : 0;
-    w.emitAcc += rate * dt;
-    const back = (this.hullBounds?.length ?? 4.6) * (this.trawling ? 0.95 : 0.55);
-    const spread = (this.hullBounds?.halfBeam ?? 1) * (this.trawling ? 1.6 : 0.9)
-      * (0.7 + wakeStat * 0.5);
-    while (w.emitAcc >= 1) {
-      w.emitAcc -= 1;
-      const i = w.idx = (w.idx + 1) % w.life.length;
-      posAttr.setXYZ(i,
-        this.pos.x + Math.sin(this.heading) * back + (Math.random() - 0.5) * spread,
-        0.06,
-        this.pos.z + Math.cos(this.heading) * back + (Math.random() - 0.5) * spread);
-      w.life[i] = 1;
-    }
-    for (let i = 0; i < w.life.length; i++) {
-      if (w.life[i] > 0) {
-        w.life[i] -= dt * 0.7;
-        if (w.life[i] <= 0) posAttr.setXYZ(i, 9999, 9999, 9999);
-      }
-    }
-    posAttr.needsUpdate = true;
   }
 }

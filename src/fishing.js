@@ -2,9 +2,13 @@
 //
 // Betting model (see rtp.js): every resolved bet draws an isolated payout
 // multiplier with E = RTP.
-//   * Casting — the bet is PLACED only when a fish is actually landed, so an
-//     empty cast is free and hotspots (which only change how OFTEN a fish
-//     shows up) can never change the expected value of a bet.
+//   * Casting — the bet is PLACED the moment the hook sets, and a hooked fish
+//     can never be lost. An empty cast is still free, and hotspots (which only
+//     change how OFTEN a fish shows up) can never change what a bet pays.
+//     Resolving at the hook is what lets the fish be shown while you reel it
+//     in: if it could still be lost, seeing a small one would be an invitation
+//     to drop it for free and keep only the winners, which would hand a
+//     skilled player an edge the paytable does not allow.
 //   * Trawling — each stretch of paid distance between catch events is its
 //     own microbet, resolved against that stretch's cost alone. Location
 //     never affects a trawl result.
@@ -17,6 +21,7 @@ import * as THREE from 'three';
 import { CONFIG, LURES, NETS } from './config.js';
 import { waterDepth } from './lake.js';
 import { clamp, lerp } from './noise.js';
+import { HookedFish } from './hookedfish.js';
 
 const BOBBER_GEO = {
   top: new THREE.SphereGeometry(0.16, 12, 9),
@@ -31,8 +36,9 @@ const BOBBER_MAT = {
 class Line {
   constructor(scene) {
     this.scene = scene;
-    this.state = 'idle';            // idle | flying | out
+    this.state = 'idle';            // idle | flying | out | landing
     this.rodIndex = 0;
+    this.fish = null;               // the visible fish, once one is hooked
     this.reset();
 
     const g = new THREE.Group();
@@ -69,7 +75,6 @@ class Line {
     this.nibbling = 0;
     this.nibbles = 0;
     this.hooked = false;
-    this.escapeTimer = 0;
     this.pendingPull = 0;
     this.reelVel = 0;
     this.willCatch = false;
@@ -78,6 +83,9 @@ class Line {
     this.distTotal = 0;
     this.hotness = 0;
     this.driftAngle = 0;
+    this.catch = null;              // resolved at the hook, never re-rolled
+    this.catchWager = 0;
+    this.landT = 0;
   }
 
   get busy() { return this.state !== 'idle'; }
@@ -89,6 +97,7 @@ class Line {
 
   end() {
     this.state = 'idle';
+    if (this.fish) { this.fish.dispose(); this.fish = null; }
     this.reset();
     this.show(false);
   }
@@ -106,6 +115,7 @@ class Line {
   }
 
   dispose() {
+    if (this.fish) { this.fish.dispose(); this.fish = null; }
     this.scene.remove(this.bobber, this.line);
     this.line.geometry.dispose();
   }
@@ -134,6 +144,9 @@ export class Fishing {
     this.crew = false;
     this.crewCastTimer = 0;
     this.crewReelTimer = 0;
+
+    this.autoReel = !!player.autoReel;
+    this.autoTimer = 0;
 
     this.pots = [];
     this.potGroup = new THREE.Group();
@@ -202,7 +215,8 @@ export class Fishing {
     const biting = this.lines.find((l) => l.biting);
     if (biting) return this.pull(biting, s.power);
 
-    const hooked = this.lines.filter((l) => l.hooked);
+    // A line already being swung aboard is past taking orders.
+    const hooked = this.lines.filter((l) => l.hooked && l.state === 'out');
     if (hooked.length) {
       hooked.sort((a, b) => a.lineOut() - b.lineOut());
       return this.pull(hooked[0], s.power);
@@ -282,19 +296,48 @@ export class Fishing {
     return true;
   }
 
-  pull(line, power) {
+  pull(line, power, quiet = false) {
+    if (line.biting && !line.hooked) {
+      // The hook sets: settle the bet here and now. Everything after this is
+      // presentation — the fish is already bought and paid for.
+      if (!this.setHook(line, quiet)) return;
+    }
     const add = (line.distTotal / CONFIG.REEL_SWIPES) * (0.7 + 0.6 * power);
     line.pendingPull += add;
-    if (line.biting && !line.hooked) {
-      line.hooked = true;
-      line.biting = false;
-      line.escapeTimer = CONFIG.HOOK_ESCAPE_S;
-      this.hud.setBite(this.lines.some((l) => l.biting));
-      this.hud.hint('Fish on! Keep swiping to reel it in!', 3000);
-      if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
-    } else if (line.hooked) {
-      line.escapeTimer = CONFIG.HOOK_ESCAPE_S;
+  }
+
+  /**
+   * Resolve the cast's isolated bet and put the fish it produced on the line.
+   * Money moves exactly once, here. Returns false if the stake cannot be
+   * covered, in which case the fish is never hooked and nothing is charged.
+   */
+  setHook(line, quiet = false) {
+    const cost = line.wager;
+    if (this.player.balance < cost) {
+      this.hud.hint('No cash for the tackle — it slipped the hook');
+      line.end();
+      return false;
     }
+    line.hooked = true;
+    line.biting = false;
+    this.hud.setBite(this.lines.some((l) => l.biting));
+
+    this.player.balance -= cost;
+    this.rtp.wager(cost);
+    const c = this.rtp.resolveBet(cost, 0, LURES[line.lureIndex].tiers[1]);
+    this.rtp.book(c.value);
+    // Banked on the hook rather than at the rail, so quitting, a snapped rod
+    // or a closed tab can never destroy a bet the player has already won.
+    this.player.bank(c);
+    line.catch = c;
+    line.catchWager = cost;
+    line.fish = new HookedFish(this.scene, c.species, c.sizeMult);
+
+    if (!quiet) {
+      this.hud.hint(this.autoReel ? 'Fish on!' : 'Fish on! Keep swiping to bring it in', 2600);
+    }
+    if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+    return true;
   }
 
   scheduleBite(line) {
@@ -307,26 +350,16 @@ export class Fishing {
       Math.random() * (CONFIG.BITE_MAX_S - CONFIG.BITE_MIN_S)) / speedup;
   }
 
-  /** The fish reached the boat: place the bet, pay the win into the balance. */
-  landCatch(line) {
-    const cost = line.wager;
-    if (this.player.balance < cost) {
-      this.hud.hint('No cash for the tackle — it slipped the hook');
-      line.end();
-      this.hud.setBite(this.lines.some((l) => l.biting));
-      return;
-    }
-    this.player.balance -= cost;
-    this.rtp.wager(cost);
-    const c = this.rtp.resolveBet(cost, 0, LURES[line.lureIndex].tiers[1]);
-    this.rtp.book(c.value);
-    this.player.bank(c);
+  /** The fish is over the rail: show what the hook already paid for. */
+  completeCatch(line) {
+    const c = line.catch;
+    const cost = line.catchWager;
+    line.end();
+    if (!c) return;
     this.hud.showCatch(c, cost);
     if (c.value >= CONFIG.BIGCATCH_MIN_VALUE || c.species.tier >= 4) {
       this.hud.showBigCatch(c);
     }
-    line.end();
-    this.hud.setBite(this.lines.some((l) => l.biting));
   }
 
   endAll() {
@@ -532,8 +565,8 @@ export class Fishing {
     if (this.crewReelTimer <= 0) {
       this.crewReelTimer = CONFIG.CREW_REEL_EVERY;
       for (const l of this.lines) {
-        if (l.biting || l.hooked) this.pull(l, CONFIG.CREW_PULL_POWER);
-        else if (l.state === 'out' && l.nibbles >= 2) this.pull(l, 0.9);
+        if (l.biting || l.hooked) this.pull(l, CONFIG.CREW_PULL_POWER, true);
+        else if (l.state === 'out' && l.nibbles >= 2) this.pull(l, 0.9, true);
       }
     }
 
@@ -580,6 +613,17 @@ export class Fishing {
       return;
     }
 
+    if (line.state === 'landing') {
+      // Swing it up out of the water and onto the deck.
+      line.landT += dt;
+      const k = Math.min(1, line.landT / CONFIG.LAND_LIFT_S);
+      line.bobber.position.lerp(line.rodTip, Math.min(1, k * 1.3));
+      if (line.fish) line.fish.update(dt, t, line.pos, line.rodTip, 0, k);
+      line.drawLine();
+      if (k >= 1) this.completeCatch(line);
+      return;
+    }
+
     // --- state: 'out' ---
     const toRod = this._v.set(
       line.rodTip.x - line.pos.x, 0, line.rodTip.z - line.pos.z);
@@ -605,22 +649,23 @@ export class Fishing {
     }
 
     if (line.hooked) {
-      if (line.pendingPull <= 0 && lineOut > 2) {
-        const ax = line.pos.x - line.rodTip.x, az = line.pos.z - line.rodTip.z;
-        const al = Math.hypot(ax, az) || 1;
-        line.pos.x += (ax / al) * CONFIG.HOOK_PULL_SPEED * dt;
-        line.pos.z += (az / al) * CONFIG.HOOK_PULL_SPEED * dt;
+      // The bet is already settled, so the fish can never be lost — left
+      // alone it surges, tires, and works its own way in, just slowly.
+      if (line.pendingPull <= 0 && lineOut > 1.4) {
+        const surge = Math.sin(t * 1.7 + line.driftAngle * 3) * CONFIG.HOOK_PULL_SPEED;
+        line.pos.addScaledVector(toRod, (CONFIG.HOOK_TIRE_SPEED + surge) * dt);
       }
-      line.escapeTimer -= dt;
-      if (line.escapeTimer <= 0) {
-        this.hud.hint('It got away…');
-        line.end();
-        return;
+      // Drive off and it is dragged along behind you rather than breaking off.
+      if (lineOut > CONFIG.LINE_SNAP_DIST * 0.8) {
+        const over = lineOut - CONFIG.LINE_SNAP_DIST * 0.8;
+        line.pos.addScaledVector(toRod, over);
+        lineOut -= over;
       }
       line.bobber.position.set(
         line.pos.x + Math.sin(t * 17) * 0.12,
         CONFIG.WATER_LEVEL - 0.12 + Math.sin(t * 23) * 0.08,
         line.pos.z + Math.cos(t * 15) * 0.12);
+      if (line.fish) line.fish.update(dt, t, line.bobber.position, line.rodTip, lineOut);
     } else {
       const wave = this.lake.waveHeight(line.pos.x, line.pos.z, t);
       if (line.biting) {
@@ -666,11 +711,12 @@ export class Fishing {
     }
 
     if (lineOut < 1.4) {
-      if (line.hooked) this.landCatch(line);
+      if (line.hooked) { line.state = 'landing'; line.landT = 0; }
       else { this.hud.hint('Reeled in — no bet, no charge'); line.end(); }
       return;
     }
-    if (lineOut > CONFIG.LINE_SNAP_DIST) {
+    // Only an empty line parts; a hooked one is dragged, not snapped.
+    if (!line.hooked && lineOut > CONFIG.LINE_SNAP_DIST) {
       this.hud.hint('The line snapped!');
       line.end();
       return;
@@ -678,8 +724,35 @@ export class Fishing {
     line.drawLine();
   }
 
+  /**
+   * Autoreel: set the hook and crank the moment a rod goes down, so the reel
+   * never has to be played well. It changes how many bets get placed, never
+   * what one pays — the same reason the crew are allowed to work the rods.
+   */
+  setAutoReel(on) {
+    this.autoReel = !!on;
+    this.autoTimer = 0;
+    this.player.autoReel = this.autoReel;
+    this.player.save();
+    return this.autoReel;
+  }
+
+  updateAutoReel(dt) {
+    if (!this.autoReel || this.crew) return;   // the crew already work the rods
+    this.autoTimer -= dt;
+    if (this.autoTimer > 0) return;
+    this.autoTimer = CONFIG.AUTOREEL_EVERY;
+    for (const l of this.lines) {
+      if (l.biting || l.hooked) this.pull(l, CONFIG.AUTOREEL_POWER, true);
+      // Bring back a lure nothing is committing to, rather than leaving the
+      // rod pegged until the 45s timeout. Retrieving costs nothing.
+      else if (l.state === 'out' && l.nibbles >= 2) this.pull(l, 0.9, true);
+    }
+  }
+
   update(dt, t) {
     this.updateTrawl(dt);
+    this.updateAutoReel(dt);
     this.updateCrew(dt);
     this.updatePots(dt, t);
     for (const l of this.lines) this.updateLine(l, dt, t);

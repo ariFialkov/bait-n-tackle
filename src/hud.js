@@ -33,6 +33,7 @@ export class HUD {
       sonarRows: $('sonar-rows'),
       potBtn: $('pot-btn'),
       potCount: $('pot-count'),
+      autoReel: $('autoreel-btn'),
       shipToggle: $('ship-toggle'),
       ship: $('ship-panel'),
       tenderChip: $('tender-chip'),
@@ -53,6 +54,11 @@ export class HUD {
     this.el.potBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this.onPot) this.onPot();
+    });
+    this.onAutoReel = null;
+    this.el.autoReel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onAutoReel) this.onAutoReel();
     });
     this.el.trClose.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -241,6 +247,13 @@ export class HUD {
   }
 
   setPots(n) { this.el.potCount.textContent = String(n); }
+
+  setAutoReel(on) {
+    this.el.autoReel.classList.toggle('on', !!on);
+    this.el.autoReel.title = on
+      ? 'Autoreel ON — rods hook and reel themselves'
+      : 'Autoreel OFF — swipe to hook and reel';
+  }
 
   // --- direction finders ---
   /**

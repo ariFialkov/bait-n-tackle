@@ -38,9 +38,22 @@ export const CONFIG = {
   CAST_TIMEOUT_S: 45,        // auto-retrieve after this long
   REEL_SWIPES: 2.6,          // full-power swipes needed to reel a max cast
   REEL_SPEED: 8.5,           // m/s the bobber travels while being reeled
-  HOOK_ESCAPE_S: 6,          // hooked fish escapes if you stop reeling
-  HOOK_PULL_SPEED: 0.55,     // m/s a hooked fish takes line back out
-  LINE_SNAP_DIST: 42,        // drive off with line out and it snaps
+  // A hooked fish is a settled bet and can never be lost (see fishing.js).
+  // Ignore it and it surges, tires and works its own way in — slowly.
+  HOOK_TIRE_SPEED: 0.5,      // m/s a hooked fish gives up on its own
+  HOOK_PULL_SPEED: 0.55,     // m/s of surge on top, so it still fights
+  LAND_LIFT_S: 0.62,         // swinging it up out of the water onto the deck
+  LINE_SNAP_DIST: 42,        // drive off with an EMPTY line out and it snaps
+
+  // A true-to-life fish is a 1m speck from a camera 30m up. Hooked fish are
+  // drawn larger than life so the catch reads at gameplay distance; relative
+  // sizes are preserved, so a trophy still dwarfs a perch.
+  HOOKED_FISH_SCALE: 2.6,
+  HOOKED_FISH_MAX_M: 6,
+
+  // --- Autoreel (optional assist; changes bet frequency, never payouts) ---
+  AUTOREEL_EVERY: 0.34,      // seconds between automatic cranks
+  AUTOREEL_POWER: 0.7,
 
   // --- Boat handling ---
   BOAT_ACCEL: 7.5,

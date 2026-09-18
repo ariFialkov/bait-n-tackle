@@ -110,6 +110,14 @@ const marina = new Marina(player, (key) => { equipBoat(key); });
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);
 hud.onPot = () => fishing.dropPot();
+hud.onAutoReel = () => {
+  const on = fishing.setAutoReel(!fishing.autoReel);
+  hud.setAutoReel(on);
+  hud.hint(on
+    ? 'Autoreel on — rods set the hook and reel themselves'
+    : 'Autoreel off — swipe to set the hook and reel in');
+};
+hud.setAutoReel(fishing.autoReel);
 
 // --- ship systems ---
 hud.onShipOpen = () => refreshShipPanel();
@@ -278,7 +286,7 @@ frame();
 
 // Debug/test handle (harmless in production).
 window.BNT = {
-  hud, rtp, fishing, boat, tender, player, dex, marina, docks, lake, SPECIES,
+  hud, rtp, fishing, boat, tender, player, dex, marina, docks, lake, rig, SPECIES,
   equipBoat, refreshShipPanel,
   get helm() { return helm; },
 };

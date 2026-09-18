@@ -578,6 +578,42 @@ html, body {
 .sonar-dist { color: #a9c9d8; font-weight: 700; }
 .sonar-empty { font-size: 0.68rem; color: #7da8bc; font-style: italic; }
 
+/* ---------- Autoreel toggle ---------- */
+#autoreel-btn {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  top: calc(50% - 128px);
+  z-index: 3;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  font-size: 1.3rem;
+  background: rgba(8, 40, 56, 0.78);
+  color: #8fb3c4;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+#autoreel-btn .ar-tag {
+  position: absolute;
+  left: 50%; bottom: -3px;
+  transform: translateX(-50%);
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  background: rgba(8, 40, 56, 0.95);
+  border-radius: 99px;
+  padding: 1px 5px;
+  color: inherit;
+}
+#autoreel-btn.on {
+  color: #7dedae;
+  border-color: rgba(125, 237, 174, 0.65);
+  background: rgba(16, 68, 60, 0.85);
+}
+#autoreel-btn.on .ar-tag { background: #7dedae; color: #06342a; }
+
 /* ---------- Pot button ---------- */
 #pot-btn {
   position: absolute;
