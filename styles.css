@@ -503,45 +503,24 @@ html, body {
 .dex-row span { color: #7da8bc; flex-shrink: 0; }
 .dex-row b { text-align: right; font-weight: 600; }
 
-/* ---------- Boat hold ---------- */
-#hold {
+/* ---------- Boat chip ---------- */
+#boat-chip {
   position: absolute;
   top: max(52px, calc(env(safe-area-inset-top) + 44px));
   left: max(10px, env(safe-area-inset-left));
-  width: 208px;
+  display: flex; align-items: baseline; gap: 9px;
   background: rgba(8, 40, 56, 0.72);
   backdrop-filter: blur(6px);
-  border-radius: 12px;
-  padding: 8px 10px;
+  border-radius: 99px;
+  padding: 6px 13px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
-.hold-row {
-  display: flex; justify-content: space-between; align-items: baseline;
-  gap: 8px;
-  font-size: 0.7rem;
-  color: #a9c9d8;
+.boat-chip-name {
+  font-weight: 800; color: #fff; font-size: 0.82rem;
+  max-width: 168px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.hold-label { font-weight: 800; color: #fff; font-size: 0.82rem; }
-.hold-kg { font-weight: 700; }
-.hold-bar {
-  height: 7px;
-  margin: 5px 0 4px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.14);
-  overflow: hidden;
-}
-.hold-fill {
-  height: 100%;
-  width: 0;
-  border-radius: 99px;
-  background: linear-gradient(90deg, #6db7d4, #7dedae);
-  transition: width 0.25s ease;
-}
-.hold-fill.warn { background: linear-gradient(90deg, #ffd166, #ffb347); }
-.hold-fill.full { background: linear-gradient(90deg, #ff9a8a, #e8574a); }
-.hold-fill.processing { background: linear-gradient(90deg, #8fd0a0, #7dedae); opacity: 0.55; }
-.hold-value { color: #ffd166; font-weight: 700; }
-.hold-rods { font-weight: 600; }
+.boat-chip-rods { font-size: 0.7rem; font-weight: 600; color: #a9c9d8; }
 
 /* ---------- Direction finders ---------- */
 #finders {
@@ -709,15 +688,7 @@ html, body {
 .boat-btn:disabled { cursor: default; opacity: 0.7; }
 .boat-warn { margin-top: 6px; font-size: 0.66rem; color: #ffb347; text-align: center; }
 
-/* ---------- Fish market receipt ---------- */
-#receipt {
-  position: fixed; inset: 0;
-  z-index: 18;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(5, 16, 26, 0.7);
-  backdrop-filter: blur(6px);
-  padding: 20px;
-}
+/* ---------- Result cards (tender report) ---------- */
 .rc-card {
   width: min(380px, 92vw);
   background: #0e3b4d;
@@ -748,13 +719,6 @@ html, body {
   font-size: 0.86rem; font-weight: 700; color: #a9c9d8;
 }
 .rc-total b { font-size: 1.5rem; color: #7dedae; }
-#rc-close {
-  width: 100%; margin-top: 14px;
-  border: none; border-radius: 10px; padding: 11px;
-  font-family: inherit; font-size: 0.92rem; font-weight: 800;
-  background: linear-gradient(180deg, #ffe08a, #ffc94d);
-  color: #063346; cursor: pointer;
-}
 .toast.pot { border-left-color: #c8a35f; }
 .boat-img-soon {
   font-size: 3.4rem;
@@ -891,8 +855,3 @@ html, body {
 }
 .rar-3 { border-color: rgba(200, 145, 255, 0.35); }
 .rar-2 { border-color: rgba(255, 209, 102, 0.28); }
-
-.hold-label {
-  max-width: 128px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}

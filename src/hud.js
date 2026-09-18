@@ -26,21 +26,13 @@ export class HUD {
       newRound: $('new-round'),
       menuBtn: $('menu-btn'),
       bigcatch: $('bigcatch'),
-      holdBoat: $('hold-boat'),
-      holdKg: $('hold-kg'),
-      holdFill: $('hold-fill'),
-      holdRods: $('hold-rods'),
-      holdValue: $('hold-value'),
-      finderMarket: $('finder-market'),
+      boatName: $('boat-name'),
+      boatRods: $('boat-rods'),
       finderMarina: $('finder-marina'),
       sonar: $('sonar'),
       sonarRows: $('sonar-rows'),
       potBtn: $('pot-btn'),
       potCount: $('pot-count'),
-      receipt: $('receipt'),
-      rcRows: $('rc-rows'),
-      rcTotal: $('rc-total'),
-      rcClose: $('rc-close'),
       shipToggle: $('ship-toggle'),
       ship: $('ship-panel'),
       tenderChip: $('tender-chip'),
@@ -62,10 +54,6 @@ export class HUD {
       e.stopPropagation();
       if (this.onPot) this.onPot();
     });
-    this.el.rcClose.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.el.receipt.classList.add('hidden');
-    });
     this.el.trClose.addEventListener('click', (e) => {
       e.stopPropagation();
       this.el.tenderReport.classList.add('hidden');
@@ -79,7 +67,6 @@ export class HUD {
     });
     // Ship-systems callbacks, wired by main.js
     this.onShipOpen = null;
-    this.onProcessing = null;
     this.onCrew = null;
     this.onTenderLaunch = null;
     this.onTenderSwitch = null;
@@ -140,11 +127,11 @@ export class HUD {
     this.hintTimer = setTimeout(() => this.el.hint.classList.remove('show'), ms);
   }
 
-  // --- boat / hold ---
+  // --- boat chip ---
   setBoat(spec) {
     this.rods = spec.rods;
-    this.el.holdBoat.textContent = spec.name;
-    this.el.holdRods.textContent = `🎣 ${spec.rods} rod${spec.rods > 1 ? 's' : ''}`;
+    this.el.boatName.textContent = spec.name;
+    this.el.boatRods.textContent = `🎣 ${spec.rods} rod${spec.rods > 1 ? 's' : ''}`;
     this.el.netToggle.classList.toggle('hidden', !spec.features.trawl);
     this.el.potBtn.classList.toggle('hidden', !spec.features.pots);
     this.el.sonar.classList.toggle('hidden', !spec.features.sonar);
@@ -162,7 +149,7 @@ export class HUD {
    */
   buildShipPanel(spec, state = {}) {
     const f = spec.features || {};
-    const any = f.onboard || f.crew || f.tender;
+    const any = f.crew || f.tender;
     this.el.shipToggle.classList.toggle('hidden', !any);
     if (!any) {
       this.el.ship.classList.add('collapsed');
@@ -187,19 +174,6 @@ export class HUD {
       parent.appendChild(b);
       return b;
     };
-
-    if (f.onboard) {
-      const g = group('Processing line');
-      button(g, state.processing ? 'Processing: ON' : 'Processing: OFF',
-        state.processing ? 'paid at rail' : 'fills hold',
-        state.processing, () => this.onProcessing && this.onProcessing());
-      const note = document.createElement('div');
-      note.className = 'ship-note';
-      note.textContent = state.processing
-        ? 'Catches are packed and paid instantly — no dock run.'
-        : 'Catches fill the hold; sell them at a fish market.';
-      g.appendChild(note);
-    }
 
     if (f.crew) {
       const g = group('Crew');
@@ -266,33 +240,14 @@ export class HUD {
     this.el.tenderReport.classList.remove('hidden');
   }
 
-  setHold(player) {
-    const cap = player.capacity;
-    if (player.processing) {
-      this.el.holdKg.textContent = 'onboard processing';
-      this.el.holdFill.style.width = '100%';
-      this.el.holdFill.className = 'hold-fill processing';
-      this.el.holdValue.textContent = 'paid at the rail';
-      return;
-    }
-    const kg = player.holdKg;
-    const frac = player.holdFrac;
-    this.el.holdKg.textContent =
-      `${kg < 10 ? kg.toFixed(1) : Math.round(kg)} / ${cap >= 1000 ? (cap / 1000).toFixed(1) + 't' : cap + 'kg'}`;
-    this.el.holdFill.style.width = (frac * 100).toFixed(1) + '%';
-    this.el.holdFill.className = 'hold-fill' +
-      (frac >= 1 ? ' full' : frac > 0.8 ? ' warn' : '');
-    this.el.holdValue.textContent = `$${player.holdValue.toFixed(2)} aboard`;
-  }
-
   setPots(n) { this.el.potCount.textContent = String(n); }
 
   // --- direction finders ---
   /**
-   * Point the non-intrusive chips at the nearest outpost of each kind.
-   * `boat` supplies position; entries are { dock, dist } or null.
+   * Point the non-intrusive chip at the nearest marina.
+   * `boatPos` supplies position; the entry is { dock, dist } or null.
    */
-  setFinders(boatPos, market, marina) {
+  setFinders(boatPos, marina) {
     const one = (el, entry, atDock) => {
       if (!entry || !entry.dock) { el.classList.remove('show'); return; }
       el.classList.add('show');
@@ -304,7 +259,6 @@ export class HUD {
       el.querySelector('.finder-text b').textContent =
         atDock ? 'here' : `${Math.round(entry.dist)}m`;
     };
-    one(this.el.finderMarket, market, market && market.dist < 9);
     one(this.el.finderMarina, marina, marina && marina.dist < 9);
   }
 
@@ -323,23 +277,6 @@ export class HUD {
         `<span class="sonar-lure">${e.lure.emoji} ${e.lure.name}</span>` +
         `<span class="sonar-dist">${Math.round(e.dist)}m</span>` +
       `</div>`).join('');
-  }
-
-  // --- fish market receipt ---
-  showReceipt(result) {
-    if (!result.count) {
-      this.hint('Hold is empty — nothing to sell');
-      return;
-    }
-    this.el.rcRows.innerHTML = result.rows.map((r) =>
-      `<div class="rc-row">` +
-        `<img src="${fishIconURL(r.species)}" alt="">` +
-        `<span class="rc-name">${r.species.name}</span>` +
-        `<span class="rc-n">x${r.n}</span>` +
-        `<span class="rc-val">$${r.value.toFixed(2)}</span>` +
-      `</div>`).join('');
-    this.el.rcTotal.textContent = '$' + result.value.toFixed(2);
-    this.el.receipt.classList.remove('hidden');
   }
 
   setBite(on) {
@@ -363,26 +300,26 @@ export class HUD {
     }, ms);
   }
 
-  showCatch(c, wager, how = 'stored') {
+  showCatch(c, wager) {
     const profit = c.value - wager;
     const cls = profit >= 0 ? 'win' : 'meh';
     this.toast(
       `<img class="catch-icon" src="${fishIconURL(c.species)}" alt="">` +
       `<div class="catch-body"><div class="catch-name">${c.species.name}</div>` +
-      `<div class="catch-sub">${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg · ` +
-        `${how === 'paid' ? 'processed' : 'in the hold'}</div></div>` +
+      `<div class="catch-sub">${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg · paid at the rail` +
+        `</div></div>` +
       `<div class="catch-value">$${c.value.toFixed(2)}</div>`, cls, 4200);
   }
 
-  showTrawlHaul(catches, total, paid = false) {
-    this.haulToast('Net haul', catches, total, paid, 'trawl');
+  showTrawlHaul(catches, total) {
+    this.haulToast('Net haul', catches, total, 'trawl');
   }
 
-  showPotHaul(catches, total, paid = false) {
-    this.haulToast('Pot pulled', catches, total, paid, 'pot');
+  showPotHaul(catches, total) {
+    this.haulToast('Pot pulled', catches, total, 'pot');
   }
 
-  haulToast(title, catches, total, paid, cls) {
+  haulToast(title, catches, total, cls) {
     const best = catches.reduce((a, b) => (b.value > a.value ? b : a));
     const names = catches.map((c) => c.species.name).join(', ');
     this.toast(
@@ -465,7 +402,6 @@ export class HUD {
     this.el.lures.classList.add('collapsed');
     this.el.nets.classList.add('collapsed');
     this.el.hud.classList.add('hidden');
-    this.el.receipt.classList.add('hidden');
     this.el.tenderReport.classList.add('hidden');
     this.el.ship.classList.add('collapsed');
     this.el.menu.classList.remove('hidden', 'leaving');

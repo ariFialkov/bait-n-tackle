@@ -1,11 +1,11 @@
 // The boat catalog. Boats are cosmetic + logistical only: they change how
-// many rods you can run, how much fish you can hold, how the hull handles,
-// and which mechanics are unlocked. They NEVER touch the odds or the payout
-// of a bet — every wager still resolves against the same paytable (see
-// rtp.js), so no boat can be bought for better returns.
+// many rods you can run, how the hull handles, and which mechanics are
+// unlocked. They NEVER touch the odds or the payout of a bet — every wager
+// still resolves against the same paytable (see rtp.js), so no boat can be
+// bought for better returns.
 //
 // Note on "efficiency": a bigger boat lets you place more bets per minute
-// (more rods, fewer trips to the dock). With an RTP below 1.0 that means
+// (more rods, more speed between spots). With an RTP below 1.0 that means
 // faster churn in both directions, not a better expected return.
 //
 // Each hull is sold as several skins (see skins.js) — same model and same
@@ -20,11 +20,10 @@ export const BOATS = [
     name: 'Skiff',
     tagline: 'Fast, nimble, and tiny.',
     blurb: 'A dented aluminium utility boat with an outboard strapped to the ' +
-      'transom. Quick and turns on a dime, but the hold barely fits a milk ' +
-      'crate — you will be running back to market constantly.',
+      'transom. One rod, no gear and nowhere to put anything — but it turns ' +
+      'on a dime and it is yours from the first cast.',
     price: 0,
     rods: 1,
-    hold: 28,           // kg of fish the hull can carry
     maxSpeed: 10.4,
     accel: 11.25,
     drag: 1.55,
@@ -37,11 +36,10 @@ export const BOATS = [
     name: 'Cuddy',
     tagline: 'A cabin, and room to work.',
     blurb: 'A coastal patrol hull with a little sleeping cuddy up front. ' +
-      'Two rod holders, a proper fish box, and enough power to push through ' +
-      'chop — at the cost of the skiff’s darting turns.',
+      'Two rod holders and enough power to push through chop — at the cost ' +
+      'of the skiff’s darting turns.',
     price: 260,
     rods: 2,
-    hold: 85,
     maxSpeed: 9.9,
     accel: 9.5,
     drag: 1.45,
@@ -58,7 +56,6 @@ export const BOATS = [
       'a net instead of only casting.',
     price: 1400,
     rods: 3,
-    hold: 220,
     maxSpeed: 9.3,
     accel: 8.0,
     drag: 1.4,
@@ -75,7 +72,6 @@ export const BOATS = [
       'calls out which bait the locals are taking.',
     price: 6000,
     rods: 4,
-    hold: 520,
     maxSpeed: 8.6,
     accel: 7.0,
     drag: 1.35,
@@ -92,7 +88,6 @@ export const BOATS = [
       'anywhere on the river and collect later, loaded or empty.',
     price: 24000,
     rods: 6,
-    hold: 1100,
     maxSpeed: 9.6,
     accel: 7.5,
     drag: 1.38,
@@ -103,19 +98,18 @@ export const BOATS = [
   {
     id: 'paddleboat',
     name: 'Paddleboat',
-    tagline: 'Unlocks onboard processing.',
-    blurb: 'A river paddlewheeler with a processing line below decks. Flip ' +
-      'processing on and catches are gutted, packed and paid out the moment ' +
-      'they hit the deck — no dock run — at the cost of hold space.',
+    tagline: 'Eight rods across the stern.',
+    blurb: 'A river paddlewheeler with a working deck wide enough to fan ' +
+      'eight rods across it. No new gear over the gillnetter — just the ' +
+      'biggest jump in lines in the water anywhere in the fleet.',
     price: 90000,
     rods: 8,
-    hold: 2400,
     maxSpeed: 8.8,
     accel: 6.5,
     drag: 1.32,
     turn: 2.2,
     length: 15.0,
-    features: { trawl: true, sonar: true, pots: true, onboard: true },
+    features: { trawl: true, sonar: true, pots: true },
   },
   {
     id: 'seiner',
@@ -126,31 +120,29 @@ export const BOATS = [
       'stake it with bait and send it out fishing on its own.',
     price: 380000,
     rods: 10,
-    hold: 5200,
     maxSpeed: 10.0,
     accel: 7.25,
     drag: 1.36,
     turn: 2.7,
     length: 19.0,
-    features: { trawl: true, sonar: true, pots: true, onboard: true, tender: true },
+    features: { trawl: true, sonar: true, pots: true, tender: true },
     tender: { model: 'cuddy', length: 5.4, rods: 2 },
   },
   {
     id: 'steamboat',
     name: 'Steamboat',
     tagline: 'The ultimate floating town.',
-    blurb: 'A mobile town on the water. Hire a crew to work sixteen rods, ' +
-      'run a floating restaurant that buys your catch at the rail, and strip ' +
-      'whole stretches of river without ever going ashore.',
+    blurb: 'A mobile town on the water. Hire a crew to work all sixteen rods ' +
+      'on exactly the terms you do, and strip whole stretches of river ' +
+      'without ever touching the wheel.',
     price: 1500000,
     rods: 16,
-    hold: 12000,
     maxSpeed: 8.2,
     accel: 5.75,
     drag: 1.28,
     turn: 1.8,
     length: 26.0,
-    features: { trawl: true, sonar: true, pots: true, onboard: true, crew: true },
+    features: { trawl: true, sonar: true, pots: true, crew: true },
   },
 ];
 
@@ -203,9 +195,8 @@ export function featureList(boat) {
   if (f.trawl) out.push('Trawl net');
   if (f.sonar) out.push('Sonar fish-finder');
   if (f.pots) out.push('Pots & set nets');
-  if (f.onboard) out.push('Onboard processing');
   if (f.tender) out.push('Launchable tender');
-  if (f.crew) out.push('NPC crew & restaurant');
+  if (f.crew) out.push('NPC crew');
   return out;
 }
 

@@ -10,8 +10,8 @@
 //     never affects a trawl result.
 //   * Pots — the stake is paid when the pot is dropped and the bet resolves
 //     when it is collected, against that stake alone.
-// Landed value goes into the boat's hold (player.js) and is realised at a
-// fish market. Nothing in the hold can be lost, so realised RTP is unchanged.
+// Landed value is paid straight into the balance (player.js) the moment the
+// fish comes over the rail, so realised RTP is exactly the paytable's.
 
 import * as THREE from 'three';
 import { CONFIG, LURES, NETS } from './config.js';
@@ -241,10 +241,6 @@ export class Fishing {
     const say = (msg) => { if (!quiet) this.hud.hint(msg); };
     if (this.boat.trawling) { say('Stow the net to cast'); return false; }
     if (this.boat.speed >= CONFIG.CAST_MAX_SPEED) { say('Stop the boat to cast'); return false; }
-    if (!this.player.canFish()) {
-      say('Hold is full — find a fish market to sell');
-      return false;
-    }
     const line = this.lines.find((l) => !l.busy);
     if (!line) { say('Every rod is already out'); return false; }
     if (this.player.balance < this.lure.cost) {
@@ -311,7 +307,7 @@ export class Fishing {
       Math.random() * (CONFIG.BITE_MAX_S - CONFIG.BITE_MIN_S)) / speedup;
   }
 
-  /** The fish reached the boat: place the bet, pay out into the hold. */
+  /** The fish reached the boat: place the bet, pay the win into the balance. */
   landCatch(line) {
     const cost = line.wager;
     if (this.player.balance < cost) {
@@ -324,8 +320,8 @@ export class Fishing {
     this.rtp.wager(cost);
     const c = this.rtp.resolveBet(cost, 0, LURES[line.lureIndex].tiers[1]);
     this.rtp.book(c.value);
-    const how = this.player.store(c);
-    this.hud.showCatch(c, cost, how);
+    this.player.bank(c);
+    this.hud.showCatch(c, cost);
     if (c.value >= CONFIG.BIGCATCH_MIN_VALUE || c.species.tier >= 4) {
       this.hud.showBigCatch(c);
     }
@@ -346,10 +342,6 @@ export class Fishing {
     }
     if (this.activeLines) { this.hud.hint('Reel your lines in before trawling'); return; }
     if (!this.boat.trawling) {
-      if (!this.player.canFish()) {
-        this.hud.hint('Hold is full — find a fish market to sell');
-        return;
-      }
       if (this.player.balance <= 0) { this.hud.hint('No funds to trawl'); return; }
     }
     this.boat.setTrawling(!this.boat.trawling, this.trawlNet);
@@ -392,7 +384,6 @@ export class Fishing {
       this.trawlDistAcc = 0;
       this.trawlCostAcc = 0;
       this.trawlNextCatch = this.rollTrawlInterval();
-      if (!this.player.canFish()) this.stopTrawl('Hold is full — net stowed');
     }
   }
 
@@ -414,10 +405,10 @@ export class Fishing {
       const c = this.rtp.describeCatch(payout * (cuts[i] / cutSum), 0, maxTier);
       catches.push(c);
       total += c.value;
-      this.player.store(c);
+      this.player.bank(c);
     }
     this.rtp.book(total);
-    this.hud.showTrawlHaul(catches, total, this.player.processing);
+    this.hud.showTrawlHaul(catches, total);
     const best = catches.reduce((a, b) => (b.value > a.value ? b : a));
     if (best.value >= CONFIG.BIGCATCH_MIN_VALUE) this.hud.showBigCatch(best);
   }
@@ -484,7 +475,7 @@ export class Fishing {
       pot.float.material.color.setHex(soaked ? 0x7dedae : 0xe8b23a);
 
       const d = Math.hypot(pot.x - this.boat.pos.x, pot.z - this.boat.pos.z);
-      if (d <= CONFIG.POT_COLLECT_RADIUS && soaked && this.player.canFish()) {
+      if (d <= CONFIG.POT_COLLECT_RADIUS && soaked) {
         this.collectPot(i);
       }
     }
@@ -506,10 +497,10 @@ export class Fishing {
         payout * (cuts[k] / cutSum), 0, Math.min(this.trawlNet.maxTier + 1, CONFIG.TRAWL_TIER_CAP));
       catches.push(c);
       total += c.value;
-      this.player.store(c);
+      this.player.bank(c);
     }
     this.rtp.book(total);
-    this.hud.showPotHaul(catches, total, this.player.processing);
+    this.hud.showPotHaul(catches, total);
     this.hud.setPots(this.pots.length);
     const best = catches.reduce((a, b) => (b.value > a.value ? b : a));
     if (best.value >= CONFIG.BIGCATCH_MIN_VALUE) this.hud.showBigCatch(best);

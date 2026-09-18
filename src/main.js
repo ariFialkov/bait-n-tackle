@@ -92,7 +92,6 @@ async function equipBoat(key) {
 
 function refreshShipPanel() {
   hud.buildShipPanel(boat.spec, {
-    processing: player.processing,
     balance: player.balance,
     budgets: CONFIG.TENDER_BUDGETS,
     tender: {
@@ -114,15 +113,6 @@ hud.onPot = () => fishing.dropPot();
 
 // --- ship systems ---
 hud.onShipOpen = () => refreshShipPanel();
-hud.onProcessing = () => {
-  player.onboardProcessing = !player.onboardProcessing;
-  player.save();
-  hud.hint(player.processing
-    ? 'Processing line running — catches paid at the rail'
-    : 'Processing line idle — catches fill the hold');
-  refreshShipPanel();
-};
-
 hud.onCrew = () => {
   fishing.setCrew(!fishing.crew);
   refreshShipPanel();
@@ -169,7 +159,7 @@ hud.onTenderSend = (amount) => {
 };
 hud.bindNewRound(() => {
   rtp.reset();
-  if (player.balance < 1 && !player.hold.length) {
+  if (player.balance < 1) {
     player.balance = CONFIG.START_BALANCE;
     player.save();
     hud.hint('Fresh bankroll — good luck out there!');
@@ -191,8 +181,8 @@ hud.showMenu(() => {
   rig.startGame();
   input.enabled = true;
   hud.hint(input.isTouch
-    ? 'Joystick to drive · swipe to cast & reel · pull up to a dock to sell'
-    : 'WASD to drive · click-drag to cast & reel · pull up to a dock to sell', 6000);
+    ? 'Joystick to drive · swipe to cast & reel · catches pay out instantly'
+    : 'WASD to drive · click-drag to cast & reel · catches pay out instantly', 6000);
 });
 
 hud.bindMenu(() => {
@@ -208,8 +198,8 @@ hud.bindMenu(() => {
 });
 
 // --- Dock interaction ---
-// Pulling up to an outpost triggers it once; you must leave and come back
-// (or close the store) before it fires again.
+// Pulling up to a marina opens the store once; you must leave and come back
+// (or close the store) before it opens again.
 let lastDock = null;
 let dockCooldown = 0;
 
@@ -224,20 +214,8 @@ function updateDocks(dt) {
   if (here === lastDock || dockCooldown > 0) return;
   lastDock = here;
 
-  if (here.kind === 'market') {
-    if (player.hold.length) {
-      const result = player.sellAll();
-      hud.showReceipt(result);
-      hud.hint(`Sold ${result.count} fish for $${result.value.toFixed(2)}`);
-    } else if (player.processing) {
-      hud.hint('Onboard processing is on — nothing to unload');
-    } else {
-      hud.hint('Fish market — your hold is empty');
-    }
-  } else {
-    marina.show();
-    dockCooldown = 1.5;
-  }
+  marina.show();
+  dockCooldown = 1.5;
 }
 
 // --- Sonar readout ---
@@ -285,14 +263,10 @@ function frame() {
   sun.target.position.set(eye.x, 0, eye.z);
 
   hud.setWallet(player.balance, rtp.netRound());
-  hud.setHold(player);
   hud.setTenderChip(tender);
   if (state === 'play') {
-    const market = docks.nearest(eye.x, eye.z, 'market');
-    const mar = docks.nearest(eye.x, eye.z, 'marina');
-    hud.setFinders(eye,
-      market.dist <= DOCK_HINT_RANGE ? market : null,
-      mar.dist <= DOCK_HINT_RANGE ? mar : null);
+    const mar = docks.nearest(eye.x, eye.z);
+    hud.setFinders(eye, mar.dist <= DOCK_HINT_RANGE ? mar : null);
   }
 
   saveAcc += dt;

@@ -89,7 +89,6 @@ export class Tender {
       drag: 1.5,
       turn: 4.2,
       features: {},           // no trawl, no pots — it is a runabout
-      hold: 0,
     };
     // Already built: just repaint if the mother ship changed skin.
     if (this.loaded) {
@@ -226,7 +225,6 @@ export class Tender {
     const lure = LURES[this.lureIndex];
     if (this.remaining < lure.cost) return;
     if (this.player.balance < lure.cost) return; // cannot cover the stake
-    if (!this.player.canFish()) return;          // mother ship is full
 
     // Same roll the player gets: hotspots change frequency, never value.
     const spot = this.lake.hotspotAt(this.pos.x, this.pos.z);
@@ -251,17 +249,17 @@ export class Tender {
     this.rtp.wager(lure.cost);
     const c = this.rtp.resolveBet(lure.cost, 0, lure.tiers[1]);
     this.rtp.book(c.value);
-    // Stored immediately rather than carried home, so a run that is
-    // interrupted (quitting, recalling, a dead battery) can never destroy
+    // Paid the instant it is landed rather than carried home, so a run that
+    // is interrupted (quitting, recalling, a dead battery) can never destroy
     // value the player has already staked for.
-    this.player.store(c);
+    this.player.bank(c);
     this.catches.push(c);
   }
 
-  /** The run is over when the budget, the cash or the hold runs out. */
+  /** The run is over when either the bait budget or the cash runs out. */
   get runDone() {
     const cost = LURES[this.lureIndex].cost;
-    return this.remaining < cost || this.player.balance < cost || !this.player.canFish();
+    return this.remaining < cost || this.player.balance < cost;
   }
 
   steerAuto(dt, mother) {

@@ -17,10 +17,6 @@ function money(v) {
   return '$' + v.toFixed(v < 100 && v % 1 ? 2 : 0);
 }
 
-function kg(v) {
-  return v >= 1000 ? (v / 1000).toFixed(1) + ' t' : Math.round(v) + ' kg';
-}
-
 // Five pips filled against the best value anywhere in the fleet.
 function pips(value, max, min = 0) {
   const span = Math.max(1e-6, max - min);
@@ -79,7 +75,7 @@ export class Marina {
         `<header class="hull-head">` +
           `<h3>${hull.name}</h3>` +
           `<span class="hull-tag">${hull.tagline}</span>` +
-          `<span class="hull-spec">${hull.rods} rod${hull.rods > 1 ? 's' : ''} · ${kg(hull.hold)} hold</span>` +
+          `<span class="hull-spec">${hull.rods} rod${hull.rods > 1 ? 's' : ''}</span>` +
         `</header>` +
         (feats.length
           ? `<div class="boat-feats">${feats.map((f) => `<span>${f}</span>`).join('')}</div>`
@@ -136,14 +132,6 @@ export class Marina {
       actions.appendChild(btn);
     }
     card.appendChild(actions);
-
-    // Hulls do not share a hold, so a catch cannot ride along to a new boat.
-    if (!equipped && owned && this.player.hold.length) {
-      const warn = document.createElement('div');
-      warn.className = 'boat-warn';
-      warn.textContent = 'Sell your hold first';
-      card.appendChild(warn);
-    }
     return card;
   }
 
@@ -153,10 +141,6 @@ export class Marina {
   }
 
   pick(key) {
-    if (this.player.hold.length && this.player.boatId !== key) {
-      this.render();
-      return;
-    }
     if (this.player.equip(key)) {
       this.render();
       if (this.onChanged) this.onChanged(key);

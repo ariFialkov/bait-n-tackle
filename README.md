@@ -93,18 +93,22 @@ your skill:
 - **Pots** — the stake is paid when a pot is dropped and the bet resolves
   when it is collected, against that stake alone.
 
+Every win is **paid straight into your balance** the moment the fish comes
+over the rail. There is no hold to fill, nothing to haul ashore and no step
+between winning a bet and being paid for it, so realised RTP is exactly the
+paytable's.
+
 The fish is chosen to fit the drawn payout (species weighted by how close
 their inherent value is, size roll makes the catch worth exactly the
 payout), not the other way around. A million-draw simulation of the
 paytable converges to 0.940.
 
-### Boats, the hold, and the shore
+### Boats and the shore
 
-Catches go into the boat's **hold**, not straight into cash. Pull up to a
-**fish market** on the shoreline and the hold sells automatically; pull up to
-a **marina** and the boat store opens. Both generate deterministically along
-the shore as the river streams in, and the HUD keeps a non-intrusive compass
-chip pointing at the nearest of each.
+**Marinas** generate deterministically along the shoreline as the river
+streams in. Pull up to one and the boat store opens; the HUD keeps a
+non-intrusive compass chip pointing at the nearest. A marina is somewhere you
+choose to go, never a chore — catches pay themselves out at the rail.
 
 Eight hulls, increasingly grand, each unlocking mechanics rather than odds.
 Every hull is sold as **four skins** — same model and same mechanics, but
@@ -112,36 +116,32 @@ their own name, paint, price and a small speed/handling/wake spread, from
 Standard up to Signature. A skin is what you actually buy and sail, so the
 shop is a ladder of 32 boats rather than 8:
 
-| Boat | Rods | Hold | Unlocks |
-| --- | --- | --- | --- |
-| Skiff | 1 | 28 kg | — (casting only) |
-| Cuddy | 2 | 85 kg | — |
-| Trawler | 3 | 220 kg | Trawl net |
-| Mud-Dredger | 4 | 520 kg | Sonar fish-finder |
-| Gillnetter | 6 | 1.1 t | Pots & set nets |
-| Paddleboat | 8 | 2.4 t | Onboard processing |
-| Seiner | 10 | 5.2 t | Launchable tender |
-| Steamboat | 16 | 12 t | NPC crew |
+| Boat | Rods | Unlocks |
+| --- | --- | --- |
+| Skiff | 1 | — (casting only) |
+| Cuddy | 2 | — |
+| Trawler | 3 | Trawl net |
+| Mud-Dredger | 4 | Sonar fish-finder |
+| Gillnetter | 6 | Pots & set nets |
+| Paddleboat | 8 | — (the biggest jump in rods) |
+| Seiner | 10 | Launchable tender |
+| Steamboat | 16 | NPC crew |
 
 A hull's four skins share one downloaded model: the converter bakes a
 *neutral* texture that stores where each pixel sits along a four-stop paint
 ramp, and the game turns that back into colour at load time
 ([`src/skinner.js`](src/skinner.js)). Wake size is purely cosmetic.
 
-**Boats never change the odds.** More rods, more speed, sharper handling and
-a bigger hold mean more bets per minute and fewer trips ashore; with an RTP
-below 1.0 that is faster churn, not a better return. A Signature skin gets
-you between spots sooner — it cannot win you more per wager. The hold can never destroy value either — when
-it is full you simply cannot place new bets until you sell, so realised RTP
-is exactly the paytable's.
+**Boats never change the odds.** More rods, more speed and sharper handling
+mean more bets per minute; with an RTP below 1.0 that is faster churn, not a
+better return. A Signature skin gets you between spots sooner — it cannot win
+you more per wager.
 
-The top three hulls automate rather than improve. **Onboard processing**
-(Paddleboat) pays catches at the rail instead of filling the hold — at face
-value, never a premium. The **tender** (Seiner) can be taken into channels
-the seiner cannot enter, or staked with bait and sent out fishing on its
-own; its autonomous casts run through the same catch roll and the same
-paytable, and its stake is charged from your cash exactly as yours is. The
-**crew** (Steamboat) work the rods through the very same `cast()` and
+The top two hulls automate rather than improve. The **tender** (Seiner) can be
+taken into channels the seiner cannot enter, or staked with bait and sent out
+fishing on its own; its autonomous casts run through the same catch roll and
+the same paytable, and its stake is charged from your cash exactly as yours
+is. The **crew** (Steamboat) work the rods through the very same `cast()` and
 `pull()` calls your swipes use — extra hands, identical bets.
 
 The **sonar** on the Mud-Dredger reads nearby hotspots and names the bait
@@ -162,8 +162,8 @@ assets/boats/           boat models (.glb) + store portraits (.png)
 src/
   config.js    all tuning knobs: RTP paytable, costs, lures, nets, camera
   boats.js     the eight-hull catalog: stats, unlocks, rod mounts
-  player.js    cash, owned/equipped boat, and the fish hold (persisted)
-  docks.js     shoreline fish markets & marinas, generated per chunk
+  player.js    cash and the owned/equipped boat (persisted)
+  docks.js     shoreline marinas, generated per chunk
   marina.js    the boat store UI
   skins.js     the 32 purchasable skins: names, paint, prices, stat spread
   skinner.js   repaints a hull's neutral texture for the skin it is wearing
