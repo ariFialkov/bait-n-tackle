@@ -7,6 +7,12 @@
 // Note on "efficiency": a bigger boat lets you place more bets per minute
 // (more rods, fewer trips to the dock). With an RTP below 1.0 that means
 // faster churn in both directions, not a better expected return.
+//
+// Each hull is sold as several skins (see skins.js) — same model and same
+// mechanics, but their own name, paint, price and small speed/handling/wake
+// spread. A skin is what the player actually buys and sails.
+
+import { SKINS, hullSkins, skinKey } from './skins.js';
 
 export const BOATS = [
   {
@@ -19,8 +25,8 @@ export const BOATS = [
     price: 0,
     rods: 1,
     hold: 28,           // kg of fish the hull can carry
-    maxSpeed: 7.4,
-    accel: 9.0,
+    maxSpeed: 10.4,
+    accel: 11.25,
     drag: 1.55,
     turn: 4.4,          // heading chase rate — higher is more nimble
     length: 4.6,
@@ -36,8 +42,8 @@ export const BOATS = [
     price: 260,
     rods: 2,
     hold: 85,
-    maxSpeed: 6.9,
-    accel: 7.6,
+    maxSpeed: 9.9,
+    accel: 9.5,
     drag: 1.45,
     turn: 3.5,
     length: 6.2,
@@ -53,8 +59,8 @@ export const BOATS = [
     price: 1400,
     rods: 3,
     hold: 220,
-    maxSpeed: 6.3,
-    accel: 6.4,
+    maxSpeed: 9.3,
+    accel: 8.0,
     drag: 1.4,
     turn: 2.9,
     length: 8.4,
@@ -70,8 +76,8 @@ export const BOATS = [
     price: 6000,
     rods: 4,
     hold: 520,
-    maxSpeed: 5.6,
-    accel: 5.6,
+    maxSpeed: 8.6,
+    accel: 7.0,
     drag: 1.35,
     turn: 2.3,
     length: 10.0,
@@ -87,8 +93,8 @@ export const BOATS = [
     price: 24000,
     rods: 6,
     hold: 1100,
-    maxSpeed: 6.6,
-    accel: 6.0,
+    maxSpeed: 9.6,
+    accel: 7.5,
     drag: 1.38,
     turn: 2.9,
     length: 12.0,
@@ -104,8 +110,8 @@ export const BOATS = [
     price: 90000,
     rods: 8,
     hold: 2400,
-    maxSpeed: 5.8,
-    accel: 5.2,
+    maxSpeed: 8.8,
+    accel: 6.5,
     drag: 1.32,
     turn: 2.2,
     length: 15.0,
@@ -121,8 +127,8 @@ export const BOATS = [
     price: 380000,
     rods: 10,
     hold: 5200,
-    maxSpeed: 7.0,
-    accel: 5.8,
+    maxSpeed: 10.0,
+    accel: 7.25,
     drag: 1.36,
     turn: 2.7,
     length: 19.0,
@@ -139,8 +145,8 @@ export const BOATS = [
     price: 1500000,
     rods: 16,
     hold: 12000,
-    maxSpeed: 5.2,
-    accel: 4.6,
+    maxSpeed: 8.2,
+    accel: 5.75,
     drag: 1.28,
     turn: 1.8,
     length: 26.0,
@@ -149,10 +155,46 @@ export const BOATS = [
 ];
 
 export const BOAT_BY_ID = Object.fromEntries(BOATS.map((b) => [b.id, b]));
-export const DEFAULT_BOAT = 'skiff';
+export const DEFAULT_BOAT = skinKey('skiff', SKINS.skiff[0].id);
 
-export function boatModelURL(id) { return `./assets/boats/${id}.glb`; }
-export function boatPortraitURL(id) { return `./assets/boats/${id}.png`; }
+/**
+ * Resolve a skin key ("cuddy:cherry-red") into the full spec the game runs
+ * on: the hull's mechanics with the skin's identity and stat spread applied.
+ * Falls back to the starter skiff for unknown keys so a stale save can never
+ * strand the player without a boat.
+ */
+export function resolveBoat(key) {
+  const [hullId, skinId] = String(key || '').split(':');
+  const hull = BOAT_BY_ID[hullId] || BOAT_BY_ID.skiff;
+  const skins = hullSkins(hull);
+  const skin = skins.find((s) => s.id === skinId) || skins[0];
+  return {
+    ...hull,
+    key: skin.key,
+    skinId: skin.id,
+    hullId: hull.id,
+    hullName: hull.name,
+    name: `${skin.name} ${hull.name}`,
+    shortName: skin.name,
+    paint: skin.paint,
+    price: skin.price,
+    rarity: skin.rarity,
+    rarityName: skin.rarityName,
+    maxSpeed: skin.maxSpeed,
+    turn: skin.turn,
+    wake: skin.wake,
+  };
+}
+
+/** Every purchasable skin, grouped by hull, for the marina. */
+export function fleetCatalog() {
+  return BOATS.map((hull) => ({ hull, skins: hullSkins(hull) }));
+}
+
+export function boatModelURL(hullId) { return `./assets/boats/${hullId}.glb`; }
+export function boatPortraitURL(hullId, skinId) {
+  return `./assets/boats/${hullId}-${skinId}.png`;
+}
 
 /** Human-readable list of what a boat unlocks over the previous tier. */
 export function featureList(boat) {

@@ -7,11 +7,27 @@
 // paytable and keeps the game free of any skill component (a player who
 // never returns to market simply stops being able to bet).
 
-import { BOATS, BOAT_BY_ID, DEFAULT_BOAT } from './boats.js';
+import { BOATS, BOAT_BY_ID, DEFAULT_BOAT, resolveBoat } from './boats.js';
+import { SKINS } from './skins.js';
 import { SPECIES } from './fishdata.js';
 import { CONFIG } from './config.js';
 
 const KEY = 'bnt-save-v1';
+
+/**
+ * Accept either a current skin key ("cuddy:cherry-red") or a pre-skin save's
+ * bare hull id ("cuddy"), which is granted that hull's standard skin.
+ */
+function migrateKey(id) {
+  if (typeof id !== 'string' || !id) return null;
+  if (id.includes(':')) {
+    const [hullId, skinId] = id.split(':');
+    const list = SKINS[hullId];
+    return list && list.some((s) => s.id === skinId) ? id : null;
+  }
+  const list = SKINS[id];
+  return list ? `${id}:${list[0].id}` : null;
+}
 
 export class Player {
   constructor() {
@@ -23,7 +39,7 @@ export class Player {
     this.load();
   }
 
-  get boat() { return BOAT_BY_ID[this.boatId] || BOAT_BY_ID[DEFAULT_BOAT]; }
+  get boat() { return resolveBoat(this.boatId); }
   get capacity() { return this.boat.hold; }
   get holdKg() { return this.hold.reduce((a, f) => a + f.kg, 0); }
   get holdValue() { return this.hold.reduce((a, f) => a + f.value, 0); }
@@ -73,11 +89,12 @@ export class Player {
     return { count, value, rows, best: bestOut };
   }
 
-  buy(id) {
-    const b = BOAT_BY_ID[id];
-    if (!b || b.comingSoon || this.has(id) || this.balance < b.price) return false;
+  /** Buy a skin by its key ("cuddy:cherry-red"). */
+  buy(key) {
+    const b = resolveBoat(key);
+    if (!b || b.key !== key || this.has(key) || this.balance < b.price) return false;
     this.balance -= b.price;
-    this.owned.push(id);
+    this.owned.push(key);
     this.save();
     return true;
   }
@@ -132,10 +149,12 @@ export class Player {
       const s = JSON.parse(raw);
       if (Number.isFinite(s.balance)) this.balance = s.balance;
       if (Array.isArray(s.owned) && s.owned.length) {
-        this.owned = s.owned.filter((id) => BOAT_BY_ID[id]);
+        this.owned = s.owned.map(migrateKey).filter(Boolean);
         if (!this.owned.includes(DEFAULT_BOAT)) this.owned.unshift(DEFAULT_BOAT);
+        this.owned = [...new Set(this.owned)];
       }
-      if (BOAT_BY_ID[s.boatId] && this.owned.includes(s.boatId)) this.boatId = s.boatId;
+      const boatKey = migrateKey(s.boatId);
+      if (boatKey && this.owned.includes(boatKey)) this.boatId = boatKey;
       if (Array.isArray(s.hold)) {
         this.hold = s.hold.filter(
           (f) => SPECIES[f.id] && Number.isFinite(f.kg) && Number.isFinite(f.value));

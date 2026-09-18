@@ -1,24 +1,30 @@
 // The marina: a boat store that opens when you pull up to a marina dock.
-// Boats are cosmetic and logistical only — more rods, more hold, different
-// handling, and mechanic unlocks. None of them touch the odds or the payout
-// of a bet, so nothing here can be bought for a better return.
+//
+// Boats are sold as skins — same hull, same mechanics, but their own name,
+// paint, price and a small speed/handling/wake spread. None of that touches
+// the odds or the payout of a bet, which are drawn from the paytable in
+// rtp.js against the stake alone. A dearer boat gets you between spots
+// sooner; it cannot win you more per wager.
 
-import { BOATS, boatPortraitURL, featureList } from './boats.js';
+import { fleetCatalog, boatPortraitURL, featureList, BOATS } from './boats.js';
+import { hullSkins } from './skins.js';
 
 const $ = (id) => document.getElementById(id);
 
 function money(v) {
-  return '$' + (v >= 1000 ? Math.round(v).toLocaleString()
-    : v.toFixed(v < 100 ? 2 : 0));
+  if (v >= 1e6) return '$' + (v / 1e6).toFixed(v >= 1e7 ? 0 : 2).replace(/\.00$/, '') + 'M';
+  if (v >= 1000) return '$' + Math.round(v).toLocaleString();
+  return '$' + v.toFixed(v < 100 && v % 1 ? 2 : 0);
 }
 
 function kg(v) {
   return v >= 1000 ? (v / 1000).toFixed(1) + ' t' : Math.round(v) + ' kg';
 }
 
-// Five pips, filled proportionally to the best boat in the fleet.
-function pips(value, max) {
-  const n = Math.max(1, Math.round((value / max) * 5));
+// Five pips filled against the best value anywhere in the fleet.
+function pips(value, max, min = 0) {
+  const span = Math.max(1e-6, max - min);
+  const n = Math.max(1, Math.min(5, Math.round(((value - min) / span) * 5)));
   let out = '';
   for (let i = 0; i < 5; i++) out += `<i class="${i < n ? 'on' : ''}"></i>`;
   return out;
@@ -32,6 +38,15 @@ export class Marina {
     this.grid = $('marina-grid');
     this.cashEl = $('marina-cash');
     this.open = false;
+
+    // Stat ranges across every skin in the game, so the pips mean something.
+    const every = BOATS.flatMap((h) => hullSkins(h));
+    this.range = {
+      speed: [Math.min(...every.map((s) => s.maxSpeed)), Math.max(...every.map((s) => s.maxSpeed))],
+      turn: [Math.min(...every.map((s) => s.turn)), Math.max(...every.map((s) => s.turn))],
+      wake: [Math.min(...every.map((s) => s.wake)), Math.max(...every.map((s) => s.wake))],
+    };
+
     $('marina-close').addEventListener('click', () => this.close());
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.open) this.close();
@@ -52,95 +67,99 @@ export class Marina {
   render() {
     const p = this.player;
     this.cashEl.textContent = money(p.balance);
-    const maxSpeed = Math.max(...BOATS.map((b) => b.maxSpeed));
-    const maxTurn = Math.max(...BOATS.map((b) => b.turn));
-    const maxHold = Math.max(...BOATS.map((b) => b.hold));
-    const maxRods = Math.max(...BOATS.map((b) => b.rods));
-
     this.grid.innerHTML = '';
-    for (const b of BOATS) {
-      const owned = p.has(b.id);
-      const equipped = p.boatId === b.id;
-      const afford = p.balance >= b.price;
-      const locked = !!b.comingSoon;
 
-      const card = document.createElement('div');
-      card.className = 'boat-card' +
-        (equipped ? ' equipped' : '') + (locked ? ' locked' : '');
+    for (const { hull, skins } of fleetCatalog()) {
+      const ownsAny = skins.some((s) => p.has(s.key));
+      const section = document.createElement('section');
+      section.className = 'hull-section' + (ownsAny ? '' : ' unowned');
 
-      const feats = featureList(b);
-      card.innerHTML =
-        `<div class="boat-img-wrap">` +
-          (locked
-            ? `<div class="boat-img-soon">⚓</div>`
-            : `<img alt="${b.name}" loading="lazy" src="${boatPortraitURL(b.id)}">`) +
-          (equipped ? `<span class="boat-flag">SAILING</span>`
-            : owned ? `<span class="boat-flag owned">OWNED</span>`
-            : locked ? `<span class="boat-flag soon">COMING SOON</span>` : '') +
-        `</div>` +
-        `<div class="boat-name">${b.name}</div>` +
-        `<div class="boat-tag">${b.tagline}</div>` +
-        `<div class="boat-stats">` +
-          `<div class="bs"><span>Rods</span><b>${b.rods}</b></div>` +
-          `<div class="bs"><span>Hold</span><b>${kg(b.hold)}</b></div>` +
-          `<div class="bs"><span>Speed</span><em>${pips(b.maxSpeed, maxSpeed)}</em></div>` +
-          `<div class="bs"><span>Nimble</span><em>${pips(b.turn, maxTurn)}</em></div>` +
-        `</div>` +
-        (feats.length ? `<div class="boat-feats">${feats.map(
-          (f) => `<span>${f}</span>`).join('')}</div>` : '') +
-        `<div class="boat-blurb">${b.blurb}</div>`;
+      const feats = featureList(hull);
+      section.innerHTML =
+        `<header class="hull-head">` +
+          `<h3>${hull.name}</h3>` +
+          `<span class="hull-tag">${hull.tagline}</span>` +
+          `<span class="hull-spec">${hull.rods} rod${hull.rods > 1 ? 's' : ''} · ${kg(hull.hold)} hold</span>` +
+        `</header>` +
+        (feats.length
+          ? `<div class="boat-feats">${feats.map((f) => `<span>${f}</span>`).join('')}</div>`
+          : '') +
+        `<p class="hull-blurb">${hull.blurb}</p>`;
 
-      const actions = document.createElement('div');
-      actions.className = 'boat-actions';
-      if (locked) {
-        actions.innerHTML = `<button class="boat-btn" disabled>Not yet in the water</button>`;
-      } else if (equipped) {
-        actions.innerHTML = `<button class="boat-btn" disabled>Currently sailing</button>`;
-      } else if (owned) {
-        const btn = document.createElement('button');
-        btn.className = 'boat-btn go';
-        btn.textContent = 'Set sail';
-        btn.addEventListener('click', () => this.pick(b.id));
-        actions.appendChild(btn);
-      } else {
-        const btn = document.createElement('button');
-        btn.className = 'boat-btn buy' + (afford ? '' : ' poor');
-        btn.textContent = afford ? `Buy · ${money(b.price)}` : `${money(b.price)}`;
-        btn.disabled = !afford;
-        btn.addEventListener('click', () => this.purchase(b.id));
-        actions.appendChild(btn);
-      }
-      card.appendChild(actions);
-
-      // Hold must be empty before switching hulls — you cannot move a catch
-      // between boats, and nothing may ever be destroyed.
-      if (!equipped && owned && this.player.hold.length) {
-        const warn = document.createElement('div');
-        warn.className = 'boat-warn';
-        warn.textContent = 'Sell your hold first — catches do not transfer';
-        card.appendChild(warn);
-      }
-
-      this.grid.appendChild(card);
+      const row = document.createElement('div');
+      row.className = 'skin-row';
+      for (const skin of skins) row.appendChild(this.skinCard(hull, skin));
+      section.appendChild(row);
+      this.grid.appendChild(section);
     }
   }
 
-  purchase(id) {
-    if (this.player.buy(id)) {
-      this.pick(id);
+  skinCard(hull, skin) {
+    const p = this.player;
+    const owned = p.has(skin.key);
+    const equipped = p.boatId === skin.key;
+    const afford = p.balance >= skin.price;
+
+    const card = document.createElement('div');
+    card.className = `boat-card rar-${skin.rarity}` + (equipped ? ' equipped' : '');
+    card.innerHTML =
+      `<div class="boat-img-wrap">` +
+        `<img alt="${skin.name} ${hull.name}" loading="lazy"` +
+        ` src="${boatPortraitURL(hull.id, skin.id)}">` +
+        (equipped ? `<span class="boat-flag">SAILING</span>`
+          : owned ? `<span class="boat-flag owned">OWNED</span>` : '') +
+      `</div>` +
+      `<div class="skin-rarity">${skin.rarityName}</div>` +
+      `<div class="boat-name">${skin.name}</div>` +
+      `<div class="boat-stats">` +
+        `<div class="bs"><span>Speed</span><em>${pips(skin.maxSpeed, this.range.speed[1], this.range.speed[0] - 1)}</em></div>` +
+        `<div class="bs"><span>Handling</span><em>${pips(skin.turn, this.range.turn[1], this.range.turn[0] - 0.4)}</em></div>` +
+        `<div class="bs"><span>Wake</span><em>${pips(skin.wake, this.range.wake[1], this.range.wake[0] - 0.1)}</em></div>` +
+      `</div>`;
+
+    const actions = document.createElement('div');
+    actions.className = 'boat-actions';
+    if (equipped) {
+      actions.innerHTML = `<button class="boat-btn" disabled>Currently sailing</button>`;
+    } else if (owned) {
+      const btn = document.createElement('button');
+      btn.className = 'boat-btn go';
+      btn.textContent = 'Set sail';
+      btn.addEventListener('click', () => this.pick(skin.key));
+      actions.appendChild(btn);
     } else {
-      this.render();
+      const btn = document.createElement('button');
+      btn.className = 'boat-btn buy' + (afford ? '' : ' poor');
+      btn.textContent = afford ? `Buy · ${money(skin.price)}` : money(skin.price);
+      btn.disabled = !afford;
+      btn.addEventListener('click', () => this.purchase(skin.key));
+      actions.appendChild(btn);
     }
+    card.appendChild(actions);
+
+    // Hulls do not share a hold, so a catch cannot ride along to a new boat.
+    if (!equipped && owned && this.player.hold.length) {
+      const warn = document.createElement('div');
+      warn.className = 'boat-warn';
+      warn.textContent = 'Sell your hold first';
+      card.appendChild(warn);
+    }
+    return card;
   }
 
-  pick(id) {
-    if (this.player.hold.length && this.player.boatId !== id) {
+  purchase(key) {
+    if (this.player.buy(key)) this.pick(key);
+    else this.render();
+  }
+
+  pick(key) {
+    if (this.player.hold.length && this.player.boatId !== key) {
       this.render();
       return;
     }
-    if (this.player.equip(id)) {
+    if (this.player.equip(key)) {
       this.render();
-      if (this.onChanged) this.onChanged(id);
+      if (this.onChanged) this.onChanged(key);
     }
   }
 }

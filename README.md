@@ -106,7 +106,11 @@ a **marina** and the boat store opens. Both generate deterministically along
 the shore as the river streams in, and the HUD keeps a non-intrusive compass
 chip pointing at the nearest of each.
 
-Eight hulls, increasingly grand, each unlocking mechanics rather than odds:
+Eight hulls, increasingly grand, each unlocking mechanics rather than odds.
+Every hull is sold as **four skins** — same model and same mechanics, but
+their own name, paint, price and a small speed/handling/wake spread, from
+Standard up to Signature. A skin is what you actually buy and sail, so the
+shop is a ladder of 32 boats rather than 8:
 
 | Boat | Rods | Hold | Unlocks |
 | --- | --- | --- | --- |
@@ -119,9 +123,15 @@ Eight hulls, increasingly grand, each unlocking mechanics rather than odds:
 | Seiner | 10 | 5.2 t | Launchable tender |
 | Steamboat | 16 | 12 t | NPC crew |
 
-**Boats never change the odds.** More rods and a bigger hold mean more bets
-per minute and fewer trips ashore; with an RTP below 1.0 that is faster
-churn, not a better return. The hold can never destroy value either — when
+A hull's four skins share one downloaded model: the converter bakes a
+*neutral* texture that stores where each pixel sits along a four-stop paint
+ramp, and the game turns that back into colour at load time
+([`src/skinner.js`](src/skinner.js)). Wake size is purely cosmetic.
+
+**Boats never change the odds.** More rods, more speed, sharper handling and
+a bigger hold mean more bets per minute and fewer trips ashore; with an RTP
+below 1.0 that is faster churn, not a better return. A Signature skin gets
+you between spots sooner — it cannot win you more per wager. The hold can never destroy value either — when
 it is full you simply cannot place new bets until you sell, so realised RTP
 is exactly the paytable's.
 
@@ -155,6 +165,8 @@ src/
   player.js    cash, owned/equipped boat, and the fish hold (persisted)
   docks.js     shoreline fish markets & marinas, generated per chunk
   marina.js    the boat store UI
+  skins.js     the 32 purchasable skins: names, paint, prices, stat spread
+  skinner.js   repaints a hull's neutral texture for the skin it is wearing
   tender.js    the Seiner's launchable / autonomous tender
   fishdata.js  the 60 species: values, weights, tiers + visual style data
   fishmodels.js procedural per-species fish prefabs (bodies, fins, skins)

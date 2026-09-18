@@ -1,6 +1,6 @@
 // Bait N' Tackle service worker — precache the whole game for offline play.
 
-const CACHE = 'bait-n-tackle-v8';
+const CACHE = 'bait-n-tackle-v9';
 const ASSETS = [
   './',
   './index.html',
@@ -20,6 +20,8 @@ const ASSETS = [
   './src/player.js',
   './src/docks.js',
   './src/marina.js',
+  './src/skins.js',
+  './src/skinner.js',
   './src/tender.js',
   './src/rtp.js',
   './src/lake.js',
@@ -30,14 +32,6 @@ const ASSETS = [
   './src/cameraRig.js',
   './src/input.js',
   './src/hud.js',
-  './assets/boats/skiff.png',
-  './assets/boats/cuddy.png',
-  './assets/boats/trawler.png',
-  './assets/boats/mud-dredger.png',
-  './assets/boats/gillnetter.png',
-  './assets/boats/paddleboat.png',
-  './assets/boats/seiner.png',
-  './assets/boats/steamboat.png',
   './assets/icon.svg',
   './assets/icon-192.png',
   './assets/icon-512.png',

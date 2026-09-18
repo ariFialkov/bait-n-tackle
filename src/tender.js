@@ -13,6 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
 import { boatModelURL, rodMounts } from './boats.js';
+import { applySkin } from './skinner.js';
 import { clamp } from './noise.js';
 
 const loader = new GLTFLoader();
@@ -77,7 +78,7 @@ export class Tender {
   }
 
   /** Build the hull + rods for a mother ship's tender definition. */
-  async prepare(def) {
+  async prepare(def, motherSpec) {
     this.spec = {
       id: 'tender',
       name: 'Tender',
@@ -90,7 +91,21 @@ export class Tender {
       features: {},           // no trawl, no pots — it is a runabout
       hold: 0,
     };
-    if (this.loaded) return;
+    // Already built: just repaint if the mother ship changed skin.
+    if (this.loaded) {
+      if (motherSpec && motherSpec.paint && this.paintedFor !== motherSpec.skinId) {
+        this.paintedFor = motherSpec.skinId;
+        for (const child of this.group.children) {
+          if (child.isMesh || child.isGroup) {
+            applySkin(child, {
+              hullId: `tender-${def.model}`, skinId: motherSpec.skinId, paint: motherSpec.paint,
+            });
+          }
+        }
+      }
+      return;
+    }
+    this.paintedFor = motherSpec && motherSpec.skinId;
 
     if (!hullPromise) hullPromise = loader.loadAsync(boatModelURL(def.model));
     let hull;
@@ -100,6 +115,12 @@ export class Tender {
       hull = new THREE.Mesh(
         new THREE.BoxGeometry(def.length * 0.34, def.length * 0.16, def.length),
         new THREE.MeshStandardMaterial({ color: 0xdfeaf2, roughness: 0.6 }));
+    }
+    // Paint the tender to match its mother ship, so they read as a set.
+    if (motherSpec && motherSpec.paint) {
+      applySkin(hull, {
+        hullId: `tender-${def.model}`, skinId: motherSpec.skinId, paint: motherSpec.paint,
+      });
     }
     const box = new THREE.Box3().setFromObject(hull);
     const scale = def.length / Math.max(0.001, box.max.z - box.min.z);

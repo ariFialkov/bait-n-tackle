@@ -847,3 +847,52 @@ html, body {
   background: linear-gradient(180deg, #9ef0c0, #6fdba0);
   color: #06342a; cursor: pointer;
 }
+
+/* ---------- Marina: hull sections + skin rows ---------- */
+#marina-grid { display: block; }
+.hull-section {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 14px 16px 16px;
+  margin-bottom: 14px;
+}
+.hull-section.unowned { opacity: 0.92; }
+.hull-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.hull-head h3 { color: #fff; font-size: 1.3rem; font-weight: 800; }
+.hull-tag { color: #ffd166; font-weight: 700; font-size: 0.78rem; }
+.hull-spec { margin-left: auto; color: #7da8bc; font-weight: 700; font-size: 0.74rem; }
+.hull-blurb {
+  color: #a9c9d8; font-size: 0.74rem; line-height: 1.45;
+  margin: 6px 0 12px; max-width: 70ch;
+}
+.hull-section .boat-feats { margin: 7px 0 0; }
+.skin-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.skin-row .boat-card { padding: 8px 11px 11px; }
+.skin-row .boat-img-wrap { height: 100px; }
+.skin-row .boat-name { font-size: 0.98rem; margin-top: 2px; }
+.skin-row .boat-stats { grid-template-columns: 1fr; gap: 3px; margin: 7px 0 0; }
+.skin-rarity {
+  font-size: 0.6rem; font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.rar-0 .skin-rarity { color: #9ab8c4; }
+.rar-1 .skin-rarity { color: #8fd0a0; }
+.rar-2 .skin-rarity { color: #ffd166; }
+.rar-3 .skin-rarity {
+  background: linear-gradient(90deg, #c891ff, #7fd8ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.rar-3 { border-color: rgba(200, 145, 255, 0.35); }
+.rar-2 { border-color: rgba(255, 209, 102, 0.28); }
+
+.hold-label {
+  max-width: 128px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}

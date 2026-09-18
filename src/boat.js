@@ -8,14 +8,15 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG } from './config.js';
 import { isNavigable } from './lake.js';
 import { TrawlNet } from './net.js';
-import { BOAT_BY_ID, boatModelURL, rodMounts } from './boats.js';
+import { BOAT_BY_ID, boatModelURL, resolveBoat, rodMounts } from './boats.js';
+import { applySkin } from './skinner.js';
 
 const loader = new GLTFLoader();
-const modelCache = new Map();   // id -> Promise<THREE.Object3D>
+const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
 
-function loadHull(id) {
-  if (!modelCache.has(id)) {
-    modelCache.set(id, loader.loadAsync(boatModelURL(id)).then((gltf) => {
+function loadHull(hullId) {
+  if (!modelCache.has(hullId)) {
+    modelCache.set(hullId, loader.loadAsync(boatModelURL(hullId)).then((gltf) => {
       const root = gltf.scene;
       root.traverse((o) => {
         if (o.isMesh) {
@@ -27,7 +28,7 @@ function loadHull(id) {
       return root;
     }));
   }
-  return modelCache.get(id);
+  return modelCache.get(hullId);
 }
 
 // --- Procedural fallback hull (also used for not-yet-modelled boats) ---
@@ -114,7 +115,7 @@ export class Boat {
     this.group.add(this.rodHolder);
 
     this.rods = [];              // [{ group, tip, side, pos }]
-    this.spec = BOAT_BY_ID.skiff;
+    this.spec = resolveBoat(null);
     this.hullBounds = null;
 
     this.pos = new THREE.Vector3(0, 0, 0);
@@ -155,20 +156,21 @@ export class Boat {
     return g;
   }
 
-  /** Swap to a different boat: loads the hull, rebuilds the rod rack. */
-  async setBoat(id) {
-    const spec = BOAT_BY_ID[id];
-    if (!spec) return;
+  /**
+   * Swap to a different boat. `key` is a skin key ("cuddy:cherry-red"): the
+   * hull model is shared between a hull's skins and repainted on the way in.
+   */
+  async setBoat(key) {
+    const spec = resolveBoat(key);
     this.spec = spec;
 
     // --- hull ---
     let hull = null;
-    if (!spec.comingSoon) {
-      try {
-        hull = (await loadHull(id)).clone(true);
-      } catch {
-        hull = null;   // fall through to the procedural hull
-      }
+    try {
+      hull = (await loadHull(spec.hullId)).clone(true);
+      applySkin(hull, spec);
+    } catch {
+      hull = null;   // fall through to the procedural hull
     }
     if (!hull) hull = fallbackHull(spec.length);
 
@@ -202,6 +204,10 @@ export class Boat {
     this.netBundle.visible = !!spec.features.trawl;
     if (this.trawling) this.setTrawling(false);
 
+    // Wake presence is a cosmetic per-skin signature.
+    this.wake.points.material.size = 0.42 * (0.75 + (spec.wake ?? 1) * 0.45);
+    this.wake.points.material.opacity = 0.42 + (spec.wake ?? 1) * 0.14;
+
     if (this.onBoatChanged) this.onBoatChanged(spec);
   }
 
@@ -211,6 +217,7 @@ export class Boat {
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3).fill(9999), 3));
     const mat = new THREE.PointsMaterial({
       color: 0xffffff, size: 0.5, transparent: true, opacity: 0.55,
+      // size is scaled per boat in setBoat via the skin's wake stat
       depthWrite: false, sizeAttenuation: true,
     });
     const points = new THREE.Points(geo, mat);
@@ -308,10 +315,12 @@ export class Boat {
   updateWake(dt) {
     const w = this.wake;
     const posAttr = w.points.geometry.attributes.position;
-    const rate = this.speed > 0.6 ? (this.trawling ? 34 : 18) : 0;
+    const wakeStat = this.spec.wake ?? 1;
+    const rate = this.speed > 0.6 ? (this.trawling ? 34 : 18) * wakeStat : 0;
     w.emitAcc += rate * dt;
     const back = (this.hullBounds?.length ?? 4.6) * (this.trawling ? 0.95 : 0.55);
-    const spread = (this.hullBounds?.halfBeam ?? 1) * (this.trawling ? 1.6 : 0.9);
+    const spread = (this.hullBounds?.halfBeam ?? 1) * (this.trawling ? 1.6 : 0.9)
+      * (0.7 + wakeStat * 0.5);
     while (w.emitAcc >= 1) {
       w.emitAcc -= 1;
       const i = w.idx = (w.idx + 1) % w.life.length;

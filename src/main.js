@@ -75,18 +75,18 @@ let helm = boat;
 const atHelmOfTender = () => helm === tender;
 
 // --- Boat swapping ---
-async function equipBoat(id) {
-  if (player.boatId !== id && player.has(id)) player.equip(id);
+async function equipBoat(key) {
+  if (player.boatId !== key && player.has(key)) player.equip(key);
   // Any tender belongs to the old hull — bring it home first.
   if (tender.deployed) { tender.stow(); }
   helm = boat;
   fishing.setVessel(boat);
-  await boat.setBoat(id);
+  await boat.setBoat(key);
   fishing.syncRods();
   hud.setBoat(boat.spec);
   rig.setBoatLength(boat.spec.length);
   if (!boat.spec.features.trawl && boat.trawling) fishing.stopTrawl();
-  if (boat.spec.tender) await tender.prepare(boat.spec.tender);
+  if (boat.spec.tender) await tender.prepare(boat.spec.tender, boat.spec);
   refreshShipPanel();
 }
 
@@ -106,7 +106,7 @@ function refreshShipPanel() {
 boat.onBoatChanged = (spec) => hud.setBoat(spec);
 equipBoat(player.boatId);
 
-const marina = new Marina(player, (id) => { equipBoat(id); });
+const marina = new Marina(player, (key) => { equipBoat(key); });
 
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);
