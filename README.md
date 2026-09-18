@@ -125,27 +125,44 @@ streams in. Pull up to one and the boat store opens; the HUD keeps a
 non-intrusive compass chip pointing at the nearest. A marina is somewhere you
 choose to go, never a chore — catches pay themselves out at the rail.
 
-Eight hulls, increasingly grand, each unlocking mechanics rather than odds.
+Nine hulls, increasingly grand, each unlocking mechanics rather than odds.
 Every hull is sold as **four skins** — same model and same mechanics, but
 their own name, paint, price and a small speed/handling/wake spread, from
 Standard up to Signature. A skin is what you actually buy and sail, so the
-shop is a ladder of 32 boats rather than 8:
+shop is a ladder of 36 boats rather than 9:
 
-| Boat | Rods | Unlocks |
-| --- | --- | --- |
-| Skiff | 1 | — (casting only) |
-| Cuddy | 2 | — |
-| Trawler | 3 | Trawl net |
-| Mud-Dredger | 4 | Sonar fish-finder |
-| Gillnetter | 6 | Pots & set nets |
-| Paddleboat | 8 | — (the biggest jump in rods) |
-| Seiner | 10 | Launchable tender |
-| Steamboat | 16 | NPC crew |
+| Boat | Rods | Top speed | Unlocks |
+| --- | --- | --- | --- |
+| Skiff | 1 | 14.0 m/s | — (casting only, and free) |
+| Speedboat | 1 | 17.5 m/s | — (the fastest, sharpest hull in the game) |
+| Cuddy | 2 | 12.6 m/s | — |
+| Trawler | 3 | 11.0 m/s | Trawl net |
+| Mud-Dredger | 4 | 10.0 m/s | Sonar fish-finder |
+| Gillnetter | 6 | 10.5 m/s | Pots & set nets |
+| Paddleboat | 8 | 9.5 m/s | — (the biggest jump in rods) |
+| Seiner | 10 | 10.3 m/s | Launchable tender |
+| Steamboat | 16 | 8.7 m/s | NPC crew |
+
+`maxSpeed` is the hull's **true** top speed: drag is derived from it
+(`hullDrag`), so the figure in the catalog is the figure you reach and a
+Signature skin's extra knots are actually there.
+
+Skins are a side-spend, not a grind — the whole fleet runs from **$0.50 to
+about $100**, because the game is the betting. Every hull's default skin wears
+the same livery (charcoal, deep blue, orange, off-white) so the fleet reads as
+one family, and the rest are themed: Clownfish, Whale Shark, Blue Tang, Koi
+and Lionfish through to Patriot, Stealth, Carbon Fibre and Hazard Stripe. The
+paint ramp is a brightness ramp rather than a stencil, so a theme is a palette
+— a clownfish skiff is black/orange/white, not actual stripes.
 
 A hull's four skins share one downloaded model: the converter bakes a
 *neutral* texture that stores where each pixel sits along a four-stop paint
 ramp, and the game turns that back into colour at load time
-([`src/skinner.js`](src/skinner.js)). Wake size is purely cosmetic.
+([`src/skinner.js`](src/skinner.js)). The Speedboat has no modelled GLB — it
+is built procedurally ([`src/hullshapes.js`](src/hullshapes.js)) with each
+part tagged with the paint stop it wears, so it takes every skin the same way.
+Dropping `assets/boats/speedboat.glb` in later takes precedence with no code
+change. Wake size is purely cosmetic.
 
 **Boats never change the odds.** More rods, more speed and sharper handling
 mean more bets per minute; with an RTP below 1.0 that is faster churn, not a
@@ -193,11 +210,12 @@ vendor/addons/          vendored GLTFLoader
 assets/boats/           boat models (.glb) + store portraits (.png)
 src/
   config.js    all tuning knobs: RTP paytable, costs, lures, nets, camera
-  boats.js     the eight-hull catalog: stats, unlocks, rod mounts
+  boats.js     the nine-hull catalog: stats, unlocks, rod mounts
+  hullshapes.js procedural hulls for boats with no modelled GLB
   player.js    cash and the owned/equipped boat (persisted)
   docks.js     shoreline marinas, generated per chunk
   marina.js    the boat store UI
-  skins.js     the 32 purchasable skins: names, paint, prices, stat spread
+  skins.js     the 36 purchasable skins: names, paint, prices, stat spread
   skinner.js   repaints a hull's neutral texture for the skin it is wearing
   tender.js    the Seiner's launchable / autonomous tender
   fishdata.js  the 60 species: values, weights, tiers + visual style data

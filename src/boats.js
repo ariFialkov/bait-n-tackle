@@ -8,6 +8,10 @@
 // (more rods, more speed between spots). With an RTP below 1.0 that means
 // faster churn in both directions, not a better expected return.
 //
+// SPEED: `maxSpeed` is the hull's true top speed in m/s, and drag is derived
+// from it (see hullDrag). Do not hand-author drag — the two have to agree or
+// `maxSpeed` becomes a label that nothing enforces.
+//
 // Each hull is sold as several skins (see skins.js) — same model and same
 // mechanics, but their own name, paint, price and small speed/handling/wake
 // spread. A skin is what the player actually buys and sails.
@@ -24,11 +28,25 @@ export const BOATS = [
       'on a dime and it is yours from the first cast.',
     price: 0,
     rods: 1,
-    maxSpeed: 10.4,
+    maxSpeed: 14.0,
     accel: 11.25,
-    drag: 1.55,
     turn: 4.4,          // heading chase rate — higher is more nimble
     length: 4.6,
+    features: {},
+  },
+  {
+    id: 'speedboat',
+    name: 'Speedboat',
+    tagline: 'The quickest thing on the water.',
+    blurb: 'A stripped-out planing runabout: one rod, two seats and far more ' +
+      'engine than either. Nothing in the fleet gets to a spot faster or ' +
+      'turns harder — and nothing carries less while it does it.',
+    price: 1.5,
+    rods: 1,
+    maxSpeed: 17.5,
+    accel: 14.0,
+    turn: 5.2,
+    length: 5.4,
     features: {},
   },
   {
@@ -38,11 +56,10 @@ export const BOATS = [
     blurb: 'A coastal patrol hull with a little sleeping cuddy up front. ' +
       'Two rod holders and enough power to push through chop — at the cost ' +
       'of the skiff’s darting turns.',
-    price: 260,
+    price: 3,
     rods: 2,
-    maxSpeed: 9.9,
+    maxSpeed: 12.6,
     accel: 9.5,
-    drag: 1.45,
     turn: 3.5,
     length: 6.2,
     features: {},
@@ -54,11 +71,10 @@ export const BOATS = [
     blurb: 'Rigged with booms, winches and a working net. Heavier and slower ' +
       'to turn than the cuddy, but the stern gear means you can finally drag ' +
       'a net instead of only casting.',
-    price: 1400,
+    price: 6,
     rods: 3,
-    maxSpeed: 9.3,
+    maxSpeed: 11.0,
     accel: 8.0,
-    drag: 1.4,
     turn: 2.9,
     length: 8.4,
     features: { trawl: true },
@@ -70,11 +86,10 @@ export const BOATS = [
     blurb: 'A broad-beamed working barge built to churn the shallows. Slow ' +
       'and stubborn in a turn, but the sonar dome reads the water ahead and ' +
       'calls out which bait the locals are taking.',
-    price: 6000,
+    price: 10,
     rods: 4,
-    maxSpeed: 8.6,
+    maxSpeed: 10.0,
     accel: 7.0,
-    drag: 1.35,
     turn: 2.3,
     length: 10.0,
     features: { trawl: true, sonar: true },
@@ -86,11 +101,10 @@ export const BOATS = [
     blurb: 'Big net drums, a powerful screw, and a hull that somehow moves ' +
       'better than the dredger despite the size. Carries pots you can drop ' +
       'anywhere on the river and collect later, loaded or empty.',
-    price: 24000,
+    price: 15,
     rods: 6,
-    maxSpeed: 9.6,
+    maxSpeed: 10.5,
     accel: 7.5,
-    drag: 1.38,
     turn: 2.9,
     length: 12.0,
     features: { trawl: true, sonar: true, pots: true },
@@ -102,11 +116,10 @@ export const BOATS = [
     blurb: 'A river paddlewheeler with a working deck wide enough to fan ' +
       'eight rods across it. No new gear over the gillnetter — just the ' +
       'biggest jump in lines in the water anywhere in the fleet.',
-    price: 90000,
+    price: 21,
     rods: 8,
-    maxSpeed: 8.8,
+    maxSpeed: 9.5,
     accel: 6.5,
-    drag: 1.32,
     turn: 2.2,
     length: 15.0,
     features: { trawl: true, sonar: true, pots: true },
@@ -118,11 +131,10 @@ export const BOATS = [
     blurb: 'An ocean seiner with a cuddy sitting on the aft deck under a ' +
       'crane. Drop the tender to slip into narrow channels yourself, or ' +
       'stake it with bait and send it out fishing on its own.',
-    price: 380000,
+    price: 27,
     rods: 10,
-    maxSpeed: 10.0,
+    maxSpeed: 10.3,
     accel: 7.25,
-    drag: 1.36,
     turn: 2.7,
     length: 19.0,
     features: { trawl: true, sonar: true, pots: true, tender: true },
@@ -135,16 +147,26 @@ export const BOATS = [
     blurb: 'A mobile town on the water. Hire a crew to work all sixteen rods ' +
       'on exactly the terms you do, and strip whole stretches of river ' +
       'without ever touching the wheel.',
-    price: 1500000,
+    price: 36,
     rods: 16,
-    maxSpeed: 8.2,
+    maxSpeed: 8.7,
     accel: 5.75,
-    drag: 1.28,
     turn: 1.8,
     length: 26.0,
     features: { trawl: true, sonar: true, pots: true, crew: true },
   },
 ];
+
+/**
+ * Water drag that makes `maxSpeed` true. The hull integrator adds accel*dt
+ * then multiplies by exp(-drag*dt), which settles at accel/drag — so drag has
+ * to be accel/maxSpeed or the stated top speed is never reached and the cap
+ * never binds. (It used to be hand-authored and every hull topped out ~30%
+ * below its catalog figure, which also made the skins' speed stat inert.)
+ */
+export function hullDrag(accel, maxSpeed) {
+  return Math.max(0.05, accel / Math.max(0.1, maxSpeed));
+}
 
 export const BOAT_BY_ID = Object.fromEntries(BOATS.map((b) => [b.id, b]));
 export const DEFAULT_BOAT = skinKey('skiff', SKINS.skiff[0].id);
@@ -173,6 +195,8 @@ export function resolveBoat(key) {
     rarity: skin.rarity,
     rarityName: skin.rarityName,
     maxSpeed: skin.maxSpeed,
+    // Derived per skin, so a Signature's extra knots are actually reachable.
+    drag: hullDrag(hull.accel, skin.maxSpeed),
     turn: skin.turn,
     wake: skin.wake,
   };

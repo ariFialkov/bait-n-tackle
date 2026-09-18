@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
-import { boatModelURL, rodMounts } from './boats.js';
+import { boatModelURL, rodMounts, hullDrag } from './boats.js';
 import { WakeTrail } from './wake.js';
 import { applySkin } from './skinner.js';
 import { clamp } from './noise.js';
@@ -87,9 +87,9 @@ export class Tender {
       name: 'Tender',
       rods: def.rods,
       length: def.length,
-      maxSpeed: 7.6,
+      maxSpeed: 12.2,
       accel: 9.2,
-      drag: 1.5,
+      drag: hullDrag(9.2, 12.2),
       turn: 4.2,
       features: {},           // no trawl, no pots — it is a runabout
     };

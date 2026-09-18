@@ -75,13 +75,29 @@ export function skinTexture(source, spec) {
 }
 
 /**
- * Apply a skin to a freshly cloned hull. The GLB's own neutral map is the
- * source; if anything about it is not readable yet we leave the hull as-is
- * rather than risk a blank boat.
+ * Apply a skin to a freshly cloned hull.
+ *
+ * Modelled hulls carry the neutral ramp map and get recoloured through the
+ * LUT. Procedural hulls (hullshapes.js) have no texture at all — each of
+ * their meshes is tagged with the paint stop it wears, so they take the same
+ * palette by flat colour. Anything that is neither is left alone rather than
+ * risking a blank boat.
  */
 export function applySkin(root, spec) {
+  const paint = spec.paint || [];
   root.traverse((o) => {
     if (!o.isMesh || !o.material) return;
+
+    const ramp = o.userData?.ramp ?? o.material.userData?.ramp;
+    if (ramp != null && paint[ramp]) {
+      const mat = o.material.clone();
+      mat.color = new THREE.Color(paint[ramp]);
+      mat.userData = { ...o.material.userData, ramp };
+      mat.needsUpdate = true;
+      o.material = mat;
+      return;
+    }
+
     const src = o.material.map && o.material.map.image;
     if (!src || !(src.width || src.naturalWidth)) return;
     const mat = o.material.clone();

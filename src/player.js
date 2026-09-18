@@ -18,13 +18,14 @@ const KEY = 'bnt-save-v1';
  */
 function migrateKey(id) {
   if (typeof id !== 'string' || !id) return null;
-  if (id.includes(':')) {
-    const [hullId, skinId] = id.split(':');
-    const list = SKINS[hullId];
-    return list && list.some((s) => s.id === skinId) ? id : null;
-  }
-  const list = SKINS[id];
-  return list ? `${id}:${list[0].id}` : null;
+  const [hullId, skinId] = id.includes(':') ? id.split(':') : [id, null];
+  const list = SKINS[hullId];
+  if (!list) return null;                       // hull is gone entirely
+  if (skinId && list.some((s) => s.id === skinId)) return id;
+  // The hull still exists but that paint does not (a pre-skin save, or a
+  // retired palette). Keep the boat and put it in the hull's default livery
+  // rather than repossessing something the player paid for.
+  return `${hullId}:${list[0].id}`;
 }
 
 export class Player {

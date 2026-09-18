@@ -10,6 +10,7 @@ import { isNavigable } from './lake.js';
 import { TrawlNet } from './net.js';
 import { BOAT_BY_ID, boatModelURL, resolveBoat, rodMounts } from './boats.js';
 import { applySkin } from './skinner.js';
+import { buildProceduralHull, hasProceduralHull } from './hullshapes.js';
 import { WakeTrail } from './wake.js';
 
 const loader = new GLTFLoader();
@@ -167,13 +168,20 @@ export class Boat {
 
     // --- hull ---
     let hull = null;
-    try {
-      hull = (await loadHull(spec.hullId)).clone(true);
-      applySkin(hull, spec);
-    } catch {
-      hull = null;   // fall through to the procedural hull
+    // Don't even request a model we know does not exist — it would 404 in the
+    // player's console on every boat swap.
+    if (!hasProceduralHull(spec.hullId)) {
+      try {
+        hull = (await loadHull(spec.hullId)).clone(true);
+      } catch {
+        hull = null;   // no model for this hull — build one
+      }
     }
+    // A hull with its own procedural shape (the speedboat) has no GLB to
+    // download; dropping one in later takes precedence with no code change.
+    if (!hull) hull = buildProceduralHull(spec.hullId, spec.length);
     if (!hull) hull = fallbackHull(spec.length);
+    applySkin(hull, spec);
 
     // Measure while the hull is still detached, so the box is in the hull's
     // own space. Box3.setFromObject works in WORLD space: measuring after

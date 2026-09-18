@@ -56,10 +56,9 @@ export const CONFIG = {
   AUTOREEL_POWER: 0.7,
 
   // --- Boat handling ---
-  BOAT_ACCEL: 7.5,
-  BOAT_MAX_SPEED: 6.5,
-  BOAT_DRAG: 1.4,
-  BOAT_TURN_LERP: 3.2,       // heading chase rate (gives the drifty feel)
+  // Speed, acceleration, drag and turn rate are per hull and per skin — see
+  // boats.js and skins.js. Nothing generic lives here any more; the values
+  // that used to did not match any boat and were read by nothing.
   MIN_NAV_DEPTH: 0.45,       // shallower than this blocks the hull
 
   // --- World ---
