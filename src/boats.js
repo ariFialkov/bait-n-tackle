@@ -17,6 +17,7 @@
 // spread. A skin is what the player actually buys and sails.
 
 import { SKINS, hullSkins, skinKey } from './skins.js';
+import { hullYawRate, hullKeelGrip } from './hullphysics.js';
 
 export const BOATS = [
   {
@@ -30,7 +31,8 @@ export const BOATS = [
     rods: 1,
     maxSpeed: 14.0,
     accel: 11.25,
-    turn: 4.4,          // heading chase rate — higher is more nimble
+    turn: 4.4,          // agility rating — hullYawRate turns it into rad/s,
+                        // and a long hull gets far less out of it than this
     length: 4.6,
     features: {},
   },
@@ -199,6 +201,11 @@ export function resolveBoat(key) {
     // Derived per skin, so a Signature's extra knots are actually reachable.
     drag: hullDrag(hull.accel, skin.maxSpeed),
     turn: skin.turn,
+    // How the hull actually answers the helm (hullphysics.js). Both fall off
+    // with length, so the steamboat's 26 metres are felt at the wheel and not
+    // just seen — it swings wide and slowly where the skiff spins on a coin.
+    yawRate: hullYawRate(skin.turn, hull.length),
+    keelGrip: hullKeelGrip(hull.length),
     wake: skin.wake,
   };
 }

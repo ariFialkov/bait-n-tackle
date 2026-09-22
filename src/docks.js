@@ -17,6 +17,7 @@ import { hash2, mulberry32 } from './noise.js';
 const S = CONFIG.SEED;
 export const DOCK_RADIUS = 8;        // how close you must be to trigger
 export const DOCK_HINT_RANGE = 170;  // how far away the HUD points one out
+const PIER_HALF_WIDTH = 1.6;         // planking, plus the bumper buoys
 
 // --- placement -----------------------------------------------------------
 
@@ -70,6 +71,53 @@ export function chunkDocks(cx, cz) {
     }];
   }
   return [];
+}
+
+// --- berthing ------------------------------------------------------------
+
+/** Is there water under every part of a hull lying at (cx,cz) along (dx,dz)? */
+function hullFloats(cx, cz, dx, dz, length, halfBeam) {
+  const rx = dz, rz = -dx;                       // across the hull
+  const need = CONFIG.MIN_NAV_DEPTH + 0.35;
+  for (const along of [-0.5, -0.25, 0, 0.25, 0.5]) {
+    for (const across of [-1, 0, 1]) {
+      const x = cx + dx * length * along + rx * halfBeam * across;
+      const z = cz + dz * length * along + rz * halfBeam * across;
+      if (waterDepth(x, z) < need) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Where a boat should be lying when it is handed over at a marina: alongside
+ * the pier rather than through it, bow to open water, and far enough out that
+ * its whole length floats. Big hulls berth further out than small ones, which
+ * is the point — a seiner taking delivery used to appear on top of the
+ * planking, or half way up the beach.
+ * Returns { x, z, heading }, or null if nothing fits (then leave it be).
+ */
+export function berthFor(dock, halfBeam, length) {
+  const dx = Math.sin(dock.angle), dz = Math.cos(dock.angle);   // toward water
+  const rx = dz, rz = -dx;
+  const heading = dock.angle + Math.PI;          // bow pointing out
+  const beside = PIER_HALF_WIDTH + halfBeam + 0.8;
+  const step = Math.max(1.2, length * 0.14);
+  for (let out = 0; out <= length * 0.8 + 2; out += step) {
+    for (const s of [1, -1]) {
+      const x = dock.headX + dx * out + rx * beside * s;
+      const z = dock.headZ + dz * out + rz * beside * s;
+      if (hullFloats(x, z, dx, dz, length, halfBeam)) return { x, z, heading };
+    }
+  }
+  // Nothing alongside fits — a big hull in a tight cove. Stand it off the end
+  // of the pier instead, as if it had just let go and drifted clear.
+  for (let out = length * 0.6; out <= length * 2.2; out += step) {
+    const x = dock.headX + dx * out;
+    const z = dock.headZ + dz * out;
+    if (hullFloats(x, z, dx, dz, length, halfBeam)) return { x, z, heading };
+  }
+  return null;
 }
 
 // --- meshes --------------------------------------------------------------

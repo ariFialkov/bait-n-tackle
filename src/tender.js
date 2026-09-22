@@ -13,6 +13,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
 import { boatModelURL, rodMounts, hullDrag } from './boats.js';
+import { buildRod, aimRods, updateRods } from './rods.js';
+import { driveHull, wrapAngle, hullYawRate, hullKeelGrip } from './hullphysics.js';
 import { WakeTrail } from './wake.js';
 import { applySkin } from './skinner.js';
 import { clamp } from './noise.js';
@@ -44,7 +46,9 @@ export class Tender {
     this.vel = new THREE.Vector3();
     this.heading = 0;
     this.speed = 0;
+    this.yawVel = 0;
     this.trawling = false;        // tenders never trawl
+    this.group.rotation.order = 'YXZ';
     this.rods = [];
     this.hullBounds = null;
     this.spec = null;
@@ -91,6 +95,8 @@ export class Tender {
       accel: 9.2,
       drag: hullDrag(9.2, 12.2),
       turn: 4.2,
+      yawRate: hullYawRate(4.2, def.length),
+      keelGrip: hullKeelGrip(def.length),
       features: {},           // no trawl, no pots — it is a runabout
     };
     // Already built: just repaint if the mother ship changed skin.
@@ -147,21 +153,13 @@ export class Tender {
       this.hullBounds);
     this.wake.setVisible(this.deployed);
 
-    // A short rod at each mount so the tender reads as a fishing boat.
+    // A short rod at each mount so the tender reads as a fishing boat — the
+    // same rod the mother ship carries, raked out over the water.
     for (const m of rodMounts(this.spec, this.hullBounds)) {
-      const rod = new THREE.Group();
-      const blank = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.01, 0.025, 1.9, 5),
-        new THREE.MeshStandardMaterial({ color: 0x40342c, roughness: 0.6 }));
-      blank.position.y = 0.95;
-      rod.add(blank);
-      const tip = new THREE.Object3D();
-      tip.position.y = 1.9;
-      rod.add(tip);
-      rod.position.set(m.x, m.y, m.z);
-      rod.rotation.set(-0.7, 0, m.side * 0.42);
-      this.group.add(rod);
-      this.rods.push({ group: rod, tip, side: m.side });
+      const r = buildRod(m.side, 0.8);
+      r.rod.position.set(m.x, m.y, m.z);
+      this.group.add(r.rod);
+      this.rods.push({ ...r, group: r.rod });
     }
     this.loaded = true;
   }
@@ -229,10 +227,12 @@ export class Tender {
   }
 
   nudgeHeading(target, amount) {
-    let d = target - this.heading;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    this.heading += d * amount;
+    this.heading = wrapAngle(this.heading + wrapAngle(target - this.heading) * amount);
+  }
+
+  /** Point the tender's rods at their lines, exactly as the mother ship does. */
+  aimRods(aims) {
+    aimRods(this.rods, this.pos, this.heading, aims);
   }
 
   // --- autonomous behaviour ------------------------------------------------
@@ -352,35 +352,20 @@ export class Tender {
       if (this.runDone && this.distanceTo(mother) <= HOME_RADIUS) this.deliver();
     }
 
-    if (Math.hypot(move.x, move.z) > 0.05) {
-      this.vel.x += move.x * s.accel * dt;
-      this.vel.z += move.z * s.accel * dt;
-    }
-    const drag = Math.exp(-s.drag * dt);
-    this.vel.x *= drag; this.vel.z *= drag;
-    const sp = Math.hypot(this.vel.x, this.vel.z);
-    if (sp > s.maxSpeed) { this.vel.x *= s.maxSpeed / sp; this.vel.z *= s.maxSpeed / sp; }
-    this.speed = Math.min(sp, s.maxSpeed);
+    const was = this.heading;
+    driveHull(this, s, dt, move, navigable);
+    const rate = dt > 0 ? wrapAngle(this.heading - was) / dt : 0;
+    this.yawVel += (rate - this.yawVel) * Math.min(1, 5 * dt);
 
-    const nx = this.pos.x + this.vel.x * dt;
-    const nz = this.pos.z + this.vel.z * dt;
-    if (navigable(nx, this.pos.z)) this.pos.x = nx; else this.vel.x *= -0.2;
-    if (navigable(this.pos.x, nz)) this.pos.z = nz; else this.vel.z *= -0.2;
-
-    if (this.speed > 0.25) {
-      const target = Math.atan2(-this.vel.x, -this.vel.z);
-      let d = target - this.heading;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      this.heading += d * Math.min(1, s.turn * dt);
-    }
-
+    updateRods(this.rods, dt);
     this.wake.update(dt, t, this);
 
     const bob = this.lake.waveHeight(this.pos.x, this.pos.z, t);
+    const heel = Math.max(-0.26, Math.min(0.26,
+      this.yawVel * (this.speed / s.maxSpeed) * 0.42));
     this.group.position.set(this.pos.x, bob + 0.02, this.pos.z);
     this.group.rotation.set(
-      Math.sin(t * 1.1) * 0.03, this.heading, Math.sin(t * 1.4) * 0.035);
+      Math.sin(t * 1.1) * 0.03, this.heading, Math.sin(t * 1.4) * 0.035 + heel);
 
     // Autonomous line FX
     const fx = this.lineFx;

@@ -131,15 +131,21 @@ function buildSpeedboat(length) {
   }
 
   // --- outboard, tucked against the transom ---
+  // Hung off its own pivot at the transom clamp and tagged as a moving part,
+  // so boat.js steers and tilts it exactly as it does a carved-out one.
+  const motor = new THREE.Group();
+  motor.position.set(0, S * 1.6, L * 0.525);
+  motor.userData.part = { kind: 'outboard' };
+  g.add(motor);
   const cowl = meshOf(new THREE.BoxGeometry(B * 0.5, S * 1.1, L * 0.07), RAMP.accent);
-  cowl.position.set(0, S * 1.05, L * 0.525);
-  g.add(cowl);
+  cowl.position.set(0, -S * 0.55, 0);
+  motor.add(cowl);
   const leg = meshOf(new THREE.BoxGeometry(B * 0.16, S * 1.5, L * 0.035), RAMP.accent);
-  leg.position.set(0, -S * 0.05, L * 0.528);
-  g.add(leg);
+  leg.position.set(0, -S * 1.65, L * 0.003);
+  motor.add(leg);
   const skeg = meshOf(new THREE.BoxGeometry(B * 0.08, S * 0.45, L * 0.1), RAMP.accent);
-  skeg.position.set(0, -S * 0.78, L * 0.522);
-  g.add(skeg);
+  skeg.position.set(0, -S * 2.38, -L * 0.003);
+  motor.add(skeg);
 
   return g;
 }

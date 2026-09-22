@@ -13,7 +13,7 @@ import { HUD } from './hud.js';
 import { Dex } from './dex.js';
 import { Marina } from './marina.js';
 import { Player } from './player.js';
-import { Docks, DOCK_HINT_RANGE } from './docks.js';
+import { Docks, DOCK_HINT_RANGE, berthFor } from './docks.js';
 import { Tender } from './tender.js';
 import { SPECIES } from './fishdata.js';
 
@@ -75,7 +75,7 @@ let helm = boat;
 const atHelmOfTender = () => helm === tender;
 
 // --- Boat swapping ---
-async function equipBoat(key) {
+async function equipBoat(key, fromMarina = false) {
   if (player.boatId !== key && player.has(key)) player.equip(key);
   // Any tender belongs to the old hull — bring it home first.
   if (tender.deployed) { tender.stow(); }
@@ -87,7 +87,22 @@ async function equipBoat(key) {
   rig.setBoatLength(boat.spec.length);
   if (!boat.spec.features.trawl && boat.trawling) fishing.stopTrawl();
   if (boat.spec.tender) await tender.prepare(boat.spec.tender, boat.spec);
+  if (fromMarina) berthAtMarina();
   refreshShipPanel();
+}
+
+/**
+ * A boat handed over at a marina starts alongside the pier, not wherever the
+ * last hull happened to be floating: a 26m steamboat taking the place of a
+ * skiff would otherwise be born sitting across the planking or up the beach.
+ * Away from a marina nothing moves.
+ */
+function berthAtMarina() {
+  const near = docks.nearest(boat.pos.x, boat.pos.z);
+  if (!near.dock || near.dist > 24) return;
+  const berth = berthFor(near.dock,
+    boat.hullBounds?.halfBeam ?? boat.spec.length * 0.16, boat.spec.length);
+  if (berth) boat.placeAt(berth.x, berth.z, berth.heading);
 }
 
 function refreshShipPanel() {
@@ -105,7 +120,7 @@ function refreshShipPanel() {
 boat.onBoatChanged = (spec) => hud.setBoat(spec);
 equipBoat(player.boatId);
 
-const marina = new Marina(player, (key) => { equipBoat(key); });
+const marina = new Marina(player, (key) => { equipBoat(key, true); });
 
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);

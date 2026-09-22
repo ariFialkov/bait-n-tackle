@@ -31,13 +31,21 @@ export const CONFIG = {
   // --- Casting / reeling ---
   CAST_MIN_DIST: 7,
   CAST_MAX_DIST: 27,
-  CAST_MAX_SPEED: 0.9,       // boat must be (nearly) stationary to cast
+  // You may cast at any speed. Standing the boat still first was a rule with
+  // nothing behind it — it never changed a bet, only made you wait.
   BITE_MIN_S: 2.2,
   BITE_MAX_S: 9.5,
   BITE_WINDOW_S: 2.2,        // reaction window to hook once a bite starts
   CAST_TIMEOUT_S: 45,        // auto-retrieve after this long
-  REEL_SWIPES: 2.6,          // full-power swipes needed to reel a max cast
-  REEL_SPEED: 8.5,           // m/s the bobber travels while being reeled
+  // The reel is a flywheel: a swipe spins it up fast and it runs down slowly,
+  // so cranking feels like a gyroscope rather than a series of tugs.
+  REEL_SWIPES: 1.7,          // full-power swipes needed to reel a max cast
+  REEL_ASSIST_SWIPES: 2.6,   // the same for a crew/auto-reel crank
+  REEL_SPEED: 13.0,          // m/s the bobber travels while being reeled
+  REEL_BASE_SPEED: 3.0,      // m/s the drum is already turning at on contact
+  REEL_GAIN: 3.0,            // m/s of drum speed per metre still owed
+  REEL_SPINUP: 16,           // how sharply the drum takes up a swipe, per s
+  REEL_COAST: 1.7,           // how slowly it runs down again, per s
   // A hooked fish is a settled bet and can never be lost (see fishing.js).
   // Ignore it and it surges, tires and works its own way in — slowly.
   HOOK_TIRE_SPEED: 0.5,      // m/s a hooked fish gives up on its own

@@ -8,10 +8,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG } from './config.js';
 import { isNavigable } from './lake.js';
 import { TrawlNet } from './net.js';
-import { BOAT_BY_ID, boatModelURL, resolveBoat, rodMounts } from './boats.js';
+import { boatModelURL, resolveBoat, rodMounts } from './boats.js';
 import { applySkin } from './skinner.js';
 import { buildProceduralHull } from './hullshapes.js';
 import { WakeTrail } from './wake.js';
+import { driveHull, wrapAngle } from './hullphysics.js';
+import { buildRod, aimRods, updateRods } from './rods.js';
 
 const loader = new GLTFLoader();
 const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
@@ -68,38 +70,30 @@ function fallbackHull(length) {
   return g;
 }
 
-// --- A single fishing rod (shared geometry across mounts) ---
-const ROD_GEO = {
-  blank: new THREE.CylinderGeometry(0.012, 0.03, 2.3, 5),
-  grip: new THREE.CylinderGeometry(0.035, 0.035, 0.4, 6),
-  reel: new THREE.CylinderGeometry(0.07, 0.07, 0.05, 9),
-};
-const ROD_MAT = {
-  dark: new THREE.MeshStandardMaterial({ color: 0x40342c, roughness: 0.6 }),
-  grip: new THREE.MeshStandardMaterial({ color: 0xc94f30, roughness: 0.6 }),
-  chrome: new THREE.MeshStandardMaterial({ color: 0xb8c0c4, roughness: 0.3, metalness: 0.7 }),
-};
+// --- Working machinery -----------------------------------------------------
+//
+// The converter carves the moving parts out of the hull model and exports
+// each one as its own node, with the geometry shifted so the node sits on the
+// part's pivot (an outboard's transom clamp, a paddlewheel's shaft). Anything
+// tagged this way is collected here and driven from the hull's own motion.
+// A hull with no tagged parts simply has none of this.
+const OUTBOARD_STEER = 0.52;     // radians the leg swings hard over
+const OUTBOARD_TILT = 0.62;      // radians it lifts clear when idling
 
-function buildRod(side, scale) {
-  const rod = new THREE.Group();
-  const blank = new THREE.Mesh(ROD_GEO.blank, ROD_MAT.dark);
-  blank.position.y = 1.15;
-  blank.castShadow = true;
-  rod.add(blank);
-  const grip = new THREE.Mesh(ROD_GEO.grip, ROD_MAT.grip);
-  grip.position.y = 0.2;
-  rod.add(grip);
-  const reel = new THREE.Mesh(ROD_GEO.reel, ROD_MAT.chrome);
-  reel.rotation.z = Math.PI / 2;
-  reel.position.set(0, 0.5, 0.07);
-  rod.add(reel);
-  const tip = new THREE.Object3D();
-  tip.position.y = 2.3;
-  rod.add(tip);
-  // Rake outboard and slightly aft so the lines fan out.
-  rod.rotation.set(-0.7, 0, side * 0.42);
-  rod.scale.setScalar(scale);
-  return { rod, tip };
+function collectParts(root) {
+  const wheels = [];
+  const outboards = [];
+  root.traverse((o) => {
+    const p = o.userData && o.userData.part;
+    if (!p) return;
+    o.rotation.order = 'YXZ';
+    if (p.kind === 'wheel') {
+      wheels.push({ node: o, radius: Math.max(0.2, p.radius || 1), arm: p.arm || 0, angle: 0 });
+    } else if (p.kind === 'outboard') {
+      outboards.push({ node: o, steer: 0, tilt: 0 });
+    }
+  });
+  return { wheels, outboards };
 }
 
 export class Boat {
@@ -124,7 +118,11 @@ export class Boat {
     this.vel = new THREE.Vector3();
     this.heading = 0;
     this.speed = 0;
+    this.yawVel = 0;             // smoothed, for heel and for the machinery
+    this.throttle = 0;           // smoothed, for trim and for the outboard
     this.trawling = false;
+    this.parts = { wheels: [], outboards: [] };
+    this.group.rotation.order = 'YXZ';   // yaw, then pitch, then roll
 
     this.net = new TrawlNet(scene);
     this._anchorL = new THREE.Vector3();
@@ -188,6 +186,7 @@ export class Boat {
 
     this.hullHolder.clear();
     this.hullHolder.add(hull);
+    this.parts = collectParts(hull);
 
     this.hullBounds = {
       halfBeam: (box.max.x - box.min.x) / 2,
@@ -202,10 +201,10 @@ export class Boat {
     this.rods = [];
     const rodScale = Math.min(1.9, Math.max(0.85, spec.length / 6));
     for (const m of rodMounts(spec, this.hullBounds)) {
-      const { rod, tip } = buildRod(m.side, rodScale);
-      rod.position.set(m.x, m.y, m.z);
-      this.rodHolder.add(rod);
-      this.rods.push({ group: rod, tip, side: m.side, pos: new THREE.Vector3(m.x, m.y, m.z) });
+      const r = buildRod(m.side, rodScale);
+      r.rod.position.set(m.x, m.y, m.z);
+      this.rodHolder.add(r.rod);
+      this.rods.push({ ...r, group: r.rod, pos: new THREE.Vector3(m.x, m.y, m.z) });
     }
 
     // --- trawl gear placement ---
@@ -249,10 +248,20 @@ export class Boat {
 
   /** Ease the nose toward a heading (used when casting). */
   nudgeHeading(target, amount) {
-    let d = target - this.heading;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    this.heading += d * amount;
+    this.heading = wrapAngle(this.heading + wrapAngle(target - this.heading) * amount);
+  }
+
+  /** Put the boat somewhere, dead in the water — used when berthing it. */
+  placeAt(x, z, heading) {
+    this.pos.set(x, 0, z);
+    this.vel.set(0, 0, 0);
+    this.speed = 0;
+    this.yawVel = 0;
+    this.throttle = 0;
+    this.heading = heading;
+    this.group.position.set(x, 0.02, z);
+    this.group.rotation.set(0, heading, 0);
+    this.wake.reset();
   }
 
   /** World position of a rod tip, written into `out`. */
@@ -262,43 +271,62 @@ export class Boat {
     return rod.tip.getWorldPosition(out);
   }
 
+  /** Point the working rods at their own lines (see rods.js). */
+  aimRods(aims) {
+    aimRods(this.rods, this.pos, this.heading, aims);
+  }
+
+  /** Drive the carved-out machinery from the hull's own motion. */
+  updateMachinery(dt) {
+    for (const w of this.parts.wheels) {
+      // Surface speed at this wheel: the hull's way through the water plus
+      // whatever the turn adds on its side of the centreline. Put the helm
+      // over far enough and the inner wheel backs down while the outer
+      // drives on, which is how a paddler turns in the first place.
+      w.angle = (w.angle + ((this.speed + this.yawVel * w.arm) / w.radius) * dt) % (Math.PI * 2);
+      w.node.rotation.x = -w.angle;
+    }
+    if (!this.parts.outboards.length) return;
+    const s = this.spec;
+    // The leg follows the wheel, and lifts clear of the water at idle.
+    const steer = Math.max(-1, Math.min(1, this.yawVel / Math.max(0.2, s.yawRate)));
+    const idle = this.speed < 0.7 && this.throttle < 0.05 ? 1 : 0;
+    for (const o of this.parts.outboards) {
+      o.steer += (steer * OUTBOARD_STEER - o.steer) * Math.min(1, 6 * dt);
+      o.tilt += (idle * OUTBOARD_TILT - o.tilt) * Math.min(1, 1.8 * dt);
+      o.node.rotation.y = o.steer;
+      o.node.rotation.x = -o.tilt;
+    }
+  }
+
   update(dt, inputVec, t) {
     const s = this.spec;
-    const mag = Math.hypot(inputVec.x, inputVec.z);
-    const maxSpeed = s.maxSpeed * (this.trawling ? 0.55 : 1);
+    const was = this.heading;
+    driveHull(this, s, dt, inputVec, isNavigable);
 
-    if (mag > 0.05) {
-      this.vel.x += inputVec.x * s.accel * dt;
-      this.vel.z += inputVec.z * s.accel * dt;
-    }
-    const drag = Math.exp(-s.drag * dt);
-    this.vel.x *= drag; this.vel.z *= drag;
-    const sp = Math.hypot(this.vel.x, this.vel.z);
-    if (sp > maxSpeed) { this.vel.x *= maxSpeed / sp; this.vel.z *= maxSpeed / sp; }
-    this.speed = Math.min(sp, maxSpeed);
-
-    const nx = this.pos.x + this.vel.x * dt;
-    const nz = this.pos.z + this.vel.z * dt;
-    if (isNavigable(nx, this.pos.z)) this.pos.x = nx; else this.vel.x *= -0.15;
-    if (isNavigable(this.pos.x, nz)) this.pos.z = nz; else this.vel.z *= -0.15;
-
-    if (this.speed > 0.25) {
-      const target = Math.atan2(-this.vel.x, -this.vel.z);
-      let d = target - this.heading;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      this.heading += d * Math.min(1, s.turn * dt);
-    }
+    // Smoothed rate of turn and throttle: the machinery, the heel and the
+    // trim all read these, and raw per-frame values are far too twitchy.
+    const rate = dt > 0 ? wrapAngle(this.heading - was) / dt : 0;
+    this.yawVel += (rate - this.yawVel) * Math.min(1, 5 * dt);
+    const want = Math.min(1, Math.hypot(inputVec.x, inputVec.z));
+    this.throttle += (want - this.throttle) * Math.min(1, 4 * dt);
 
     const bobY = this.lake.waveHeight(this.pos.x, this.pos.z, t);
     const scaleBob = Math.min(1, 6 / s.length);   // big hulls ride flatter
+    // Heel into the turn and lift the bow under power — both scaled by how
+    // fast the hull is actually moving, so a boat at rest just sits there.
+    const drive = this.speed / Math.max(1, s.maxSpeed);
+    const heel = Math.max(-0.3, Math.min(0.3, this.yawVel * drive * 0.42));
+    const trim = this.throttle * drive * 0.09 * scaleBob;
     this.group.position.set(this.pos.x, bobY * scaleBob + 0.02, this.pos.z);
     this.group.rotation.set(
-      (Math.sin(t * 0.9) * 0.02 + this.speed * 0.006) * scaleBob,
+      Math.sin(t * 0.9) * 0.02 * scaleBob + trim,
       this.heading,
-      Math.sin(t * 1.3) * 0.025 * scaleBob,
+      Math.sin(t * 1.3) * 0.025 * scaleBob + heel * Math.min(1, 9 / s.length),
     );
 
+    updateRods(this.rods, dt);
+    this.updateMachinery(dt);
     this.wake.update(dt, t, this);
     if (this.trawling) {
       this.towPoints();

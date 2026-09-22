@@ -8,6 +8,7 @@
 
 import { fleetCatalog, boatPortraitURL, featureList, BOATS } from './boats.js';
 import { hullSkins } from './skins.js';
+import { hullYawRate } from './hullphysics.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -36,10 +37,13 @@ export class Marina {
     this.open = false;
 
     // Stat ranges across every skin in the game, so the pips mean something.
-    const every = BOATS.flatMap((h) => hullSkins(h));
+    // Handling is the hull's REAL yaw rate, not its agility rating: a long
+    // hull gets far less out of the same rating, and the shop has to say so
+    // or the pips promise a turn the boat cannot make.
+    const every = BOATS.flatMap((h) => hullSkins(h).map((s) => ({ ...s, yaw: hullYawRate(s.turn, h.length) })));
     this.range = {
       speed: [Math.min(...every.map((s) => s.maxSpeed)), Math.max(...every.map((s) => s.maxSpeed))],
-      turn: [Math.min(...every.map((s) => s.turn)), Math.max(...every.map((s) => s.turn))],
+      turn: [Math.min(...every.map((s) => s.yaw)), Math.max(...every.map((s) => s.yaw))],
       wake: [Math.min(...every.map((s) => s.wake)), Math.max(...every.map((s) => s.wake))],
     };
 
@@ -109,7 +113,7 @@ export class Marina {
       `<div class="boat-name">${skin.name}</div>` +
       `<div class="boat-stats">` +
         `<div class="bs"><span>Speed</span><em>${pips(skin.maxSpeed, this.range.speed[1], this.range.speed[0] - 1)}</em></div>` +
-        `<div class="bs"><span>Handling</span><em>${pips(skin.turn, this.range.turn[1], this.range.turn[0] - 0.4)}</em></div>` +
+        `<div class="bs"><span>Handling</span><em>${pips(hullYawRate(skin.turn, hull.length), this.range.turn[1], this.range.turn[0] - 0.2)}</em></div>` +
         `<div class="bs"><span>Wake</span><em>${pips(skin.wake, this.range.wake[1], this.range.wake[0] - 0.1)}</em></div>` +
       `</div>`;
 

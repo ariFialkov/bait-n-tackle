@@ -153,6 +153,7 @@ export class Fishing {
     scene.add(this.potGroup);
 
     this._v = new THREE.Vector3();
+    this._aims = [];
     this.syncRods();
   }
 
@@ -254,7 +255,6 @@ export class Fishing {
   cast(s, quiet = false) {
     const say = (msg) => { if (!quiet) this.hud.hint(msg); };
     if (this.boat.trawling) { say('Stow the net to cast'); return false; }
-    if (this.boat.speed >= CONFIG.CAST_MAX_SPEED) { say('Stop the boat to cast'); return false; }
     const line = this.lines.find((l) => !l.busy);
     if (!line) { say('Every rod is already out'); return false; }
     if (this.player.balance < this.lure.cost) {
@@ -289,8 +289,10 @@ export class Fishing {
     line.show(true);
     line.bobber.rotation.set(0, 0, 0);
 
-    // Only swing the bow for boats nimble enough to bother.
-    if (this.spec.rods <= 2) {
+    // Swing the bow toward the cast — but only on a nimble boat, and only
+    // when it is near enough to a standstill that the helm is not being
+    // steered against.
+    if (this.spec.rods <= 2 && this.boat.speed < 1.2) {
       this.boat.nudgeHeading(Math.atan2(-dir.x, -dir.z), 0.3);
     }
     return true;
@@ -302,8 +304,12 @@ export class Fishing {
       // presentation — the fish is already bought and paid for.
       if (!this.setHook(line, quiet)) return;
     }
-    const add = (line.distTotal / CONFIG.REEL_SWIPES) * (0.7 + 0.6 * power);
-    line.pendingPull += add;
+    // A hand on the crank moves far more line than a deckhand's steady
+    // cranking does — `quiet` is exactly the crew and the auto-reel, and
+    // holding them to their own figure keeps the pace of an assisted rod
+    // where it was while a swipe gets its weight back.
+    const swipes = quiet ? CONFIG.REEL_ASSIST_SWIPES : CONFIG.REEL_SWIPES;
+    line.pendingPull += (line.distTotal / swipes) * (0.85 + 0.5 * power);
   }
 
   /**
@@ -630,10 +636,13 @@ export class Fishing {
     let lineOut = toRod.length();
     toRod.normalize();
 
+    // The drum takes up a swipe almost at once and runs down slowly, so line
+    // keeps coming after the crank stops instead of stalling with it.
     const targetVel = line.pendingPull > 0.02
-      ? Math.min(CONFIG.REEL_SPEED, 1.5 + line.pendingPull * 2.2)
+      ? Math.min(CONFIG.REEL_SPEED, CONFIG.REEL_BASE_SPEED + line.pendingPull * CONFIG.REEL_GAIN)
       : 0;
-    line.reelVel += (targetVel - line.reelVel) * Math.min(1, 5.5 * dt);
+    const spin = targetVel > line.reelVel ? CONFIG.REEL_SPINUP : CONFIG.REEL_COAST;
+    line.reelVel += (targetVel - line.reelVel) * Math.min(1, spin * dt);
     if (line.reelVel > 0.02 && lineOut > 0.01) {
       const step = Math.min(line.reelVel * dt, lineOut);
       line.pos.addScaledVector(toRod, step);
@@ -750,11 +759,26 @@ export class Fishing {
     }
   }
 
+  /** Point each working rod at its own line, loaded up by what is on it. */
+  aimRods() {
+    if (!this.boat.aimRods) return;
+    this._aims.length = 0;
+    for (const l of this.lines) {
+      if (!l.busy) continue;
+      this._aims.push({
+        index: l.rodIndex, x: l.pos.x, z: l.pos.z,
+        load: l.hooked ? 1 : (l.biting ? 0.6 : 0.2),
+      });
+    }
+    this.boat.aimRods(this._aims);
+  }
+
   update(dt, t) {
     this.updateTrawl(dt);
     this.updateAutoReel(dt);
     this.updateCrew(dt);
     this.updatePots(dt, t);
     for (const l of this.lines) this.updateLine(l, dt, t);
+    this.aimRods();
   }
 }
