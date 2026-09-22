@@ -1,17 +1,23 @@
 // Skin painting at runtime.
 //
-// The converter bakes a *neutral* texture into each hull's GLB: instead of a
-// colour, every pixel stores where it sits along the four-stop paint ramp
-// (0 = accent, 255 = trim), soft band blending already applied. That means
-// one model can wear any palette — a hull's four skins cost one download
-// between them rather than four.
+// The converter bakes NEUTRAL maps for each hull: instead of a colour, every
+// pixel stores where it sits along the four-stop paint ramp (0 = first stop,
+// 255 = last). One model can therefore wear any palette — a hull's skins cost
+// one download between them rather than one each.
 //
-// Here we turn that ramp coordinate back into colour with a 256-entry lookup
+// There are two neutral maps per hull, one per paint style:
+//   clean — embedded in the GLB. Labels come from the geometry (hull, deck,
+//           superstructure, fittings), so every component is one flat colour.
+//   camo  — a sidecar <hull>-camo.png. Four soft bands following the model's
+//           own shading; busy and patchy, for the themed high tiers.
+// Here we turn a ramp coordinate back into colour with a 256-entry lookup
 // built from the skin's paint, and cache the result per skin.
 
 import * as THREE from 'three';
+import { boatCamoURL } from './boats.js';
 
 const cache = new Map();          // `${hullId}:${skinId}` -> CanvasTexture
+const camoSources = new Map();    // hullId -> Promise<HTMLImageElement|null>
 
 function hexToRGB(hex) {
   const c = new THREE.Color(hex);
@@ -74,17 +80,35 @@ export function skinTexture(source, spec) {
   return tex;
 }
 
+/** The hull's camo neutral map, fetched once. Resolves null if it is missing. */
+function camoSource(hullId) {
+  if (!camoSources.has(hullId)) {
+    camoSources.set(hullId, new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = boatCamoURL(hullId);
+    }));
+  }
+  return camoSources.get(hullId);
+}
+
 /**
- * Apply a skin to a freshly cloned hull.
+ * Apply a skin to a freshly cloned hull. Async because a camo skin may need
+ * its sidecar map fetched; clean skins resolve immediately.
  *
- * Modelled hulls carry the neutral ramp map and get recoloured through the
- * LUT. Procedural hulls (hullshapes.js) have no texture at all — each of
- * their meshes is tagged with the paint stop it wears, so they take the same
- * palette by flat colour. Anything that is neither is left alone rather than
- * risking a blank boat.
+ * Modelled hulls carry a neutral map and get recoloured through the LUT.
+ * Procedural hulls (hullshapes.js) have no texture at all — each of their
+ * meshes is tagged with the paint stop it wears, so they take the same
+ * palette by flat colour. Anything that is neither is left alone rather
+ * than risking a blank boat.
  */
-export function applySkin(root, spec) {
+export async function applySkin(root, spec) {
   const paint = spec.paint || [];
+  // A camo skin swaps the GLB's clean map for the sidecar. If the sidecar is
+  // missing it falls back to the clean map — a flat boat beats a blank one.
+  const camo = spec.style === 'camo' ? await camoSource(spec.hullId) : null;
+
   root.traverse((o) => {
     if (!o.isMesh || !o.material) return;
 
@@ -98,7 +122,7 @@ export function applySkin(root, spec) {
       return;
     }
 
-    const src = o.material.map && o.material.map.image;
+    const src = camo || (o.material.map && o.material.map.image);
     if (!src || !(src.width || src.naturalWidth)) return;
     const mat = o.material.clone();
     mat.map = skinTexture(src, spec);

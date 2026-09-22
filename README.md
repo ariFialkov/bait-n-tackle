@@ -148,21 +148,32 @@ shop is a ladder of 36 boats rather than 9:
 Signature skin's extra knots are actually there.
 
 Skins are a side-spend, not a grind — the whole fleet runs from **$0.50 to
-about $100**, because the game is the betting. Every hull's default skin wears
-the same livery (charcoal, deep blue, orange, off-white) so the fleet reads as
-one family, and the rest are themed: Clownfish, Whale Shark, Blue Tang, Koi
-and Lionfish through to Patriot, Stealth, Carbon Fibre and Hazard Stripe. The
-paint ramp is a brightness ramp rather than a stencil, so a theme is a palette
-— a clownfish skiff is black/orange/white, not actual stripes.
+about $100**, because the game is the betting. Six per hull, in two paint
+styles:
 
-A hull's four skins share one downloaded model: the converter bakes a
-*neutral* texture that stores where each pixel sits along a four-stop paint
-ramp, and the game turns that back into colour at load time
-([`src/skinner.js`](src/skinner.js)). The Speedboat has no modelled GLB — it
-is built procedurally ([`src/hullshapes.js`](src/hullshapes.js)) with each
-part tagged with the paint stop it wears, so it takes every skin the same way.
-Dropping `assets/boats/speedboat.glb` in later takes precedence with no code
-change. Wake size is purely cosmetic.
+- **Clean** (Standard and Custom tiers) — every component of the boat is one
+  flat colour with a hard edge: a coloured hull, a deck, a cabin, dark
+  fittings. Every hull's default *Classic* wears the same livery (charcoal,
+  deep blue, orange, off-white) so the fleet reads as one family, and two
+  simple colourways sit beside it.
+- **Camo** (Premium and Signature tiers) — four soft bands following the
+  model's own shading, busy and patchy: Clownfish, Whale Shark, Blue Tang,
+  Koi and Lionfish through to Patriot, Stealth, Carbon Fibre and Hazard
+  Stripe. The ramp is a brightness ramp rather than a stencil, so a theme is
+  a palette — a clownfish skiff is black/orange/white, not actual stripes.
+
+A hull's six skins share one downloaded model. The converter bakes two
+*neutral* maps per hull, each storing where a pixel sits along a four-stop
+paint ramp rather than a colour, and the game turns that back into paint at
+load time ([`src/skinner.js`](src/skinner.js)). The clean map is embedded in
+the GLB and its labels come from the **geometry** — each triangle is classed
+as hull, deck, superstructure or fitting from its height and the way it
+faces, then painted straight into its UV footprint — because the source
+atlases are mosaics of thousands of shaded islands and nothing derived from
+their brightness could ever come out solid. The camo map is that brightness
+bake, shipped as a `<hull>-camo.png` sidecar and fetched only when a camo
+skin is worn. A hull with no model falls back to a procedural shape
+([`src/hullshapes.js`](src/hullshapes.js)). Wake size is purely cosmetic.
 
 **Boats never change the odds.** More rods, more speed and sharper handling
 mean more bets per minute; with an RTP below 1.0 that is faster churn, not a
@@ -215,7 +226,7 @@ src/
   player.js    cash and the owned/equipped boat (persisted)
   docks.js     shoreline marinas, generated per chunk
   marina.js    the boat store UI
-  skins.js     the 36 purchasable skins: names, paint, prices, stat spread
+  skins.js     the 54 purchasable skins: names, paint, style, prices, spread
   skinner.js   repaints a hull's neutral texture for the skin it is wearing
   tender.js    the Seiner's launchable / autonomous tender
   fishdata.js  the 60 species: values, weights, tiers + visual style data

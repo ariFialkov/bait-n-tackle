@@ -191,6 +191,7 @@ export function resolveBoat(key) {
     name: `${skin.name} ${hull.name}`,
     shortName: skin.name,
     paint: skin.paint,
+    style: skin.style,
     price: skin.price,
     rarity: skin.rarity,
     rarityName: skin.rarityName,
@@ -208,6 +209,7 @@ export function fleetCatalog() {
 }
 
 export function boatModelURL(hullId) { return `./assets/boats/${hullId}.glb`; }
+export function boatCamoURL(hullId) { return `./assets/boats/${hullId}-camo.png`; }
 export function boatPortraitURL(hullId, skinId) {
   return `./assets/boats/${hullId}-${skinId}.png`;
 }

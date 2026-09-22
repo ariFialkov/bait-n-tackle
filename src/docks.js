@@ -22,10 +22,12 @@ export const DOCK_HINT_RANGE = 170;  // how far away the HUD points one out
 
 /** Deterministic docks for a chunk: [] or a single { x, z, angle }. */
 export function chunkDocks(cx, cz) {
-  // Roughly one marina per five chunks, before shoreline filtering. Sparser
-  // than when markets shared the shoreline, since a marina is now somewhere
-  // you choose to go rather than somewhere you are sent.
-  if (hash2(cx, cz, S + 401) > 0.22) return [];
+  // The outpost gate and the placement rolls are unchanged from when fish
+  // markets shared the shoreline, so every marina that exists today stands
+  // exactly where it always did. Chunks that used to roll a market get
+  // nothing at all, and one in five of the surviving marinas is culled on
+  // top of that.
+  if (hash2(cx, cz, S + 401) > 0.36) return [];
   const rng = mulberry32((hash2(cx, cz, S + 409) * 1e9) | 0);
   const size = CONFIG.CHUNK_SIZE;
   const ox = cx * size, oz = cz * size;
@@ -52,6 +54,12 @@ export function chunkDocks(cx, cz) {
     if (waterDepth(x + dx * (pierLen + 6), z + dz * (pierLen + 6)) < 1.0) continue;
     // And make sure there is real land behind the shack.
     if (terrainHeight(x - dx * 5, z - dz * 5) < 1.0) continue;
+
+    // Same draw, same position in the sequence, as the old market/marina
+    // split — so the marinas that survive are the ones that were already
+    // marinas. The old markets are simply gone.
+    if (rng() < 0.62) return [];
+    if (rng() < 0.20) return [];      // and thin the rest by a fifth
 
     return [{
       x, z,

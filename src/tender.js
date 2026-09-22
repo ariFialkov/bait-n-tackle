@@ -99,8 +99,9 @@ export class Tender {
         this.paintedFor = motherSpec.skinId;
         for (const child of this.group.children) {
           if (child.isMesh || child.isGroup) {
-            applySkin(child, {
-              hullId: `tender-${def.model}`, skinId: motherSpec.skinId, paint: motherSpec.paint,
+            await applySkin(child, {
+              hullId: def.model, skinId: `tender-${motherSpec.skinId}`,
+              paint: motherSpec.paint, style: motherSpec.style,
             });
           }
         }
@@ -120,8 +121,10 @@ export class Tender {
     }
     // Paint the tender to match its mother ship, so they read as a set.
     if (motherSpec && motherSpec.paint) {
-      applySkin(hull, {
-        hullId: `tender-${def.model}`, skinId: motherSpec.skinId, paint: motherSpec.paint,
+      // Keyed on the tender's own hull so a camo skin finds its sidecar.
+      await applySkin(hull, {
+        hullId: def.model, skinId: `tender-${motherSpec.skinId}`,
+        paint: motherSpec.paint, style: motherSpec.style,
       });
     }
     const box = new THREE.Box3().setFromObject(hull);
