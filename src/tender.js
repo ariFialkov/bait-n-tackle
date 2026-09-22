@@ -14,7 +14,7 @@ import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
 import { boatModelURL, rodMounts, hullDrag } from './boats.js';
 import { buildRod, aimRods, updateRods } from './rods.js';
-import { driveHull, wrapAngle, hullYawRate, hullKeelGrip } from './hullphysics.js';
+import { driveHull, wrapAngle, hullYawRate } from './hullphysics.js';
 import { WakeTrail } from './wake.js';
 import { applySkin } from './skinner.js';
 import { clamp } from './noise.js';
@@ -96,7 +96,6 @@ export class Tender {
       drag: hullDrag(9.2, 12.2),
       turn: 4.2,
       yawRate: hullYawRate(4.2, def.length),
-      keelGrip: hullKeelGrip(def.length),
       features: {},           // no trawl, no pots — it is a runabout
     };
     // Already built: just repaint if the mother ship changed skin.

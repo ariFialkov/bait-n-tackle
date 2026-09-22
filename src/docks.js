@@ -75,26 +75,48 @@ export function chunkDocks(cx, cz) {
 
 // --- berthing ------------------------------------------------------------
 
-/** Is there water under every part of a hull lying at (cx,cz) along (dx,dz)? */
-function hullFloats(cx, cz, dx, dz, length, halfBeam) {
+/** How much water a hull of this size wants under it to look afloat. */
+function hullDraft(length) { return 0.5 + length * 0.045; }
+
+/**
+ * Is a hull lying at (cx,cz) along (dx,dz) properly afloat? Every point of
+ * the footprint needs its draft, and a margin all round it — scaled to the
+ * boat — needs to be navigable too, so a big hull is never left kissing the
+ * beach with one quarter.
+ */
+function hullClearance(cx, cz, dx, dz, length, halfBeam) {
   const rx = dz, rz = -dx;                       // across the hull
-  const need = CONFIG.MIN_NAV_DEPTH + 0.35;
-  for (const along of [-0.5, -0.25, 0, 0.25, 0.5]) {
+  const need = CONFIG.MIN_NAV_DEPTH + hullDraft(length);
+  const margin = 1.2 + length * 0.05;
+  const ringL = (length / 2 + margin) / (length / 2);
+  const ringB = (halfBeam + margin) / halfBeam;
+  let worst = Infinity;
+  for (const along of [-0.5, -0.34, -0.17, 0, 0.17, 0.34, 0.5]) {
     for (const across of [-1, 0, 1]) {
       const x = cx + dx * length * along + rx * halfBeam * across;
       const z = cz + dz * length * along + rz * halfBeam * across;
-      if (waterDepth(x, z) < need) return false;
+      worst = Math.min(worst, waterDepth(x, z) - need);
+      // The same point pushed out to the margin ring, which only has to be
+      // navigable — the hull should not be left kissing the beach either.
+      const mx = cx + dx * length * along * ringL + rx * halfBeam * across * ringB;
+      const mz = cz + dz * length * along * ringL + rz * halfBeam * across * ringB;
+      worst = Math.min(worst, waterDepth(mx, mz) - CONFIG.MIN_NAV_DEPTH);
     }
   }
-  return true;
+  return worst;
 }
 
 /**
  * Where a boat should be lying when it is handed over at a marina: alongside
  * the pier rather than through it, bow to open water, and far enough out that
- * its whole length floats. Big hulls berth further out than small ones, which
- * is the point — a seiner taking delivery used to appear on top of the
- * planking, or half way up the beach.
+ * its whole length floats with room around it.
+ *
+ * The far end matters most. A hull lying beside the pier runs half its length
+ * back toward the shore, and on a 26m steamboat that is further than the pier
+ * itself is long — so the stern ends up over the beach unless the berth is
+ * pushed seaward by the difference. That, plus a draft and a margin that both
+ * scale with the boat, is what keeps a big hull out of the marina it just
+ * bought its way out of.
  * Returns { x, z, heading }, or null if nothing fits (then leave it be).
  */
 export function berthFor(dock, halfBeam, length) {
@@ -102,22 +124,42 @@ export function berthFor(dock, halfBeam, length) {
   const rx = dz, rz = -dx;
   const heading = dock.angle + Math.PI;          // bow pointing out
   const beside = PIER_HALF_WIDTH + halfBeam + 0.8;
-  const step = Math.max(1.2, length * 0.14);
-  for (let out = 0; out <= length * 0.8 + 2; out += step) {
+  // The stern may lie as far back as the shore end of the planking, no
+  // further: anything more overhangs the beach.
+  const minOut = Math.max(0, length / 2 - (dock.pierLen - 2));
+
+  // Candidates nearest the pier first: alongside on either hand, then
+  // standing off the head as if it had just let go and drifted clear. The
+  // first that floats properly wins; failing that, the least bad one, because
+  // leaving a new boat wherever the old one was is the worst answer of all.
+  let best = null, bestScore = -Infinity;
+  const consider = (x, z, ax, az, head) => {
+    const score = hullClearance(x, z, ax, az, length, halfBeam);
+    if (score > bestScore) { bestScore = score; best = { x, z, heading: head }; }
+    return score >= 0;
+  };
+  for (let out = minOut; out <= minOut + length + 6; out += 1) {
     for (const s of [1, -1]) {
-      const x = dock.headX + dx * out + rx * beside * s;
-      const z = dock.headZ + dz * out + rz * beside * s;
-      if (hullFloats(x, z, dx, dz, length, halfBeam)) return { x, z, heading };
+      if (consider(dock.headX + dx * out + rx * beside * s,
+        dock.headZ + dz * out + rz * beside * s, dx, dz, heading)) return best;
     }
   }
-  // Nothing alongside fits — a big hull in a tight cove. Stand it off the end
-  // of the pier instead, as if it had just let go and drifted clear.
-  for (let out = length * 0.6; out <= length * 2.2; out += step) {
-    const x = dock.headX + dx * out;
-    const z = dock.headZ + dz * out;
-    if (hullFloats(x, z, dx, dz, length, halfBeam)) return { x, z, heading };
+  for (let out = length * 0.5; out <= length * 2.5; out += 1) {
+    if (consider(dock.headX + dx * out, dock.headZ + dz * out, dx, dz, heading)) return best;
   }
-  return null;
+  // Still nothing: the channel off this marina does not run the way the pier
+  // points. Swing the hull to lie along the water instead of along the
+  // planking, which is what a ship that size would actually have to do.
+  for (let turn = 15; turn <= 75; turn += 15) {
+    for (const sign of [1, -1]) {
+      const a = dock.angle + (turn * Math.PI / 180) * sign;
+      const ax = Math.sin(a), az = Math.cos(a);
+      for (let out = length * 0.4; out <= length * 2; out += 1.5) {
+        if (consider(dock.headX + ax * out, dock.headZ + az * out, ax, az, a + Math.PI)) return best;
+      }
+    }
+  }
+  return best;
 }
 
 // --- meshes --------------------------------------------------------------

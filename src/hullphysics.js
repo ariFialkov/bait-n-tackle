@@ -1,16 +1,23 @@
 // How a hull answers the helm. Shared by the player's boat and the seiner's
 // tender so both handle by the same rules.
 //
-// A boat is STEERED, not shoved. The stick points the wheel; the bow comes
-// round at the hull's own yaw rate; thrust always pushes along the bow. That
-// is the whole reason a 26m steamboat feels like one — it has to come round
-// before it goes anywhere, while a skiff pivots inside its own length.
+// The boat goes where you point, at once: the stick drives the velocity, the
+// same arcade feel the game has always had. What the hull's size changes is
+// how fast the HEADING can follow that velocity. The chase is an exponential
+// ease — smooth, no corner when it arrives — with a hard ceiling on how many
+// radians a second the hull may actually swing:
 //
-// It used to work the other way about: the stick drove the velocity vector
-// directly and the hull merely chased it. Every boat could therefore change
-// direction instantly no matter how big it was, and the size only showed in
-// how fast the model span round afterwards — which is exactly the thing that
-// looked wrong on the paddleboat and the steamboat.
+//     rate = min(error * turn, yawRate)
+//
+// Small corrections are the old soft ease; a big one runs into the ceiling,
+// and the ceiling is what a 26m steamboat cannot argue with. So the skiff
+// still flicks round inside its own length and the steamboat sweeps through a
+// long turn, while both answer the stick the instant you move it.
+//
+// An earlier pass tried steering the hull and pushing only along the bow.
+// That made the size read correctly but the boat stopped answering the stick
+// — you had to wait for the bow before anything happened — so it is gone,
+// along with the keel-grip term that went with it.
 
 const TWO_PI = Math.PI * 2;
 
@@ -21,31 +28,20 @@ export function wrapAngle(a) {
   return a;
 }
 
-// A rudder only bites water that is moving past it. Dead in the water a hull
-// still swings on prop wash alone, but slowly; it steers fully once it is up
-// to about a third of its top speed.
-const STEER_STILL = 0.55;
-const STEER_FULL = 0.35;
-// Pushing across the bow gives the screw almost nothing to work with, so the
-// boat coasts and turns rather than crabbing sideways.
-const THRUST_ACROSS = 0.2;
+// Below this the hull is drifting, not running, and holds the heading it has
+// rather than snapping about to follow a dying velocity vector.
+const WAY_ON = 0.25;
+// The heading error at which the helm counts as hard over, for the gear that
+// answers the wheel rather than the rate of turn.
+const HARD_OVER = 0.85;
 
 /**
- * Yaw rate, in radians per second. `turn` is the hull's agility from the
- * catalog; length is what drags it down, so the same agility rating buys far
- * less on a long hull than on a short one.
+ * Ceiling on how fast a hull may swing, in radians per second. `turn` is the
+ * agility rating from the catalog; length is what drags it down, so the same
+ * rating buys far less on a long hull than on a short one.
  */
 export function hullYawRate(turn, length) {
   return turn / (1 + length / 12);
-}
-
-/**
- * How hard a hull resists sliding sideways, per second. A long keel tracks
- * like a train; a flat little skiff skates. This is what makes a big boat's
- * turn a long carve instead of a drift.
- */
-export function hullKeelGrip(length) {
-  return 1.2 + length * 0.18;
 }
 
 /**
@@ -57,37 +53,12 @@ export function driveHull(o, spec, dt, input, navigable) {
   const mag = Math.min(1, Math.hypot(input.x, input.z));
   const maxSpeed = spec.maxSpeed * (o.trawling ? 0.55 : 1);
 
-  // --- steering ---
   if (mag > 0.05) {
-    const want = Math.atan2(-input.x, -input.z);
-    const bite = Math.min(1, STEER_STILL +
-      (1 - STEER_STILL) * (o.speed / (maxSpeed * STEER_FULL)));
-    const step = spec.yawRate * bite * dt;
-    const d = wrapAngle(want - o.heading);
-    o.heading = wrapAngle(o.heading + Math.max(-step, Math.min(step, d)));
+    o.vel.x += (input.x / mag) * mag * spec.accel * dt;
+    o.vel.z += (input.z / mag) * mag * spec.accel * dt;
   }
-
-  // Bow direction. Heading 0 points down -z, which is the convention the rod
-  // mounts, the trawl gear and the wake all read.
-  const fx = -Math.sin(o.heading), fz = -Math.cos(o.heading);
-
-  // --- thrust, always along the bow ---
-  if (mag > 0.05) {
-    const align = (input.x / mag) * fx + (input.z / mag) * fz;   // 1 = dead ahead
-    const throttle = mag * Math.max(0, THRUST_ACROSS + (1 - THRUST_ACROSS) * align);
-    o.vel.x += fx * spec.accel * throttle * dt;
-    o.vel.z += fz * spec.accel * throttle * dt;
-  }
-
   const drag = Math.exp(-spec.drag * dt);
   o.vel.x *= drag; o.vel.z *= drag;
-
-  // --- keel grip: bleed off whatever is sliding across the bow ---
-  const slip = o.vel.x * -fz + o.vel.z * fx;
-  const bleed = 1 - Math.exp(-spec.keelGrip * dt);
-  o.vel.x += slip * bleed * fz;
-  o.vel.z -= slip * bleed * fx;
-
   const sp = Math.hypot(o.vel.x, o.vel.z);
   if (sp > maxSpeed) { o.vel.x *= maxSpeed / sp; o.vel.z *= maxSpeed / sp; }
   o.speed = Math.min(sp, maxSpeed);
@@ -96,4 +67,22 @@ export function driveHull(o, spec, dt, input, navigable) {
   const nz = o.pos.z + o.vel.z * dt;
   if (navigable(nx, o.pos.z)) o.pos.x = nx; else o.vel.x *= -0.15;
   if (navigable(o.pos.x, nz)) o.pos.z = nz; else o.vel.z *= -0.15;
+
+  // The hull swings to line up with where it is actually going — eased, and
+  // capped at what a boat that size could manage.
+  if (o.speed > WAY_ON || mag > 0.05) {
+    const want = o.speed > WAY_ON
+      ? Math.atan2(-o.vel.x, -o.vel.z)
+      : Math.atan2(-input.x, -input.z);
+    const d = wrapAngle(want - o.heading);
+    const rate = Math.min(Math.abs(d) * spec.turn, spec.yawRate);
+    const step = Math.min(Math.abs(d), rate * dt);
+    o.heading = wrapAngle(o.heading + Math.sign(d) * step);
+    // How far off the bow the boat is actually trying to go: the helm demand,
+    // which is what a rudder or an outboard leg answers. It is not the same
+    // as the rate of turn — a big hull can be hard over and barely swinging.
+    o.steerDemand = Math.max(-1, Math.min(1, d / HARD_OVER));
+  } else {
+    o.steerDemand = 0;
+  }
 }

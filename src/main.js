@@ -101,7 +101,8 @@ function berthAtMarina() {
   const near = docks.nearest(boat.pos.x, boat.pos.z);
   if (!near.dock || near.dist > 24) return;
   const berth = berthFor(near.dock,
-    boat.hullBounds?.halfBeam ?? boat.spec.length * 0.16, boat.spec.length);
+    boat.hullBounds?.halfBeam ?? boat.spec.length * 0.16,
+    boat.hullBounds?.length ?? boat.spec.length);
   if (berth) boat.placeAt(berth.x, berth.z, berth.heading);
 }
 

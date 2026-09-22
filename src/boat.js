@@ -12,6 +12,7 @@ import { boatModelURL, resolveBoat, rodMounts } from './boats.js';
 import { applySkin } from './skinner.js';
 import { buildProceduralHull } from './hullshapes.js';
 import { WakeTrail } from './wake.js';
+import { Stacks } from './smoke.js';
 import { driveHull, wrapAngle } from './hullphysics.js';
 import { buildRod, aimRods, updateRods } from './rods.js';
 
@@ -118,7 +119,9 @@ export class Boat {
     this.vel = new THREE.Vector3();
     this.heading = 0;
     this.speed = 0;
-    this.yawVel = 0;             // smoothed, for heel and for the machinery
+    this.yawVel = 0;             // smoothed rate of turn: heel, paddlewheels
+    this.steerDemand = 0;        // raw helm demand, written by driveHull
+    this.steerSmooth = 0;        // ... smoothed, for the outboard leg
     this.throttle = 0;           // smoothed, for trim and for the outboard
     this.trawling = false;
     this.parts = { wheels: [], outboards: [] };
@@ -139,6 +142,7 @@ export class Boat {
     this.group.add(this.netBundle);
 
     this.wake = new WakeTrail(scene);
+    this.smoke = new Stacks(scene);
     this.onBoatChanged = null;
   }
 
@@ -216,6 +220,8 @@ export class Boat {
 
     // Wake size and churn are a cosmetic per-hull/per-skin signature.
     this.wake.setSpec(spec, this.hullBounds);
+    // Only the steam hulls carry funnels; everything else gets an empty set.
+    this.smoke.setStacks(spec.stacks);
 
     if (this.onBoatChanged) this.onBoatChanged(spec);
   }
@@ -257,11 +263,14 @@ export class Boat {
     this.vel.set(0, 0, 0);
     this.speed = 0;
     this.yawVel = 0;
+    this.steerDemand = 0;
+    this.steerSmooth = 0;
     this.throttle = 0;
     this.heading = heading;
     this.group.position.set(x, 0.02, z);
     this.group.rotation.set(0, heading, 0);
     this.wake.reset();
+    this.smoke.reset();
   }
 
   /** World position of a rod tip, written into `out`. */
@@ -287,14 +296,17 @@ export class Boat {
       w.node.rotation.x = -w.angle;
     }
     if (!this.parts.outboards.length) return;
-    const s = this.spec;
-    // The leg follows the wheel, and lifts clear of the water at idle.
-    const steer = Math.max(-1, Math.min(1, this.yawVel / Math.max(0.2, s.yawRate)));
+    // The leg answers the HELM, not the rate of turn: a boat can be hard
+    // over and barely swinging, and the motor is still cocked right across.
+    const steer = this.steerSmooth;
     const idle = this.speed < 0.7 && this.throttle < 0.05 ? 1 : 0;
     for (const o of this.parts.outboards) {
       o.steer += (steer * OUTBOARD_STEER - o.steer) * Math.min(1, 6 * dt);
       o.tilt += (idle * OUTBOARD_TILT - o.tilt) * Math.min(1, 1.8 * dt);
-      o.node.rotation.y = o.steer;
+      // The leg hangs AFT of its pivot, and it is the prop that has to point
+      // into the turn for the stern to be pushed the other way — so the node
+      // swings against the yaw, not with it.
+      o.node.rotation.y = -o.steer;
       o.node.rotation.x = -o.tilt;
     }
   }
@@ -310,6 +322,12 @@ export class Boat {
     this.yawVel += (rate - this.yawVel) * Math.min(1, 5 * dt);
     const want = Math.min(1, Math.hypot(inputVec.x, inputVec.z));
     this.throttle += (want - this.throttle) * Math.min(1, 4 * dt);
+    // What the leg answers: the helm demand plus however hard the hull is
+    // actually coming round, so a nimble boat whose bow keeps up with the
+    // stick still visibly cocks its motor over.
+    const helm = Math.max(-1, Math.min(1, (this.steerDemand || 0) +
+      this.yawVel / Math.max(0.2, s.yawRate)));
+    this.steerSmooth += (helm - this.steerSmooth) * Math.min(1, 5 * dt);
 
     const bobY = this.lake.waveHeight(this.pos.x, this.pos.z, t);
     const scaleBob = Math.min(1, 6 / s.length);   // big hulls ride flatter
@@ -328,6 +346,7 @@ export class Boat {
     updateRods(this.rods, dt);
     this.updateMachinery(dt);
     this.wake.update(dt, t, this);
+    this.smoke.update(dt, t, this);
     if (this.trawling) {
       this.towPoints();
       this.net.update(dt, t, this._anchorL, this._anchorR, this._ropeL, this._ropeR);

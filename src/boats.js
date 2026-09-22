@@ -17,7 +17,7 @@
 // spread. A skin is what the player actually buys and sails.
 
 import { SKINS, hullSkins, skinKey } from './skins.js';
-import { hullYawRate, hullKeelGrip } from './hullphysics.js';
+import { hullYawRate } from './hullphysics.js';
 
 export const BOATS = [
   {
@@ -125,6 +125,13 @@ export const BOATS = [
     turn: 2.2,
     length: 15.0,
     features: { trawl: true, sonar: true, pots: true },
+    // Funnel mouths, in the model's own space (bow at -z, waterline at y=0),
+    // read off the hull's geometry and checked by eye. Re-measure these if the
+    // model is ever replaced — nothing detects them at runtime.
+    stacks: [
+      { x: 1.29, y: 5.84, z: -4.75, r: 0.39 },
+      { x: -0.04, y: 6.03, z: -6.34, r: 0.35 },
+    ],
   },
   {
     id: 'seiner',
@@ -156,6 +163,10 @@ export const BOATS = [
     turn: 1.8,
     length: 26.0,
     features: { trawl: true, sonar: true, pots: true, crew: true },
+    stacks: [
+      { x: 0.00, y: 7.65, z: -8.73, r: 0.64 },
+      { x: 0.02, y: 8.05, z: -4.06, r: 0.55 },
+    ],
   },
 ];
 
@@ -201,11 +212,10 @@ export function resolveBoat(key) {
     // Derived per skin, so a Signature's extra knots are actually reachable.
     drag: hullDrag(hull.accel, skin.maxSpeed),
     turn: skin.turn,
-    // How the hull actually answers the helm (hullphysics.js). Both fall off
-    // with length, so the steamboat's 26 metres are felt at the wheel and not
-    // just seen — it swings wide and slowly where the skiff spins on a coin.
+    // The ceiling on how fast this hull may swing (hullphysics.js). It falls
+    // off with length, so the steamboat's 26 metres show in a long sweeping
+    // turn where the skiff flicks round on a coin.
     yawRate: hullYawRate(skin.turn, hull.length),
-    keelGrip: hullKeelGrip(hull.length),
     wake: skin.wake,
   };
 }

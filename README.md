@@ -149,13 +149,15 @@ shop is a ladder of 36 boats rather than 9:
 (`hullDrag`), so the figure in the catalog is the figure you reach and a
 Signature skin's extra knots are actually there.
 
-Boats are **steered, not shoved** (`hullphysics.js`). The stick points the
-wheel, the bow comes round at the hull's own yaw rate, and thrust always
-pushes along the bow — so length is felt at the helm and not just seen. A
-skiff brings its head 180° round in about a second; the steamboat takes the
-better part of six, in one long carve. The shop's Handling pips show that
-real yaw rate, not the raw agility rating, because the same rating buys far
-less on a long hull.
+The boat goes where you point, at once — the stick drives the velocity, as it
+always has. What the hull's size changes is how fast the **heading** can
+follow (`hullphysics.js`): the chase is a smooth ease with a hard ceiling on
+how many radians a second the hull may swing, so small corrections stay soft
+and a big one runs into a ceiling a 26m steamboat cannot argue with. The
+skiff flicks its head round inside its own length; the steamboat sweeps
+through one long turn. The shop's Handling pips show that real yaw rate, not
+the raw agility rating, because the same rating buys far less on a long
+hull.
 
 The moving parts move. The converter carves them out of each model and the
 game drives them from the hull's own motion: the **outboards** (Skiff,
@@ -163,7 +165,11 @@ Speedboat) swing with the helm and tilt clear of the water at idle, and the
 **paddlewheels** (Paddleboat, Steamboat) roll with the boat's way through the
 water, the inner wheel backing off in a turn while the outer drives on. Hulls
 heel into their turns and lift the bow under power, and the rods swing to
-follow their own lines and load up when a fish is on.
+follow their own lines and load up when a fish is on. The steam hulls make
+smoke (`smoke.js`): puffs leave the funnels with the ship's way still on
+them, rise, are taken by the breeze and come apart into wisps, laid down in
+world space like the wake — drive a circle and the plume reads the circle
+back to you.
 
 Skins are a side-spend, not a grind — the whole fleet runs from **$0.50 to
 about $100**, because the game is the betting. Six per hull, in two paint
@@ -257,6 +263,7 @@ src/
   boat.js      boat mesh, trawl net, and the working machinery on it
   hullphysics.js how a hull answers the helm: yaw rate, thrust, keel grip
   rods.js      the rods as gear: raked outboard, aimed at their lines
+  smoke.js     funnel plumes for the steam hulls
   wake.js      the Kelvin-angle wake ribbon and its foam shader
   hookedfish.js the fish on your line: fighting, breaching, swung aboard
   fishing.js   trawl + cast/bite/reel state machines
