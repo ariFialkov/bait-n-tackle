@@ -17,7 +17,9 @@
 //
 // `lift` raises the whole hull frame so the lowest deck sits clear of the
 // water (the models put their soles and wells below the waterline, and the
-// water plane would otherwise show through the boat). `door` is where extra
+// water plane would otherwise show through the boat) — clear of it with the
+// hull heeled hard over, trimmed by the throttle and down in a wave trough,
+// which together take about half a metre off the low side. `door` is where extra
 // hands come out from when more rods are cast than there are bodies.
 //
 // `rails` are the runs of rail the rod holders are spaced along, at the
@@ -42,14 +44,14 @@ export const STATIONS = {
   skiff: {
     // Floorboards at -0.05, thwarts at 0.2. The captain sits on the aft
     // thwart with a hand back on the tiller.
-    deck: [-0.15, 0.35], cell: 0.3, crewScale: 1.0, lift: 0.17,
+    deck: [-0.15, 0.35], cell: 0.3, crewScale: 1.0, lift: 0.6,
     helm: { x: 0.12, y: -0.05, z: 1.0, f: 0, pose: 'tiller', seatH: 0.31 },
     posts: [],
     rails: [{ side: 1, x: 0.72, y: -0.05, z0: -0.1, z1: 0.6 }],
   },
   speedboat: {
     // Cockpit sole at 0.07; the driver's seat to starboard, cushion at 0.46.
-    deck: [-0.05, 0.4], cell: 0.3, crewScale: 1.0, lift: 0.08,
+    deck: [-0.05, 0.4], cell: 0.3, crewScale: 1.0, lift: 0.5,
     helm: { x: 0.34, y: 0.07, z: 0.6, f: 0, pose: 'seat', seatH: 0.48 },
     posts: [],
     rails: [{ side: 1, x: 0.66, y: 0.07, z0: 0.95, z1: 1.25 }],
@@ -57,7 +59,7 @@ export const STATIONS = {
   cuddy: {
     // Cockpit sole at -0.27, hardtop at 1.19: a small person. The bench
     // behind the console seats the driver.
-    deck: [-0.4, 0.1], cell: 0.3, crewScale: 0.75, lift: 0.38,
+    deck: [-0.4, 0.1], cell: 0.3, crewScale: 0.75, lift: 0.8,
     helm: { x: 0.35, y: -0.27, z: 1.5, f: 0, pose: 'seat', seatH: 0.31 },
     door: { x: -0.35, y: -0.27, z: 0.6 },
     posts: [],
@@ -72,7 +74,7 @@ export const STATIONS = {
     // the stern, with hatch covers proud of it that are climbed over on the
     // way aft, and a ledge along each side at -0.26 inside the bulwark
     // where the rods are.
-    deck: [-0.65, 0.95], join: 0.95, cell: 0.35, crewScale: 0.6, lift: 0.7,
+    deck: [-0.65, 0.95], join: 0.95, cell: 0.35, crewScale: 0.6, lift: 1.0,
     helm: { x: 0, y: 0.58, z: -1.5, f: 0, pose: 'seat', seatH: 0.22 },
     door: { x: 0, y: 0.58, z: -0.8 },
     posts: [
@@ -89,7 +91,7 @@ export const STATIONS = {
   'mud-dredger': {
     // A hopper barge: the working floor is the well inside the bulwarks,
     // 0.6m below the waterline, and the cabin stands on that floor.
-    deck: [-0.75, -0.3], cell: 0.4, crewScale: 0.85, lift: 0.72,
+    deck: [-0.75, -0.3], cell: 0.4, crewScale: 0.85, lift: 1.05,
     helm: { x: 0, y: -0.6, z: 1.55, f: 0, pose: 'wheel' },
     door: { x: 0, y: -0.6, z: 2.9 },
     posts: [
@@ -107,7 +109,7 @@ export const STATIONS = {
     // Main deck at -0.45 inside a 0.6m bulwark; the wheelhouse rides on a
     // raised base forward with a console at its aft face, which is where
     // the captain drives from, at deck level.
-    deck: [-0.6, 0.0], cell: 0.4, crewScale: 1.0, railH: 0.6, lift: 0.62,
+    deck: [-0.6, 0.0], cell: 0.4, crewScale: 1.0, railH: 0.6, lift: 0.95,
     helm: { x: 0, y: -0.45, z: -0.25, f: 0, pose: 'wheel', prop: 'wheel' },
     door: { x: -0.8, y: -0.45, z: -0.3 },
     posts: [
@@ -143,7 +145,7 @@ export const STATIONS = {
     // The deck runs downhill from the bow (1.9) past the wheelhouse (1.1)
     // to the working deck aft (0.5) and the low stern where the tender
     // sits (0.0), all one slope. The wheelhouse is full height inside.
-    deck: [-0.1, 2.1], cell: 0.4, crewScale: 0.8, railH: 0.5, lift: 0.2,
+    deck: [-0.1, 2.1], cell: 0.4, crewScale: 0.8, railH: 0.5, lift: 0.5,
     helm: { x: 0, y: 1.13, z: -4.0, f: 0, pose: 'wheel' },
     door: { x: 1.2, y: 0.86, z: -1.3 },
     posts: [

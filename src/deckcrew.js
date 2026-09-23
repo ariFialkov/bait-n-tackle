@@ -31,6 +31,9 @@ const EXTRA_IDLE_S = 7;          // idle this long and a hired hand goes back in
 const CAST_WHIP_S = 0.48;        // into the rod's sweep, when the lure leaves
 const GRIP_FWD = 0.22;           // the grip sits this far in front of the chest (body units)
 const GRIP_SIDE = 0.10;          // ... and this far to the right of the body's centre
+// Where a held rod's butt sits, in the body's own frame: low in front of
+// the right hip, so the grip comes up to the chest.
+const CARRY = new THREE.Vector3(0.14, 0.80, -0.22);
 
 const WHEEL_MAT = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.6 });
 const STAND_MAT = new THREE.MeshStandardMaterial({ color: 0x5c6670, roughness: 0.5, metalness: 0.4 });
@@ -206,6 +209,19 @@ export class CrewDirector {
       ch.goTo(spot.x, spot.z, spot.f, this.pathfinder(), spot.y);
     }
     ch.rod = spot.rod;
+    // Within reach: lift the rod out of its holder into the hands, and keep
+    // it there as the body turns. The hands chase the grip on the rod, so
+    // the two meet in the middle without a snap.
+    const near = Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) < 0.9;
+    if (near && ch.ready) {
+      ch.actor.updateWorldMatrix(true, false);
+      const p = this._v.copy(CARRY);
+      ch.actor.localToWorld(p);
+      this.boat.hullFrame.worldToLocal(p);
+      spot.rod.hold = spot.rod.hold || new THREE.Vector3();
+      spot.rod.hold.copy(p);
+      spot.rod.holdFresh = true;
+    }
     ch.setState(line.hooked || line.state === 'landing' || line.pendingPull > 0.05 ? 'reel' : 'hold');
     ch.lookAt = line.state === 'pending' ? null : line.bobber.position;
     // Face the work: the throw's own bearing while the cast is owed, the
@@ -224,7 +240,7 @@ export class CrewDirector {
     // throw, and let the lure go off the whip of that swing. While someone
     // is on their way the line waits (fishing.js gives a claimed cast longer).
     if (p) p.claimed = true;
-    if (p && p.launchAt == null && spot.rod && ch.aimed &&
+    if (p && p.launchAt == null && spot.rod && ch.aimed && spot.rod.pickup > 0.9 &&
         Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) < 0.5) {
       this.boat.castRod(line.rodIndex, p.yaw);
       ch.play('cast', 1.1);
@@ -254,6 +270,13 @@ export class CrewDirector {
     const b = this.boat, f = this.fishing, S = this.st, td = this.tender;
     const cap = this.captain;
     const lift = this.hands.find((h) => h.post.kind === 'lift');
+    // A rod nobody asks for this frame goes back to its holder.
+    for (const r of b.rods) r.holdFresh = false;
+    try { this.updateBodies(dt, t, helmIsTender, b, f, S, td, cap, lift); }
+    finally { for (const r of b.rods) if (!r.holdFresh) r.hold = null; }
+  }
+
+  updateBodies(dt, t, helmIsTender, b, f, S, td, cap, lift) {
 
     // --- who is where: the tender ---
     const tenderOut = td.deployed && td.hullBounds;

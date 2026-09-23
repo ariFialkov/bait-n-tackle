@@ -65,7 +65,58 @@ export function buildRod(side, scale) {
 
   rod.rotation.set(REST_LAY, side * REST_YAW, 0);
   rod.scale.setScalar(scale);
-  return { rod, tip, flex, side, want: null, cast: null, grip: gripPoint, reel: reelPoint };
+  return {
+    rod, tip, flex, side, want: null, cast: null, grip: gripPoint, reel: reelPoint,
+    // Where it rests and how it is picked up (see updateRods): `rest` is
+    // the holder, `hold` where a pair of hands wants it this frame, and
+    // `pickup` how far it is out of the holder, 0 to 1.
+    rest: null, restLay: REST_LAY, hold: null, holdPos: new THREE.Vector3(), pickup: 0,
+  };
+}
+
+// In its holder a rod stands nearly upright, raked a little outboard and
+// aft; in the hands it is laid over at REST_LAY.
+export const HOLDER_LAY = 0.32;
+const HOLDER_MAT = new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.5, metalness: 0.5 });
+const HOLDER_GEO = {
+  tube: new THREE.CylinderGeometry(0.052, 0.052, 0.3, 10, 1, true),
+  collar: new THREE.TorusGeometry(0.052, 0.012, 6, 12),
+  post: new THREE.CylinderGeometry(0.018, 0.018, 1, 6),
+  foot: new THREE.CylinderGeometry(0.06, 0.06, 0.02, 8),
+};
+HOLDER_MAT.side = THREE.DoubleSide;
+
+/**
+ * A rod holder at a mount: an open tube the butt drops into, angled the
+ * way the rod rests, on a post down to the deck `postH` below the mount.
+ */
+export function buildHolder(side, scale, postH) {
+  const g = new THREE.Group();
+  const tube = new THREE.Group();
+  tube.rotation.order = 'YXZ';
+  tube.rotation.set(HOLDER_LAY, side * REST_YAW, 0);
+  const t = new THREE.Mesh(HOLDER_GEO.tube, HOLDER_MAT);
+  t.position.y = 0.15 * scale;
+  t.scale.set(scale, scale, scale);
+  tube.add(t);
+  const c = new THREE.Mesh(HOLDER_GEO.collar, HOLDER_MAT);
+  c.rotation.x = Math.PI / 2;
+  c.position.y = 0.3 * scale;
+  c.scale.setScalar(scale);
+  tube.add(c);
+  g.add(tube);
+  if (postH > 0.05) {
+    const p = new THREE.Mesh(HOLDER_GEO.post, HOLDER_MAT);
+    p.scale.set(scale, postH, scale);
+    p.position.y = -postH / 2;
+    g.add(p);
+    const f = new THREE.Mesh(HOLDER_GEO.foot, HOLDER_MAT);
+    f.scale.setScalar(scale);
+    f.position.y = -postH;
+    g.add(f);
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
 }
 
 // A cast, on the rod itself: back over the shoulder, then whipped forward
@@ -105,12 +156,24 @@ export function clampRodYaw(side, yaw) {
   return side * Math.max(0.15, Math.min(Math.PI - 0.05, a));
 }
 
-/** Ease every rod toward whatever it was last aimed at. */
+/**
+ * Ease every rod toward whatever it was last aimed at, and in or out of its
+ * holder: a rod with `hold` set (a point in the boat's frame where hands
+ * want its butt) lifts out over about half a second and follows that point;
+ * with `hold` cleared it settles back into the holder the same way.
+ */
 export function updateRods(rods, dt) {
   const k = Math.min(1, 6 * dt);
   for (const r of rods) {
+    if (!r.rest) { r.rest = r.rod.position.clone(); r.holdPos.copy(r.rest); }
+    // Out of the holder and into the hands, smoothly, and back.
+    r.pickup += ((r.hold ? 1 : 0) - r.pickup) * Math.min(1, 4 * dt);
+    if (r.hold) r.holdPos.lerp(r.hold, Math.min(1, 14 * dt));
+    const u = r.pickup * r.pickup * (3 - 2 * r.pickup);
+    r.rod.position.lerpVectors(r.rest, r.holdPos, u);
+
     const restYaw = r.side * REST_YAW;
-    let yaw = restYaw, lay = REST_LAY, bend = 0;
+    let yaw = restYaw, lay = r.restLay + (REST_LAY - r.restLay) * u, bend = 0;
     if (r.cast) {
       r.cast.t += dt;
       const u = r.cast.t / CAST_S;
@@ -132,7 +195,7 @@ export function updateRods(rods, dt) {
     if (r.want) {
       // Follow the line, but never far enough to swing back over the deck.
       yaw = clampRodYaw(r.side, r.want.yaw);
-      lay = REST_LAY + 0.22 * r.want.load;
+      lay = r.restLay + (REST_LAY + 0.22 * r.want.load - r.restLay) * Math.max(u, 0.35);
       bend = 0.66 * r.want.load;
     }
     r.group.rotation.y += wrapAngle(yaw - r.group.rotation.y) * k;

@@ -14,7 +14,7 @@ import { buildProceduralHull } from './hullshapes.js';
 import { WakeTrail } from './wake.js';
 import { Stacks } from './smoke.js';
 import { driveHull, wrapAngle } from './hullphysics.js';
-import { buildRod, aimRods, updateRods, castRod } from './rods.js';
+import { buildRod, buildHolder, aimRods, updateRods, castRod, HOLDER_LAY } from './rods.js';
 import { DeckMap } from './deckmap.js';
 import { stationsFor, rodHolders } from './stations.js';
 
@@ -80,8 +80,7 @@ function fallbackHull(length) {
 // part's pivot (an outboard's transom clamp, a paddlewheel's shaft). Anything
 // tagged this way is collected here and driven from the hull's own motion.
 // A hull with no tagged parts simply has none of this.
-const ROD_HOLDER_H = 0.72;       // rail-height rod holders on a hull with no stations
-const ROD_GRIP_H = 1.02;         // the grip sits here above the deck, for a 1.7m body
+const ROD_HOLDER_H = 0.72;       // the rod holder's mouth, this far above the deck for a 1.7m body
 const OUTBOARD_STEER = 0.52;     // radians the leg swings hard over
 const OUTBOARD_TILT = 0.62;      // radians it lifts clear when idling
 
@@ -249,18 +248,23 @@ export class Boat {
     const mounts = authored || this.rodPositions(spec);
     for (const m of mounts) {
       const r = buildRod(m.side, rodScale);
-      // In a holder on the rail, set so the grip comes to the chest of the
-      // fisherman standing beside it — the hands go to the grip, so its
-      // height decides whether the arms look right.
-      r.rod.updateMatrix();
-      const gripOff = r.grip.position.clone().applyMatrix4(r.rod.matrix);   // grip, rod at the origin
+      // Standing in a holder on the rail — a tube on a post down to the
+      // deck — with its butt in the tube, until someone lifts it out.
       const deckAt = authored ? (m.standY ?? m.y) : this.deckHeightAt(m.x, m.z);
-      m.y = authored ? deckAt + ROD_GRIP_H * this.crewScale - gripOff.y : deckAt + ROD_HOLDER_H * this.crewScale;
+      m.y = deckAt + ROD_HOLDER_H * this.crewScale;
       r.rod.position.set(m.x, m.y, m.z);
+      r.rod.rotation.x = HOLDER_LAY;
+      r.restLay = HOLDER_LAY;
+      r.rest = r.rod.position.clone();
+      r.holdPos.copy(r.rest);
       this.rodHolder.add(r.rod);
+      const holder = buildHolder(m.side, Math.max(0.8, this.crewScale), m.y - deckAt);
+      holder.position.copy(r.rod.position);
+      this.rodHolder.add(holder);
       // Where the grip rests, in the boat's frame, for whoever comes to work it.
-      const gripRest = gripOff.clone().add(r.rod.position);
-      this.rods.push({ ...r, group: r.rod, pos: new THREE.Vector3(m.x, m.y, m.z), deckY: deckAt, gripRest });
+      r.rod.updateMatrix();
+      const gripRest = r.grip.position.clone().applyMatrix4(r.rod.matrix);
+      this.rods.push({ ...r, group: r.rod, holder, pos: new THREE.Vector3(m.x, m.y, m.z), deckY: deckAt, gripRest });
     }
 
     // --- trawl gear placement ---
@@ -465,9 +469,12 @@ export class Boat {
     const scaleBob = Math.min(1, 6 / s.length);   // big hulls ride flatter
     // Heel into the turn and lift the bow under power — both scaled by how
     // fast the hull is actually moving, so a boat at rest just sits there.
+    // Both are capped so the deck edge never goes under: the heel by beam
+    // (a wide hull rolls only a few degrees), the trim by a little.
     const drive = this.speed / Math.max(1, s.maxSpeed);
-    const heel = Math.max(-0.3, Math.min(0.3, this.yawVel * drive * 0.42));
-    const trim = this.throttle * drive * 0.09 * scaleBob;
+    const heelCap = Math.min(0.2, 0.14 / Math.max(0.5, this.hullBounds?.halfBeam ?? 1));
+    const heel = Math.max(-heelCap, Math.min(heelCap, this.yawVel * drive * 0.42));
+    const trim = this.throttle * drive * 0.05 * scaleBob;
     this.group.position.set(this.pos.x, bobY * scaleBob + 0.02, this.pos.z);
     this.group.rotation.set(
       Math.sin(t * 0.9) * 0.02 * scaleBob + trim,

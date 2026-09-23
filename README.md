@@ -163,10 +163,14 @@ There are people aboard. The **captain** is you: at the helm — a hand back
 on the skiff's outboard tiller, the driver's seat of the speedboat and the
 cuddy, the wheel inside the trawler's and dredger's cabins, the open wheel on
 the top deck of the paddlers — and off it the moment there is a rod to work.
-A cast is not thrown until someone is there to throw it: the line waits, the
-nearest free body walks to the rod, turns to face the throw (the torso
-first, the feet only if it has to), the rod swings that way and the lure
-leaves off the whip of that swing. The hull itself never moves for a cast.
+Rods stand in holders on the rail — a tube on a post down to the deck, the
+butt in the tube — until someone lifts one out. A cast is not thrown until
+someone is there to throw it: the line waits, the nearest free body walks
+to the rod, lifts it out of its holder into their hands over half a second
+(the hands chase the grip on the rod, so the two meet without a snap),
+turns to face the throw (the torso first, the feet only if it has to), the
+rod swings that way and the lure leaves off the whip of that swing. When
+the line is done the rod settles back into its holder the same way. The hull itself never moves for a cast.
 While a line is out the body stays turned toward it. The bigger hulls carry **crew**, posted by what the
 boat has: a hand at the net on the stern, the dredger's crane operator, the
 gillnetter's lookout on the rail, the seiner's tender driver (who also takes
@@ -192,7 +196,9 @@ different human scales, so the people are sized to their boat rather than
 the boats to a person. Each hull also carries a `lift`: the models put
 their cockpit soles and working decks below the waterline, so the whole
 hull frame (model, rods, people, gear) rides high enough that the lowest
-deck is clear of the water.
+deck stays clear of the water even heeled hard over in a turn, trimmed by
+the throttle and down in a wave trough. The heel itself is capped by beam
+(`boat.js`), so a wide hull rolls only a few degrees.
 
 The moving parts move. The converter carves them out of each model and the
 game drives them from the hull's own motion: the **outboards** (Skiff,
