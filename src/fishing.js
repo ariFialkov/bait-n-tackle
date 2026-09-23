@@ -86,6 +86,7 @@ class Line {
     this.catch = null;              // resolved at the hook, never re-rolled
     this.catchWager = 0;
     this.landT = 0;
+    this.castPending = null;        // { yaw, t }: a swing the rod still owes
   }
 
   get busy() { return this.state !== 'idle'; }
@@ -154,6 +155,7 @@ export class Fishing {
 
     this._v = new THREE.Vector3();
     this._aims = [];
+    this.work = null;
     this.syncRods();
   }
 
@@ -288,6 +290,10 @@ export class Fishing {
     line.driftAngle = Math.random() * Math.PI * 2;
     line.show(true);
     line.bobber.rotation.set(0, 0, 0);
+    // The rod's own swing happens when whoever works it reaches it (see
+    // deckcrew.js); until then the cast is only pending on the line.
+    line.castPending = { yaw: Math.atan2(dir.x, dir.z) - this.boat.heading, t: 0 };
+    this.noteWork(line, 'cast');
 
     // Swing the bow toward the cast — but only on a nimble boat, and only
     // when it is near enough to a standstill that the helm is not being
@@ -310,6 +316,15 @@ export class Fishing {
     // where it was while a swipe gets its weight back.
     const swipes = quiet ? CONFIG.REEL_ASSIST_SWIPES : CONFIG.REEL_SWIPES;
     line.pendingPull += (line.distTotal / swipes) * (0.85 + 0.5 * power);
+    this.noteWork(line, 'reel');
+  }
+
+  /**
+   * Remember which line is being worked and how, for the fishermen on deck:
+   * the captain runs to whichever rod the player last cast or cranked.
+   */
+  noteWork(line, kind) {
+    this.work = { line, kind, at: performance.now() / 1000 };
   }
 
   /**

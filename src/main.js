@@ -15,6 +15,7 @@ import { Marina } from './marina.js';
 import { Player } from './player.js';
 import { Docks, DOCK_HINT_RANGE, berthFor } from './docks.js';
 import { Tender } from './tender.js';
+import { CrewDirector } from './deckcrew.js';
 import { SPECIES } from './fishdata.js';
 
 // --- Renderer / scene ---
@@ -69,6 +70,7 @@ const dex = new Dex();
 const rtp = new RTPEngine();
 const fishing = new Fishing(scene, boat, lake, rtp, hud, player);
 const tender = new Tender(scene, lake, rtp, player, hud);
+const crew = new CrewDirector(scene, boat, tender, fishing);
 
 // Which vessel the player is steering right now.
 let helm = boat;
@@ -88,6 +90,7 @@ async function equipBoat(key, fromMarina = false) {
   if (!boat.spec.features.trawl && boat.trawling) fishing.stopTrawl();
   if (boat.spec.tender) await tender.prepare(boat.spec.tender, boat.spec);
   if (fromMarina) berthAtMarina();
+  crew.setBoat(boat.spec);
   refreshShipPanel();
 }
 
@@ -280,6 +283,7 @@ function frame() {
     updateDocks(dt);
     updateSonar(dt);
   }
+  crew.update(dt, t, helm === tender);
   rig.update(dt, t, (helm === tender ? tender : boat).group.position);
 
   // Keep the sun (and its shadow frustum) centered on the boat.
@@ -302,7 +306,7 @@ frame();
 
 // Debug/test handle (harmless in production).
 window.BNT = {
-  hud, rtp, fishing, boat, tender, player, dex, marina, docks, lake, rig, SPECIES,
+  hud, rtp, fishing, boat, tender, crew, player, dex, marina, docks, lake, rig, SPECIES,
   equipBoat, refreshShipPanel,
   get helm() { return helm; },
 };

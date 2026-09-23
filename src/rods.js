@@ -44,6 +44,13 @@ export function buildRod(side, scale) {
   reel.rotation.z = Math.PI / 2;
   reel.position.set(0, 0.5, 0.07);
   rod.add(reel);
+  // Where a hand goes: on the grip, and beside the reel handle.
+  const gripPoint = new THREE.Object3D();
+  gripPoint.position.set(0.02, 0.28, 0.06);
+  rod.add(gripPoint);
+  const reelPoint = new THREE.Object3D();
+  reelPoint.position.set(-0.05, 0.52, 0.16);
+  rod.add(reelPoint);
 
   // Hinge at the ferrule: everything above it bends under load.
   const flex = new THREE.Object3D();
@@ -59,7 +66,17 @@ export function buildRod(side, scale) {
 
   rod.rotation.set(REST_LAY, side * REST_YAW, 0);
   rod.scale.setScalar(scale);
-  return { rod, tip, flex, side, want: null };
+  return { rod, tip, flex, side, want: null, cast: null, grip: gripPoint, reel: reelPoint };
+}
+
+// A cast, on the rod itself: back over the shoulder, then whipped forward
+// and settled. The fisherman's hands ride on the grip, so the body follows
+// this rather than the other way about.
+const CAST_S = 1.1;
+
+/** Start a cast on a rod, toward a bearing in the boat's frame. */
+export function castRod(r, yaw) {
+  r.cast = { t: 0, yaw };
 }
 
 /**
@@ -84,6 +101,24 @@ export function updateRods(rods, dt) {
   for (const r of rods) {
     const restYaw = r.side * REST_YAW;
     let yaw = restYaw, lay = REST_LAY, bend = 0;
+    if (r.cast) {
+      r.cast.t += dt;
+      const u = r.cast.t / CAST_S;
+      if (u >= 1) { r.cast = null; }
+      else {
+        // Wind up (0-0.4): the tip goes back past vertical. Whip (0.4-0.65):
+        // it comes over hard. Settle (0.65-1): back to where it is held.
+        let l;
+        if (u < 0.4) { const e = u / 0.4; l = REST_LAY - (REST_LAY + 0.55) * e * e; }
+        else if (u < 0.65) { const e = (u - 0.4) / 0.25; l = -0.55 + (1.25 + 0.55) * e * e; }
+        else { const e = (u - 0.65) / 0.35; l = 1.25 + (REST_LAY + 0.22 - 1.25) * (1 - Math.pow(1 - e, 2)); }
+        const wantYaw = restYaw + Math.max(-YAW_RANGE, Math.min(YAW_RANGE, wrapAngle(r.cast.yaw - restYaw)));
+        r.group.rotation.y += wrapAngle(wantYaw - r.group.rotation.y) * Math.min(1, 12 * dt);
+        r.group.rotation.x += (l - r.group.rotation.x) * Math.min(1, 22 * dt);
+        r.flex.rotation.x += ((u > 0.4 && u < 0.7 ? -0.5 : 0.15) - r.flex.rotation.x) * Math.min(1, 14 * dt);
+        continue;
+      }
+    }
     if (r.want) {
       // Follow the line, but never far enough to swing back over the deck.
       yaw = restYaw + Math.max(-YAW_RANGE, Math.min(YAW_RANGE,

@@ -14,7 +14,7 @@ import { buildProceduralHull } from './hullshapes.js';
 import { WakeTrail } from './wake.js';
 import { Stacks } from './smoke.js';
 import { driveHull, wrapAngle } from './hullphysics.js';
-import { buildRod, aimRods, updateRods } from './rods.js';
+import { buildRod, aimRods, updateRods, castRod } from './rods.js';
 
 const loader = new GLTFLoader();
 const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
@@ -78,6 +78,7 @@ function fallbackHull(length) {
 // part's pivot (an outboard's transom clamp, a paddlewheel's shaft). Anything
 // tagged this way is collected here and driven from the hull's own motion.
 // A hull with no tagged parts simply has none of this.
+const ROD_HOLDER_H = 0.72;       // rail-height rod holders on the deck
 const OUTBOARD_STEER = 0.52;     // radians the leg swings hard over
 const OUTBOARD_TILT = 0.62;      // radians it lifts clear when idling
 
@@ -126,6 +127,10 @@ export class Boat {
     this.trawling = false;
     this.parts = { wheels: [], outboards: [] };
     this.group.rotation.order = 'YXZ';   // yaw, then pitch, then roll
+    this._ray = new THREE.Raycaster();
+    this._rayFrom = new THREE.Vector3();
+    this._rayDown = new THREE.Vector3(0, -1, 0);
+    this._deckCache = new Map();
 
     this.net = new TrawlNet(scene);
     this._anchorL = new THREE.Vector3();
@@ -191,6 +196,7 @@ export class Boat {
     this.hullHolder.clear();
     this.hullHolder.add(hull);
     this.parts = collectParts(hull);
+    this._deckCache.clear();
 
     this.hullBounds = {
       halfBeam: (box.max.x - box.min.x) / 2,
@@ -206,6 +212,9 @@ export class Boat {
     const rodScale = Math.min(1.9, Math.max(0.85, spec.length / 6));
     for (const m of rodMounts(spec, this.hullBounds)) {
       const r = buildRod(m.side, rodScale);
+      // In a holder at rail height on the deck that is actually there, so a
+      // fisherman standing beside it has the grip at the hip, not the knee.
+      m.y = this.deckHeightAt(m.x, m.z) + ROD_HOLDER_H;
       r.rod.position.set(m.x, m.y, m.z);
       this.rodHolder.add(r.rod);
       this.rods.push({ ...r, group: r.rod, pos: new THREE.Vector3(m.x, m.y, m.z) });
@@ -283,6 +292,44 @@ export class Boat {
   /** Point the working rods at their own lines (see rods.js). */
   aimRods(aims) {
     aimRods(this.rods, this.pos, this.heading, aims);
+  }
+
+  /** Swing rod `i` through a cast toward a bearing in the boat's frame. */
+  castRod(i, yaw) {
+    const r = this.rods[Math.min(i, this.rods.length - 1)];
+    if (r) castRod(r, yaw);
+  }
+
+  /**
+   * Height of the deck under a point in the boat's frame, for feet to stand
+   * on. Rays down through the hull model and takes the surface nearest the
+   * rod-mount deck level, so a hand on the rail of a two-storey riverboat
+   * stands on the deck the rods are at rather than on the roof.
+   */
+  deckHeightAt(x, z) {
+    const b = this.hullBounds;
+    if (!b) return 0.5;
+    const key = `${(x * 4) | 0},${(z * 4) | 0}`;
+    const hit = this._deckCache.get(key);
+    if (hit !== undefined) return hit;
+    // The raycaster works in the world; the hull is under a group that
+    // carries the boat's position and heading.
+    this.group.updateWorldMatrix(true, false);
+    this._rayFrom.set(x, b.maxY + 1, z);
+    this.group.localToWorld(this._rayFrom);
+    this._ray.set(this._rayFrom, this._rayDown);
+    this._ray.far = b.maxY - b.minY + 2;
+    const hits = this._ray.intersectObjects(this.hullHolder.children, true);
+    let best = b.deckY, bestD = Infinity;
+    for (const h of hits) {
+      const y = h.point.y - this.group.position.y;
+      // Prefer the surface nearest the rod deck, weighted toward being on
+      // or above it rather than under it.
+      const d = y >= b.deckY - 0.35 ? y - b.deckY : (b.deckY - y) * 3;
+      if (d < bestD) { bestD = d; best = y; }
+    }
+    this._deckCache.set(key, best);
+    return best;
   }
 
   /** Drive the carved-out machinery from the hull's own motion. */

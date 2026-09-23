@@ -159,6 +159,20 @@ through one long turn. The shop's Handling pips show that real yaw rate, not
 the raw agility rating, because the same rating buys far less on a long
 hull.
 
+There are people aboard. The **captain** is you: always on deck, running to
+whichever rod you cast or crank — the rod swings the moment the captain
+reaches it, the hands ride on its grip and reel, and the body braces when a
+fish loads it up. Nothing to fish and the captain takes the wheel (or stands
+forward directing, on a hull big enough to carry a helmsman). The bigger
+hulls carry **crew**, posted by what the boat has: a helmsman, a hand bent
+over the sonar console, a hand at the stern for the net, the seiner's tender
+captain who goes out in the tender, and the steamboat's fishing crew who
+work the rods when the crew is hired. Three bodies are rotated through those
+posts and dressed differently — hair, hat, top, trousers and boots each
+recoloured per hand, skin and eyes kept as painted — so no two look alike.
+All of it is animated procedurally on the rigged skeletons (`crew.js`): the
+models arrive with no animation at all.
+
 The moving parts move. The converter carves them out of each model and the
 game drives them from the hull's own motion: the **outboards** (Skiff,
 Speedboat) swing with the helm and tilt clear of the water at idle, and the
@@ -243,6 +257,7 @@ manifest.webmanifest  PWA manifest
 vendor/three.module.js  vendored Three.js
 vendor/addons/          vendored GLTFLoader
 assets/boats/           boat models (.glb) + store portraits (.png)
+assets/crew/            the four rigged fishermen (.glb), atlas classed for recolouring
 src/
   config.js    all tuning knobs: RTP paytable, costs, lures, nets, camera
   boats.js     the nine-hull catalog: stats, unlocks, rod mounts
@@ -264,6 +279,9 @@ src/
   hullphysics.js how a hull answers the helm: yaw rate, thrust, keel grip
   rods.js      the rods as gear: raked outboard, aimed at their lines
   smoke.js     funnel plumes for the steam hulls
+  crew.js      a fisherman: rig, dressing, procedural animation and IK
+  crewlook.js  recolouring a crew member's clothes from the classed atlas
+  deckcrew.js  who is on deck and what they are doing
   wake.js      the Kelvin-angle wake ribbon and its foam shader
   hookedfish.js the fish on your line: fighting, breaching, swung aboard
   fishing.js   trawl + cast/bite/reel state machines
