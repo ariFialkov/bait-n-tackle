@@ -12,8 +12,9 @@
 // Rods are worked by whoever is nearest. When a line is cast, the nearest
 // free body — captain or hand — goes to that rod, and the lure leaves off
 // the whip of their swing, so nothing flies before someone has thrown it.
-// On the steamboat, hiring the crew brings extra hands out of the cabin so
-// every rod in the water has a body on it.
+// When more rods are cast than there are bodies, extra hands come out of
+// the cabin (each hull's `door`) until every rod in the water has one, and
+// go back in when there is nothing left to do.
 //
 // None of this touches a bet. The crew here are the picture of the crew the
 // fishing code already runs (fishing.js works the rods through the very same
@@ -25,7 +26,7 @@ import { lookFor } from './crewlook.js';
 
 const BODIES = ['bosun', 'engineer', 'deckhand'];
 const HALF_PI = Math.PI / 2;
-const EXTRA_MAX = 12;            // hired hands the steamboat can put on deck: a body for every rod
+const EXTRA_MAX = 16;            // extra hands a hull can put on deck, at most one per rod
 const EXTRA_IDLE_S = 7;          // idle this long and a hired hand goes back in
 const CAST_WHIP_S = 0.48;        // into the rod's sweep, when the lure leaves
 const GRIP_FWD = 0.22;           // the grip sits this far in front of the chest (body units)
@@ -93,7 +94,7 @@ export class CrewDirector {
     }
     this.captain.walkSpeed = 3.3 * this.scale;
     this.captain.railH = (this.st.railH ?? 0.98) / this.scale;
-    b.group.add(this.captain.actor);
+    b.hullFrame.add(this.captain.actor);
     this._capSeat = 'boat';
     this.captain.placeAt(this.st.helm.x, this.st.helm.z, this.st.helm.f);
     this.captain.y = this.st.helm.y;
@@ -105,7 +106,7 @@ export class CrewDirector {
       const h = this.st.helm;
       this.prop.position.set(h.x - Math.sin(h.f) * 0.32 * this.scale, h.y, h.z - Math.cos(h.f) * 0.32 * this.scale);
       this.prop.rotation.y = h.f;
-      b.group.add(this.prop);
+      b.hullFrame.add(this.prop);
     }
 
     // Crew: same faces for the same hull every time.
@@ -123,7 +124,7 @@ export class CrewDirector {
     ch.railH = (this.st.railH ?? 0.98) / this.scale;
     ch.placeAt(post.x, post.z, post.f);
     ch.y = post.y ?? this.boat.hullBounds?.deckY ?? 0;
-    this.boat.group.add(ch.actor);
+    this.boat.hullFrame.add(ch.actor);
     const h = { post, ch, line: null, seat: 'boat', extra, idle: 0 };
     this.hands.push(h);
     return h;
@@ -184,8 +185,16 @@ export class CrewDirector {
     }
     ch.rod = null;
     ch.lookAt = null;
+    ch.aimFacing = null;
     ch.seatH = (spot.seatH ?? 0.45) / this.scale;
     ch.setState(ch.arrived ? state : 'idle');
+  }
+
+  /** The way a body at (x, z) in the hull frame should turn to face a world point. */
+  facingToward(x, z, worldPt) {
+    const p = this._v.copy(worldPt);
+    this.boat.hullFrame.worldToLocal(p);
+    return Math.atan2(-(p.x - x), -(p.z - z));
   }
 
   /** Put a character on a line: walk to its rod and work it. */
@@ -199,12 +208,23 @@ export class CrewDirector {
     ch.rod = spot.rod;
     ch.setState(line.hooked || line.state === 'landing' || line.pendingPull > 0.05 ? 'reel' : 'hold');
     ch.lookAt = line.state === 'pending' ? null : line.bobber.position;
-    // A cast still owed: swing the rod the moment they are there, and let
-    // the lure go off the whip of that swing. While someone is on their way
-    // the line waits for them (fishing.js gives a claimed cast longer).
+    // Face the work: the throw's own bearing while the cast is owed, the
+    // line itself once it is out. The torso turns first, the feet only
+    // when it cannot turn far enough (crew.js).
     const p = line.castPending;
+    if (p) {
+      // A cast yaw is 0 aft, +PI/2 to starboard; a facing is the yaw of -z.
+      ch.aimFacing = p.yaw + Math.PI;
+    } else if (line.bobber.visible) {
+      ch.aimFacing = this.facingToward(ch.pos.x, ch.pos.y, line.bobber.position);
+    } else {
+      ch.aimFacing = null;
+    }
+    // A cast still owed: swing the rod once they are there and turned to
+    // throw, and let the lure go off the whip of that swing. While someone
+    // is on their way the line waits (fishing.js gives a claimed cast longer).
     if (p) p.claimed = true;
-    if (p && p.launchAt == null && spot.rod && ch.arrived &&
+    if (p && p.launchAt == null && spot.rod && ch.aimed &&
         Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) < 0.5) {
       this.boat.castRod(line.rodIndex, p.yaw);
       ch.play('cast', 1.1);
@@ -241,7 +261,7 @@ export class CrewDirector {
     const capSeat = helmIsTender && tenderOut ? 'tender' : 'boat';
     if (this._capSeat !== capSeat) {
       this._capSeat = capSeat;
-      (capSeat === 'tender' ? td.group : b.group).add(cap.actor);
+      (capSeat === 'tender' ? td.hullFrame : b.hullFrame).add(cap.actor);
       if (capSeat === 'tender') { cap.placeAt(seatT.x, seatT.z, seatT.f); cap.y = seatT.y; }
       else { cap.placeAt(S.helm.x, S.helm.z, S.helm.f); cap.y = S.helm.y; }
       cap.route = null;
@@ -252,7 +272,7 @@ export class CrewDirector {
       const want = tenderOut && !helmIsTender ? 'tender' : 'boat';
       if (lift.seat !== want) {
         lift.seat = want;
-        (want === 'tender' ? td.group : b.group).add(lift.ch.actor);
+        (want === 'tender' ? td.hullFrame : b.hullFrame).add(lift.ch.actor);
         if (want === 'tender') { lift.ch.placeAt(seatT.x, seatT.z, seatT.f); lift.ch.y = seatT.y; }
         else { lift.ch.placeAt(lift.post.x, lift.post.z, lift.post.f); lift.ch.y = lift.post.y; }
         lift.ch.route = null;
@@ -288,12 +308,13 @@ export class CrewDirector {
     }
     for (const w of workers) { if (w.isCap) this._capLine = w.line; else w.owner.line = w.line; }
 
-    // Hired hands: more bodies out of the cabin while rods go unmanned.
+    // More hands out of the cabin while rods go unmanned, on any hull with
+    // a cabin to come out of: never a rod worked by nobody.
     const unmanned = busy.filter((l) => !workers.some((w) => w.line === l)).length;
-    if (S.door && f.crew && unmanned > 0) {
+    if (S.door && unmanned > 0) {
       this.spawnAcc += dt;
       const extras = this.hands.filter((h) => h.extra).length;
-      if (this.spawnAcc > 0.6 && extras < EXTRA_MAX) {
+      if (this.spawnAcc > 0.6 && extras < Math.min(EXTRA_MAX, b.spec.rods)) {
         this.spawnAcc = 0;
         const h = this.addHand({ ...S.door, f: 0, kind: 'extra', pose: 'idle' }, 1000 + extras * 17 + (this.hullId?.length || 0), true);
         h.ch.y = S.door.y;
@@ -343,7 +364,7 @@ export class CrewDirector {
           this.post(ch, { ...S.door, f: 0 }, 'idle');
           if (ch.arrived) { ch.dispose(); this.hands.splice(i, 1); continue; }
         } else {
-          ch.rod = null; ch.lookAt = null;
+          ch.rod = null; ch.lookAt = null; ch.aimFacing = null;
           ch.setState('idle');
         }
       } else {

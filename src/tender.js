@@ -41,6 +41,10 @@ export class Tender {
     this.group = new THREE.Group();
     this.group.visible = false;
     scene.add(this.group);
+    // The hull, rods and driver, lifted so the cockpit sole is above water.
+    this.hullFrame = new THREE.Group();
+    this.group.add(this.hullFrame);
+    this.lift = 0;
 
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
@@ -139,7 +143,9 @@ export class Tender {
 
     // Measured detached, in the hull's own space — see the note in boat.js.
     const b2 = new THREE.Box3().setFromObject(hull);
-    this.group.add(hull);
+    this.hullFrame.add(hull);
+    this.lift = def.lift ?? 0;
+    this.hullFrame.position.y = this.lift;
 
     this.hullBounds = {
       halfBeam: (b2.max.x - b2.min.x) / 2,
@@ -157,7 +163,7 @@ export class Tender {
     for (const m of rodMounts(this.spec, this.hullBounds)) {
       const r = buildRod(m.side, 0.8);
       r.rod.position.set(m.x, m.y, m.z);
-      this.group.add(r.rod);
+      this.hullFrame.add(r.rod);
       this.rods.push({ ...r, group: r.rod });
     }
     this.loaded = true;

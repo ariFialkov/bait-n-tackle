@@ -293,13 +293,8 @@ export class Fishing {
     line.state = 'pending';
     line.castPending = { yaw: Math.atan2(dir.x, dir.z) - this.boat.heading, t: 0, launchAt: null };
     this.noteWork(line, 'cast');
-
-    // Swing the bow toward the cast — but only on a nimble boat, and only
-    // when it is near enough to a standstill that the helm is not being
-    // steered against.
-    if (this.spec.rods <= 2 && this.boat.speed < 1.2) {
-      this.boat.nudgeHeading(Math.atan2(-dir.x, -dir.z), 0.3);
-    }
+    // The boat itself never moves for a cast: the body turns to throw, the
+    // hull keeps whatever way and heading it had.
     return true;
   }
 

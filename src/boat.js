@@ -110,10 +110,16 @@ export class Boat {
     this.group = new THREE.Group();
     scene.add(this.group);
 
+    // Everything measured in the hull's own frame — the model, the rods, the
+    // people, the net gear — hangs under this, which is lifted by the hull's
+    // freeboard so its lowest deck sits clear of the water.
+    this.hullFrame = new THREE.Group();
+    this.group.add(this.hullFrame);
+    this.lift = 0;
     this.hullHolder = new THREE.Group();
-    this.group.add(this.hullHolder);
+    this.hullFrame.add(this.hullHolder);
     this.rodHolder = new THREE.Group();
-    this.group.add(this.rodHolder);
+    this.hullFrame.add(this.rodHolder);
 
     this.rods = [];              // [{ group, tip, side, pos }]
     this.spec = resolveBoat(null);
@@ -145,9 +151,9 @@ export class Boat {
     this.netHit = new THREE.Mesh(
       new THREE.SphereGeometry(1.2, 8, 8),
       new THREE.MeshBasicMaterial({ visible: false }));
-    this.group.add(this.netHit);
+    this.hullFrame.add(this.netHit);
     this.netBundle = this.buildNetBundle();
-    this.group.add(this.netBundle);
+    this.hullFrame.add(this.netBundle);
 
     this.wake = new WakeTrail(scene);
     this.smoke = new Stacks(scene);
@@ -217,6 +223,8 @@ export class Boat {
     this.hullHolder.add(hull);
     this.parts = collectParts(hull);
     this._deckCache.clear();
+    this.lift = st?.lift ?? 0;
+    this.hullFrame.position.y = this.lift;
 
     // The deck the trawl gear sits on: where the net hand stands, if the
     // hull has one, else the working deck.
@@ -246,7 +254,7 @@ export class Boat {
       // height decides whether the arms look right.
       r.rod.updateMatrix();
       const gripOff = r.grip.position.clone().applyMatrix4(r.rod.matrix);   // grip, rod at the origin
-      const deckAt = authored ? m.y : this.deckHeightAt(m.x, m.z);
+      const deckAt = authored ? (m.standY ?? m.y) : this.deckHeightAt(m.x, m.z);
       m.y = authored ? deckAt + ROD_GRIP_H * this.crewScale - gripOff.y : deckAt + ROD_HOLDER_H * this.crewScale;
       r.rod.position.set(m.x, m.y, m.z);
       this.rodHolder.add(r.rod);
@@ -278,10 +286,10 @@ export class Boat {
     this._anchorR.set(b.halfBeam * 0.55, 0.05, sternZ);
     this._ropeL.set(-b.halfBeam * 0.5, b.deckY + 1.0, sternZ * 0.8);
     this._ropeR.set(b.halfBeam * 0.5, b.deckY + 1.0, sternZ * 0.8);
-    this.group.localToWorld(this._anchorL);
-    this.group.localToWorld(this._anchorR);
-    this.group.localToWorld(this._ropeL);
-    this.group.localToWorld(this._ropeR);
+    this.hullFrame.localToWorld(this._anchorL);
+    this.hullFrame.localToWorld(this._anchorR);
+    this.hullFrame.localToWorld(this._ropeL);
+    this.hullFrame.localToWorld(this._ropeR);
     this._backDir.set(Math.sin(this.heading), 0, Math.cos(this.heading));
   }
 
@@ -391,15 +399,15 @@ export class Boat {
     if (hit !== undefined) return hit;
     // The raycaster works in the world; the hull is under a group that
     // carries the boat's position and heading.
-    this.group.updateWorldMatrix(true, false);
+    this.hullFrame.updateWorldMatrix(true, false);
     this._rayFrom.set(x, b.maxY + 1, z);
-    this.group.localToWorld(this._rayFrom);
+    this.hullFrame.localToWorld(this._rayFrom);
     this._ray.set(this._rayFrom, this._rayDown);
     this._ray.far = b.maxY - b.minY + 2;
     const hits = this._ray.intersectObjects(this.hullHolder.children, true);
     let best = b.deckY, bestD = Infinity;
     for (const h of hits) {
-      const y = h.point.y - this.group.position.y;
+      const y = this.hullFrame.worldToLocal(this._rayFrom.copy(h.point)).y;
       // Prefer the surface nearest the rod deck, weighted toward being on
       // or above it rather than under it.
       const d = y >= b.deckY - 0.35 ? y - b.deckY : (b.deckY - y) * 3;

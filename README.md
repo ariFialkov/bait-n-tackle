@@ -164,15 +164,19 @@ on the skiff's outboard tiller, the driver's seat of the speedboat and the
 cuddy, the wheel inside the trawler's and dredger's cabins, the open wheel on
 the top deck of the paddlers — and off it the moment there is a rod to work.
 A cast is not thrown until someone is there to throw it: the line waits, the
-nearest free body walks to the rod, the rod swings and the lure leaves off
-the whip of that swing. The bigger hulls carry **crew**, posted by what the
+nearest free body walks to the rod, turns to face the throw (the torso
+first, the feet only if it has to), the rod swings that way and the lure
+leaves off the whip of that swing. The hull itself never moves for a cast.
+While a line is out the body stays turned toward it. The bigger hulls carry **crew**, posted by what the
 boat has: a hand at the net on the stern, the dredger's crane operator, the
 gillnetter's lookout on the rail, the seiner's tender driver (who also takes
 the tender out to keep station on the seiner's quarter while you drive the
 big boat, and gives the seat back when you take the tender's helm), the
 steamboat's engineer and spotters. Any of them will leave a post to work a
-rod when they are the nearest body to it, and hiring the steamboat's crew
-brings more hands out of the deckhouse until every rod in the water has one.
+rod when they are the nearest body to it, and when more rods are cast than
+there are bodies, more hands come out of the cabin until every rod in the
+water has one — on every hull with a cabin, not only the steamboat — and go
+back in when there is nothing left to do.
 Three bodies are rotated through the posts and dressed differently — hair,
 hat, top, trousers and boots each recoloured per hand, skin and eyes kept as
 painted — so no two look alike. All of it is animated procedurally on the
@@ -185,7 +189,10 @@ round a wheelhouse and up the ladders the hull has rather than through
 anything. The posts themselves, the rod rails and the size of a person on
 each boat are measured by hand (`stations.js`) — the models were built at
 different human scales, so the people are sized to their boat rather than
-the boats to a person.
+the boats to a person. Each hull also carries a `lift`: the models put
+their cockpit soles and working decks below the waterline, so the whole
+hull frame (model, rods, people, gear) rides high enough that the lowest
+deck is clear of the water.
 
 The moving parts move. The converter carves them out of each model and the
 game drives them from the hull's own motion: the **outboards** (Skiff,

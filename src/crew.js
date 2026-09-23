@@ -152,6 +152,8 @@ export class Character {
     this.handWorld = { L: null, R: null };    // world points a hand should be on
     this.seatH = 0.5;                         // hips above the origin when seated (body units)
     this.railH = 0.98;                        // the rail a lookout leans on (body units)
+    this.aimFacing = null;                    // a direction to work toward (parent frame yaw)
+    this._aimTwist = 0;                       // how far the torso turns to it, feet planted
     this.y = 0;
     this._leg = null;                         // start of the current route leg
     this.palm = { L: null, R: null };         // which way each palm faces (actor space)
@@ -262,6 +264,9 @@ export class Character {
 
   get arrived() { return !this.route; }
 
+  /** There, and turned toward whatever they are aiming at. */
+  get aimed() { return !this.route && this.goalFacing == null; }
+
   /** How far along the deck to where they are going. */
   get remaining() {
     if (!this.route) return 0;
@@ -311,6 +316,15 @@ export class Character {
     }
     if (!this.route) {
       this.speed = smooth(this.speed, 0, Math.min(1, 10 * dt));
+      // Aiming: the torso turns as far as it comfortably can with the feet
+      // planted; further than that and the feet come round too.
+      let aimTwist = 0;
+      if (this.aimFacing != null) {
+        const d = wrapA(this.aimFacing - this.facing);
+        if (Math.abs(d) > 1.0 && this.goalFacing == null) this.goalFacing = this.aimFacing;
+        aimTwist = Math.max(-1.0, Math.min(1.0, d));
+      }
+      this._aimTwist = smooth(this._aimTwist, aimTwist, Math.min(1, 6 * dt));
       if (this.goalFacing != null) {
         const d = wrapA(this.goalFacing - this.facing);
         this.facing += d * Math.min(1, 8 * dt);
@@ -335,10 +349,14 @@ export class Character {
   }
 
   /** A world hand target as a wrist target in actor space, kept in reach. */
-  wristFor(out, worldPt, sx, crouch, hipsY, lean) {
+  wristFor(out, worldPt, sx, crouch, hipsY, lean, twist = 0) {
     this.actor.updateWorldMatrix(true, false);
     out.copy(this.actor.worldToLocal(this._tmp2.copy(worldPt)));
-    const sh = this._tmp.set(sx, SHOULDER_Y - crouch * 0.3 + hipsY - this.hipHeight, -lean * 0.3);
+    // The shoulder, carried round by however far the torso is turned.
+    const sz = -lean * 0.3;
+    const sh = this._tmp.set(sx * Math.cos(twist) + sz * Math.sin(twist),
+      SHOULDER_Y - crouch * 0.3 + hipsY - this.hipHeight,
+      -sx * Math.sin(twist) + sz * Math.cos(twist));
     out.sub(sh);
     const reach = this.len.upArm + this.len.foreArm - 0.01;
     const d = out.length();
@@ -478,6 +496,9 @@ export class Character {
       hips.x = 0.015 * Math.sin(ph * 0.37);
     }
 
+    // The torso turned toward what the hands are working, feet planted.
+    if (!walking && this._aimTwist) twist += this._aimTwist;
+
     // One-shot gestures ride over the state.
     if (this.oneShot) {
       const k = this.oneShot.t / this.oneShot.dur;
@@ -502,16 +523,17 @@ export class Character {
     }
 
     // World hand points become wrist targets within reach.
-    if (handW.L) this.wristFor(w.handL, handW.L, -SHOULDER_X, crouch, hips.y, lean);
-    if (handW.R) this.wristFor(w.handR, handW.R, SHOULDER_X, crouch, hips.y, lean);
+    if (handW.L) this.wristFor(w.handL, handW.L, -SHOULDER_X, crouch, hips.y, lean, twist);
+    if (handW.R) this.wristFor(w.handR, handW.R, SHOULDER_X, crouch, hips.y, lean, twist);
 
-    // Head: follow a world point if there is one.
+    // Head: follow a world point if there is one (less what the torso
+    // already turned).
     if (this.lookAt && !this.oneShot) {
       this.actor.updateWorldMatrix(true, false);
       const local = this._tmp.copy(this.lookAt);
       this.actor.worldToLocal(local);
       local.y -= 1.5;
-      headYaw = Math.max(-1.0, Math.min(1.0, Math.atan2(-local.x, -local.z)));
+      headYaw = Math.max(-1.0, Math.min(1.0, Math.atan2(-local.x, -local.z) - twist));
       headPitch = Math.max(-0.5, Math.min(0.6, -Math.atan2(local.y, Math.hypot(local.x, local.z))));
     }
 

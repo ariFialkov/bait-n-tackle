@@ -152,7 +152,7 @@ export class Stacks {
 
     // Mouth of the funnel, in the world.
     this._v.set(stack.x, stack.y, stack.z).multiplyScalar(this.scale);
-    boat.group.localToWorld(this._v);
+    (boat.hullFrame || boat.group).localToWorld(this._v);
     this.pos[o] = this._v.x + (Math.random() - 0.5) * r;
     this.pos[o + 1] = this._v.y + r * 0.3;
     this.pos[o + 2] = this._v.z + (Math.random() - 0.5) * r;

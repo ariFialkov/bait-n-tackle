@@ -27,7 +27,6 @@ const ROD_MAT = {
 
 const REST_YAW = 1.12;     // radians off the stern line, toward the rail
 const REST_LAY = 0.62;     // how far it is laid down from vertical
-const YAW_RANGE = 0.85;    // how far it may swing to follow its line
 
 /** One rod at a mount. `scale` sizes it to the boat it is bolted to. */
 export function buildRod(side, scale) {
@@ -95,6 +94,17 @@ export function aimRods(rods, origin, heading, aims) {
   }
 }
 
+/**
+ * Where a rod on one side may point: anywhere from nearly straight aft
+ * round to straight ahead on its own side of the boat — never back across
+ * the deck, never over the far rail. The result is a yaw in the rod's own
+ * convention (0 aft, +PI/2 to starboard).
+ */
+export function clampRodYaw(side, yaw) {
+  const a = wrapAngle(side * yaw);          // angle out on the rod's own side
+  return side * Math.max(0.15, Math.min(Math.PI - 0.05, a));
+}
+
 /** Ease every rod toward whatever it was last aimed at. */
 export function updateRods(rods, dt) {
   const k = Math.min(1, 6 * dt);
@@ -112,7 +122,7 @@ export function updateRods(rods, dt) {
         if (u < 0.4) { const e = u / 0.4; l = REST_LAY - (REST_LAY + 0.55) * e * e; }
         else if (u < 0.65) { const e = (u - 0.4) / 0.25; l = -0.55 + (1.25 + 0.55) * e * e; }
         else { const e = (u - 0.65) / 0.35; l = 1.25 + (REST_LAY + 0.22 - 1.25) * (1 - Math.pow(1 - e, 2)); }
-        const wantYaw = restYaw + Math.max(-YAW_RANGE, Math.min(YAW_RANGE, wrapAngle(r.cast.yaw - restYaw)));
+        const wantYaw = clampRodYaw(r.side, r.cast.yaw);
         r.group.rotation.y += wrapAngle(wantYaw - r.group.rotation.y) * Math.min(1, 12 * dt);
         r.group.rotation.x += (l - r.group.rotation.x) * Math.min(1, 22 * dt);
         r.flex.rotation.x += ((u > 0.4 && u < 0.7 ? -0.5 : 0.15) - r.flex.rotation.x) * Math.min(1, 14 * dt);
@@ -121,8 +131,7 @@ export function updateRods(rods, dt) {
     }
     if (r.want) {
       // Follow the line, but never far enough to swing back over the deck.
-      yaw = restYaw + Math.max(-YAW_RANGE, Math.min(YAW_RANGE,
-        wrapAngle(r.want.yaw - restYaw)));
+      yaw = clampRodYaw(r.side, r.want.yaw);
       lay = REST_LAY + 0.22 * r.want.load;
       bend = 0.66 * r.want.load;
     }

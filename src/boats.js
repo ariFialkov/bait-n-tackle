@@ -149,7 +149,7 @@ export const BOATS = [
     turn: 2.7,
     length: 19.0,
     features: { trawl: true, sonar: true, pots: true, tender: true },
-    tender: { model: 'cuddy', length: 5.4, rods: 2 },
+    tender: { model: 'cuddy', length: 5.4, rods: 2, lift: 0.33 },
   },
   {
     id: 'steamboat',
