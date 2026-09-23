@@ -206,7 +206,10 @@ Speedboat) swing with the helm and tilt clear of the water at idle, and the
 **paddlewheels** (Paddleboat, Steamboat) roll with the boat's way through the
 water, the inner wheel backing off in a turn while the outer drives on. Hulls
 heel into their turns and lift the bow under power, and the rods swing to
-follow their own lines and load up when a fish is on. The steam hulls make
+follow their own lines and load up when a fish is on. The wake is laid down
+at the hull's real transom (`wake.js` reads the model's stern), so it meets
+the boat on a paddler as wide as it is long and a seiner twice as long as it
+is wide alike. The steam hulls make
 smoke (`smoke.js`): puffs leave the funnels with the ship's way still on
 them, rise, are taken by the breeze and come apart into wisps, laid down in
 world space like the wake — drive a circle and the plume reads the circle

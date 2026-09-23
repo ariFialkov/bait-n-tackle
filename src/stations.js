@@ -126,7 +126,9 @@ export const STATIONS = {
     // metre of headroom, so the crew live on the open top deck (3.41) and
     // come down a ladder at its aft end to the open stern promenade, where
     // the net is worked.
-    deck: [2.0, 3.5], cell: 0.4, crewScale: 0.75, railH: 0.5, lift: 0,
+    // The fantail aft of the wheels sits at -1.08 in the model: lifted so
+    // it rides clear of the water like the main deck does.
+    deck: [2.0, 3.5], cell: 0.4, crewScale: 0.75, railH: 0.5, lift: 1.3,
     helm: { x: 0, y: 3.41, z: -2.4, f: 0, pose: 'wheel', prop: 'wheel' },
     door: { x: -0.95, y: 3.41, z: -0.8 },
     posts: [

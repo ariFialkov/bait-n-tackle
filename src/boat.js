@@ -230,6 +230,7 @@ export class Boat {
     const netY = st?.posts?.find((p) => p.kind === 'net')?.y ?? deckY;
     this.hullBounds = {
       halfBeam: (box.max.x - box.min.x) / 2,
+      sternZ: box.max.z,          // where the transom actually is, for the wake
       deckY: netY,
       minY: box.min.y,
       maxY: box.max.y,

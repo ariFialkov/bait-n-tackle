@@ -149,6 +149,7 @@ export class Tender {
 
     this.hullBounds = {
       halfBeam: (b2.max.x - b2.min.x) / 2,
+      sternZ: b2.max.z,
       deckY: Math.max(0.2, b2.max.y * 0.25),
       length: b2.max.z - b2.min.z,
     };

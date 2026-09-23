@@ -272,7 +272,7 @@ class SternSpray {
     scene.add(this.points);
   }
 
-  setSpec(power, beam) { this.power = power; this.beam = beam; }
+  setSpec(power, beam, stern) { this.power = power; this.beam = beam; this.stern = stern; }
 
   setVisible(on) { this.points.visible = on; }
 
@@ -293,9 +293,9 @@ class SternSpray {
     // boils out of the middle of the transom rather than along its full beam.
     const lateral = (Math.random() + Math.random() - 1) * this.beam * 0.75;
     const o = i * 3;
-    this.pos[o] = pos.x + bx * this.beam * 1.75 + nx * lateral;
+    this.pos[o] = pos.x + bx * this.stern + nx * lateral;
     this.pos[o + 1] = CONFIG.WATER_LEVEL + 0.08;
-    this.pos[o + 2] = pos.z + bz * this.beam * 1.75 + nz * lateral;
+    this.pos[o + 2] = pos.z + bz * this.stern + nz * lateral;
 
     const kick = (0.8 + Math.random() * 2.4) * (0.6 + frac * 0.9);
     const out = (Math.random() - 0.5) * (1.7 + this.beam * 0.55);
@@ -425,6 +425,10 @@ export class WakeTrail {
    */
   setSpec(spec, bounds) {
     this.beam = Math.max(0.6, (bounds?.halfBeam ?? spec.length * 0.16) * 1.15);
+    // The wake is laid down at the transom — the hull's real stern, not a
+    // guess from its beam (a paddler is wider than it is long-to-beam, a
+    // seiner far longer), a hand inside it so the trail meets the hull.
+    this.stern = Math.max(0.5, (bounds?.sternZ ?? (spec.length ?? 6) * 0.5) - 0.25);
     const wakeStat = spec.wake ?? 1;
     const size = Math.max(0.5, Math.min(2.2, (spec.length ?? 6) / 10));
     this.widthScale = (0.75 + wakeStat * 0.5);
@@ -440,7 +444,7 @@ export class WakeTrail {
     this.mat.uniforms.uPower.value = this.power;
     this.mat.uniforms.uCrestH.value = this.crestH;
     this.mat.uniforms.uWashLen.value = 1.8 + this.beam * 1.6;
-    this.spray.setSpec(this.power, this.beam);
+    this.spray.setSpec(this.power, this.beam, this.stern);
     this.reset();
   }
 
@@ -466,8 +470,8 @@ export class WakeTrail {
     foam = (0.38 + Math.pow(foam, 0.65) * 0.72) * (vessel.trawling ? 1.25 : 1);
     const lambda = 2.2 + speed * 0.9;
     return {
-      x: pos.x + dx * this.beam * 1.9,
-      z: pos.z + dz * this.beam * 1.9,
+      x: pos.x + dx * this.stern,
+      z: pos.z + dz * this.stern,
       dx, dz,
       speed,
       foam: Math.min(1.2, foam),
