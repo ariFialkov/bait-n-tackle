@@ -334,11 +334,39 @@ export class Tender {
 
   // --- per-frame -----------------------------------------------------------
 
-  update(dt, t, moveVec, mother) {
+  /**
+   * Keep station on the mother ship: a hand at the tender's helm holds it
+   * off the seiner's quarter while the player drives the big boat, close
+   * enough to be craned back aboard without a chase, far enough not to be
+   * run down. It only ever follows; the seiner never follows it.
+   */
+  steerFollow(mother) {
+    // A spot a couple of lengths off the port quarter.
+    const bx = Math.sin(mother.heading), bz = Math.cos(mother.heading);    // astern
+    const px = -bz, pz = bx;                                                // to port
+    const L = mother.hullBounds?.length || 19;
+    const tx = mother.pos.x + bx * L * 0.55 + px * (L * 0.35 + 5);
+    const tz = mother.pos.z + bz * L * 0.55 + pz * (L * 0.35 + 5);
+    let wantX = tx - this.pos.x, wantZ = tz - this.pos.z;
+    const d = Math.hypot(wantX, wantZ);
+    if (d < 4) return { x: 0, z: 0 };
+    const probeX = this.pos.x + Math.sin(this.heading) * 5;
+    const probeZ = this.pos.z + Math.cos(this.heading) * 5;
+    if (!navigable(probeX, probeZ)) {
+      this.wander += 2.2 * 0.05;
+      wantX = Math.cos(this.wander); wantZ = Math.sin(this.wander);
+    }
+    // Ease off close in, so it settles rather than overshoots.
+    const k = Math.min(1, (d - 4) / 10) / (Math.hypot(wantX, wantZ) || 1);
+    return { x: wantX * k, z: wantZ * k };
+  }
+
+  update(dt, t, moveVec, mother, helmed = false) {
     if (!this.deployed) return;
 
     const s = this.spec;
     let move = moveVec;
+    this.helmed = helmed;
     if (this.state === 'auto') {
       move = this.steerAuto(dt, mother);
 
@@ -349,6 +377,8 @@ export class Tender {
       }
       // Run finished and back alongside: report in.
       if (this.runDone && this.distanceTo(mother) <= HOME_RADIUS) this.deliver();
+    } else if (!helmed) {
+      move = this.steerFollow(mother);
     }
 
     const was = this.heading;

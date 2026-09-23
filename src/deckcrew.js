@@ -1,16 +1,19 @@
 // Who is on deck, and what they are doing.
 //
-// The captain is the player: always aboard, and running to whichever rod
-// the player is working — cast, and the captain goes to that rod and makes
-// the cast; crank, and the captain is there cranking. Nothing to fish, and
-// the captain takes the wheel, or stands forward directing if there is a
-// helmsman to take it.
+// The captain is the player: always aboard, and at the helm — a hand on the
+// skiff's outboard tiller, the seat of the speedboat, the wheel of the big
+// hulls — until there is a rod to work. The crew are the other three bodies,
+// rotated and dressed differently so no two look alike, each posted to a
+// job the hull has: the crane's levers, a console, the net at the stern, a
+// lookout on the rail. Every post is measured off the model by hand
+// (stations.js), and everyone walks the deck map (deckmap.js) round what is
+// in the way.
 //
-// The crew are the other three bodies, rotated and dressed differently so
-// no two look alike, and posted by what the hull carries: a helmsman on the
-// bigger boats, a hand at the sonar console, a hand at the stern for the
-// net, a tender captain on the seiner who goes out in the tender, and a
-// fishing crew on the steamboat who work the rods when the crew is hired.
+// Rods are worked by whoever is nearest. When a line is cast, the nearest
+// free body — captain or hand — goes to that rod, and the lure leaves off
+// the whip of their swing, so nothing flies before someone has thrown it.
+// On the steamboat, hiring the crew brings extra hands out of the cabin so
+// every rod in the water has a body on it.
 //
 // None of this touches a bet. The crew here are the picture of the crew the
 // fishing code already runs (fishing.js works the rods through the very same
@@ -20,19 +23,38 @@ import * as THREE from 'three';
 import { Character } from './crew.js';
 import { lookFor } from './crewlook.js';
 
-// Posts per hull. `fisher` hands only work rods while the crew is hired.
-const ROLES = {
-  skiff: [], speedboat: [], cuddy: [],
-  trawler: ['deck'],
-  'mud-dredger': ['sonar', 'deck'],
-  gillnetter: ['sonar', 'deck'],
-  paddleboat: ['helm', 'sonar', 'deck'],
-  seiner: ['helm', 'sonar', 'tender'],
-  steamboat: ['helm', 'sonar', 'fisher', 'fisher', 'fisher'],
-};
 const BODIES = ['bosun', 'engineer', 'deckhand'];
-
 const HALF_PI = Math.PI / 2;
+const EXTRA_MAX = 12;            // hired hands the steamboat can put on deck: a body for every rod
+const EXTRA_IDLE_S = 7;          // idle this long and a hired hand goes back in
+const CAST_WHIP_S = 0.48;        // into the rod's sweep, when the lure leaves
+const GRIP_FWD = 0.22;           // the grip sits this far in front of the chest (body units)
+const GRIP_SIDE = 0.10;          // ... and this far to the right of the body's centre
+
+const WHEEL_MAT = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.6 });
+const STAND_MAT = new THREE.MeshStandardMaterial({ color: 0x5c6670, roughness: 0.5, metalness: 0.4 });
+
+/** A ship's wheel on a pedestal, sized to the person who holds it. */
+function buildWheel(scale) {
+  const g = new THREE.Group();
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.9, 8), STAND_MAT);
+  stand.position.y = 0.45;
+  g.add(stand);
+  const wheel = new THREE.Group();
+  wheel.position.set(0, 1.05, 0.05);
+  wheel.rotation.x = 0.25;                                  // raked back toward the helmsman
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.02, 6, 20), WHEEL_MAT));
+  for (let i = 0; i < 6; i++) {
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 5), WHEEL_MAT);
+    s.rotation.z = i * Math.PI / 6;
+    wheel.add(s);
+  }
+  g.add(wheel);
+  g.userData.wheel = wheel;
+  g.scale.setScalar(scale);
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
 
 export class CrewDirector {
   constructor(scene, boat, tender, fishing) {
@@ -40,243 +62,297 @@ export class CrewDirector {
     this.boat = boat;
     this.tender = tender;
     this.fishing = fishing;
-    this.captain = new Character('captain', null);
-    this.captain.walkSpeed = 2.2;
-    this.hands = [];               // [{ role, ch, line, spot }]
-    this.stations = null;
-    this.directTimer = 3;
+    this.captain = null;
+    this.hands = [];               // [{ post, ch, line, seat, extra, idle }]
+    this.st = null;                // stations for this hull
     this.hullId = null;
+    this.scale = 1;
+    this.spawnAcc = 0;
+    this._capSeat = null;
     this._v = new THREE.Vector3();
-    boat.group.add(this.captain.actor);
   }
 
   /** Re-crew for a hull. Called once the boat has its model and rods. */
   setBoat(spec) {
     const b = this.boat;
     const hb = b.hullBounds || { halfBeam: 1, deckY: 0.5, length: spec.length };
-    const L = hb.length, W = hb.halfBeam;
-    const small = spec.rods <= 1;
-    // Where things are on this deck, in the boat's frame.
-    this.stations = {
-      helm: small ? { x: 0.22, z: L * 0.22, f: 0 } : { x: 0, z: -L * 0.10, f: 0 },
-      command: { x: -W * 0.35, z: -L * 0.02, f: 0 },
-      sonar: { x: W * 0.42, z: -L * 0.04, f: HALF_PI },
-      stern: { x: 0, z: L * 0.34, f: Math.PI },
-      crane: { x: -W * 0.3, z: L * 0.22, f: Math.PI },
-      rail: [],
+    const L = hb.length;
+    const deckY = hb.deckY;
+    // Authored stations, or the old guesses for a hull that has none.
+    this.st = b.stations || {
+      crewScale: 1,
+      helm: { x: 0, y: deckY, z: -L * 0.1, f: 0, pose: 'wheel' },
+      posts: [{ kind: 'net', x: 0, y: deckY, z: L * 0.34, f: Math.PI, pose: 'net' }],
     };
-    // Spare places along the rails for hands with nothing to do.
-    for (let i = 0; i < 6; i++) {
-      const side = i % 2 ? -1 : 1;
-      this.stations.rail.push({ x: side * (W * 0.92 - 0.5), z: -L * 0.3 + (i >> 1) * L * 0.22, f: side > 0 ? -HALF_PI : HALF_PI });
-    }
+    this.scale = this.st.crewScale ?? 1;
 
-    // The captain boards at the helm.
-    if (this.hullId !== spec.hullId) {
-      const h = this.stations.helm;
-      this.captain.placeAt(h.x, h.z, h.f);
+    // The captain, sized to this boat, boarding at the helm.
+    if (!this.captain || this.captain.scale !== this.scale) {
+      this.captain?.dispose();
+      this.captain = new Character('captain', null, this.scale);
+    }
+    this.captain.walkSpeed = 3.3 * this.scale;
+    this.captain.railH = (this.st.railH ?? 0.98) / this.scale;
+    b.group.add(this.captain.actor);
+    this._capSeat = 'boat';
+    this.captain.placeAt(this.st.helm.x, this.st.helm.z, this.st.helm.f);
+    this.captain.y = this.st.helm.y;
+
+    // A wheel to hold where the model has an open helm and none of its own.
+    if (this.prop) { this.prop.parent?.remove(this.prop); this.prop = null; }
+    if (this.st.helm.prop === 'wheel') {
+      this.prop = buildWheel(this.scale);
+      const h = this.st.helm;
+      this.prop.position.set(h.x - Math.sin(h.f) * 0.32 * this.scale, h.y, h.z - Math.cos(h.f) * 0.32 * this.scale);
+      this.prop.rotation.y = h.f;
+      b.group.add(this.prop);
     }
 
     // Crew: same faces for the same hull every time.
     for (const h of this.hands) h.ch.dispose();
     this.hands = [];
-    const roles = ROLES[spec.hullId] || [];
     const seedBase = [...spec.hullId].reduce((a, c) => a + c.charCodeAt(0), 0);
-    roles.forEach((role, i) => {
-      const body = BODIES[(seedBase + i) % BODIES.length];
-      const ch = new Character(body, lookFor(seedBase * 7 + i * 13 + 1));
-      const spot = this.postFor(role, i);
-      ch.placeAt(spot.x, spot.z, spot.f);
-      b.group.add(ch.actor);
-      this.hands.push({ role, ch, line: null, spot, seat: 'boat' });
-    });
+    (this.st.posts || []).forEach((post, i) => this.addHand(post, seedBase * 7 + i * 13 + 1, false));
     this.hullId = spec.hullId;
   }
 
-  /** The default post for a role. */
-  postFor(role, i) {
-    const S = this.stations;
-    switch (role) {
-      case 'helm': return S.helm;
-      case 'sonar': return S.sonar;
-      case 'deck': return S.stern;
-      case 'tender': return S.crane;
-      default: return S.rail[i % S.rail.length];
-    }
+  addHand(post, seed, extra) {
+    const body = BODIES[seed % BODIES.length];
+    const ch = new Character(body, lookFor(seed), this.scale);
+    ch.walkSpeed = 2.9 * this.scale;
+    ch.railH = (this.st.railH ?? 0.98) / this.scale;
+    ch.placeAt(post.x, post.z, post.f);
+    ch.y = post.y ?? this.boat.hullBounds?.deckY ?? 0;
+    this.boat.group.add(ch.actor);
+    const h = { post, ch, line: null, seat: 'boat', extra, idle: 0 };
+    this.hands.push(h);
+    return h;
   }
 
-  /** Where to stand to work rod `i`, and which way to face. */
+  /**
+   * Where to stand to work rod `i`, and which way to face: outboard, with
+   * the grip in front of the chest and a little to the right.
+   */
   rodSpot(i) {
     const r = this.boat.rods[i];
-    if (!r) return this.stations.helm;
+    if (!r) return null;
     const side = r.side;
-    return { x: r.pos.x - side * 0.26, z: r.pos.z + 0.04, f: side > 0 ? -HALF_PI : HALF_PI, rod: r };
-  }
-
-  /** Move a character between the mother ship and the tender. */
-  seat(h, where) {
-    if (h.seat === where) return;
-    h.seat = where;
-    const group = where === 'tender' ? this.tender.group : this.boat.group;
-    group.add(h.ch.actor);
-    if (where === 'tender') {
-      const L = this.tender.hullBounds?.length || 5;
-      h.ch.placeAt(0.18, L * 0.12, 0);
-      h.ch.setState('sit');
-    } else {
-      const s = this.postFor(h.role, 0);
-      h.ch.placeAt(s.x, s.z, s.f);
+    const g = r.gripRest || r.pos;
+    const s = this.scale;
+    // Facing outboard (-HALF_PI to starboard, +HALF_PI to port): forward is
+    // (side, 0, 0), the body's right is (0, 0, side).
+    let x = g.x - side * GRIP_FWD * s, z = g.z - side * GRIP_SIDE * s;
+    const deckY = r.deckY ?? this.boat.hullBounds?.deckY ?? 0;
+    const d = this.boat.deck;
+    let y = deckY;
+    if (d) {
+      // The spot must be on the deck the rail stands on — not up on the
+      // gunwale. Step inboard until it is; the arms make up the reach.
+      let ok = false;
+      for (let k = 0; k <= 5 && !ok; k++) {
+        const xx = x - side * 0.1 * k;
+        const h = d.heightAt(xx, z, deckY);
+        if (Number.isFinite(h) && Math.abs(h - deckY) < 0.2) { x = xx; y = h; ok = true; }
+      }
+      if (!ok) {
+        const n = d.nearest(x, z, deckY);
+        if (n) { x = n.x; z = n.z; y = n.y; }
+      }
     }
+    return { x, y, z, f: side > 0 ? -HALF_PI : HALF_PI, rod: r };
   }
 
-  /** The line most worth a body: what is being worked, else the busiest. */
-  lineToWork() {
-    const f = this.fishing;
-    const w = f.work;
-    if (w && w.line.busy && f.lines.includes(w.line)) return w.line;
-    const score = (l) => (l.state === 'landing' ? 4 : l.hooked ? 3 : l.biting ? 2 : l.busy ? 1 : 0);
-    let best = null, bs = 0;
-    for (const l of f.lines) { const s = score(l); if (s > bs) { bs = s; best = l; } }
-    return best;
+  pathfinder() {
+    const d = this.boat.deck;
+    return d ? (ax, az, bx, bz, ay, by) => d.path(ax, az, bx, bz, ay, by) : null;
+  }
+
+  /** Deck height under a character: the map, or the station's own floor. */
+  deckFn(ch) {
+    return (x, z, yHint) => {
+      const s = ch.station;
+      if (s && s.y != null && (!ch.route || ch.route.length <= 1) && Math.hypot(x - s.x, z - s.z) < 1.4) return s.y;
+      return this.boat.deckHeightAt(x, z, yHint);
+    };
+  }
+
+  /** Send a character to a spot and pose them for it once there. */
+  post(ch, spot, state) {
+    ch.station = spot;
+    if (Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) > 0.12 || (ch.route && ch.route.length)) {
+      ch.goTo(spot.x, spot.z, spot.f, this.pathfinder(), spot.y);
+    }
+    ch.rod = null;
+    ch.lookAt = null;
+    ch.seatH = (spot.seatH ?? 0.45) / this.scale;
+    ch.setState(ch.arrived ? state : 'idle');
   }
 
   /** Put a character on a line: walk to its rod and work it. */
   workLine(ch, line) {
     const spot = this.rodSpot(line.rodIndex);
-    if (!ch.goal && Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) > 0.15) ch.goTo(spot.x, spot.z, spot.f);
-    else if (ch.goal && (ch.goal.x !== spot.x || ch.goal.z !== spot.z)) ch.goTo(spot.x, spot.z, spot.f);
+    if (!spot) return;
+    ch.station = null;
+    if (Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) > 0.12 || (ch.route && ch.route.length)) {
+      ch.goTo(spot.x, spot.z, spot.f, this.pathfinder(), spot.y);
+    }
     ch.rod = spot.rod;
     ch.setState(line.hooked || line.state === 'landing' || line.pendingPull > 0.05 ? 'reel' : 'hold');
-    ch.lookAt = line.bobber.position;
-    // A cast the rod still owes: swing it the moment the fisherman gets
-    // there, or let it go if they were too far away to have made it.
-    if (line.castPending && spot.rod) {
-      const near = Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) < 0.5;
-      if (near) {
-        this.boat.castRod(line.rodIndex, line.castPending.yaw);
-        ch.play('cast', 1.1);
-        line.castPending = null;
-      } else if ((line.castPending.t += 1 / 60) > 2.5) {
-        line.castPending = null;
-      }
+    ch.lookAt = line.state === 'pending' ? null : line.bobber.position;
+    // A cast still owed: swing the rod the moment they are there, and let
+    // the lure go off the whip of that swing. While someone is on their way
+    // the line waits for them (fishing.js gives a claimed cast longer).
+    const p = line.castPending;
+    if (p) p.claimed = true;
+    if (p && p.launchAt == null && spot.rod && ch.arrived &&
+        Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) < 0.5) {
+      this.boat.castRod(line.rodIndex, p.yaw);
+      ch.play('cast', 1.1);
+      p.launchAt = p.t + CAST_WHIP_S;
     }
   }
 
-  /** Send a character to a post and pose them for it. */
-  post(ch, spot, state) {
-    if (ch.goal ? (ch.goal.x !== spot.x || ch.goal.z !== spot.z) : Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) > 0.15) {
-      ch.goTo(spot.x, spot.z, spot.f);
+  /** The helm, in whatever form this hull has. */
+  helmCaptain(cap) {
+    const h = this.st.helm;
+    const b = this.boat;
+    this.post(cap, h, h.pose);
+    if (h.pose === 'tiller') {
+      // The tiller: forward of the outboard's pivot, at the cowl.
+      const ob = b.parts.outboards[0];
+      if (ob) {
+        cap.handWorld.R = cap.handWorld.R || new THREE.Vector3();
+        cap.handWorld.R.set(0, -0.08, -0.95).applyMatrix4(ob.node.matrixWorld);
+      } else if (cap.arrived) {
+        cap.setState('sit');
+      }
     }
-    ch.rod = null;
-    ch.lookAt = null;
-    ch.setState(ch.arrived ? state : 'idle');
   }
 
   update(dt, t, helmIsTender) {
-    if (!this.stations) return;
-    const b = this.boat, f = this.fishing, S = this.stations;
-    const helmsman = this.hands.find((h) => h.role === 'helm');
-    const fishers = this.hands.filter((h) => h.role === 'fisher');
-    const crewFishing = f.crew && fishers.length > 0;
-    const moving = b.throttle > 0.05 || b.speed > 1.0;
-    const tenderHand = this.hands.find((h) => h.role === 'tender');
-
-    // --- the captain ---
+    if (!this.st || !this.captain) return;
+    const b = this.boat, f = this.fishing, S = this.st, td = this.tender;
     const cap = this.captain;
-    const capSeat = helmIsTender ? 'tender' : 'boat';
+    const lift = this.hands.find((h) => h.post.kind === 'lift');
+
+    // --- who is where: the tender ---
+    const tenderOut = td.deployed && td.hullBounds;
+    const seatT = S.tenderSeat || { x: 0.2, y: td.hullBounds?.deckY ?? 0.4, z: (td.hullBounds?.length || 5) * 0.12, f: 0, pose: 'seat', seatH: 0.42 };
+    const capSeat = helmIsTender && tenderOut ? 'tender' : 'boat';
     if (this._capSeat !== capSeat) {
       this._capSeat = capSeat;
-      (capSeat === 'tender' ? this.tender.group : b.group).add(cap.actor);
-      if (capSeat === 'tender') {
-        cap.placeAt(0.18, (this.tender.hullBounds?.length || 5) * 0.12, 0);
-      } else {
-        cap.placeAt(S.helm.x, S.helm.z, S.helm.f);
+      (capSeat === 'tender' ? td.group : b.group).add(cap.actor);
+      if (capSeat === 'tender') { cap.placeAt(seatT.x, seatT.z, seatT.f); cap.y = seatT.y; }
+      else { cap.placeAt(S.helm.x, S.helm.z, S.helm.f); cap.y = S.helm.y; }
+      cap.route = null;
+    }
+    if (lift) {
+      // The tender's own driver rides out in it whenever the player is not
+      // at its helm, and comes back to the lift when it is craned aboard.
+      const want = tenderOut && !helmIsTender ? 'tender' : 'boat';
+      if (lift.seat !== want) {
+        lift.seat = want;
+        (want === 'tender' ? td.group : b.group).add(lift.ch.actor);
+        if (want === 'tender') { lift.ch.placeAt(seatT.x, seatT.z, seatT.f); lift.ch.y = seatT.y; }
+        else { lift.ch.placeAt(lift.post.x, lift.post.z, lift.post.f); lift.ch.y = lift.post.y; }
+        lift.ch.route = null;
       }
     }
-    if (capSeat === 'tender') {
-      // At the tender's helm, and fishing from the seat.
-      const line = this.lineToWork();
-      cap.rod = null; cap.lookAt = line ? line.bobber.position : null;
-      cap.setState('sit');
-      cap.update(dt, t, () => this.tender.hullBounds?.deckY ?? 0.4, { steer: this.tender.steerDemand || 0 });
-    } else {
-      const line = crewFishing ? null : this.lineToWork();
-      if (line) {
-        this.workLine(cap, line);
-      } else if (helmsman || crewFishing) {
-        this.post(cap, S.command, 'idle');
-        // Directing: point at whatever is going on, now and again.
-        this.directTimer -= dt;
-        if (this.directTimer <= 0 && cap.arrived) {
-          this.directTimer = 3.5 + Math.random() * 4;
-          cap.play('point', 1.7);
-        }
-      } else if (moving) {
-        this.post(cap, S.helm, 'helm');
-      } else {
-        this.post(cap, S.helm, 'idle');
+
+    // --- the rods: whoever is nearest works them ---
+    const onBoat = capSeat === 'boat';
+    const busy = onBoat ? f.lines.filter((l) => l.busy) : [];
+    const workers = [];
+    if (onBoat) workers.push({ ch: cap, isCap: true, owner: null });
+    for (const h of this.hands) {
+      if (h.seat !== 'boat' || h.post.fixed) continue;
+      workers.push({ ch: h.ch, isCap: false, owner: h });
+    }
+    // Sticky: a body stays on its line while the line is busy.
+    for (const w of workers) {
+      const cur = w.isCap ? this._capLine : w.owner.line;
+      w.line = cur && cur.busy && busy.includes(cur) ? cur : null;
+    }
+    for (const l of busy) {
+      if (workers.some((w) => w.line === l)) continue;
+      const spot = this.rodSpot(l.rodIndex);
+      if (!spot) continue;
+      let best = null, bd = Infinity;
+      for (const w of workers) {
+        if (w.line) continue;
+        let d = Math.hypot(w.ch.pos.x - spot.x, w.ch.pos.y - spot.z) + Math.abs(w.ch.y - spot.y) * 2;
+        if (w.isCap) d *= 0.8;                 // the captain would rather fish
+        if (d < bd) { bd = d; best = w; }
       }
-      cap.update(dt, t, (x, z) => b.deckHeightAt(x, z), { steer: b.steerSmooth });
+      if (best) best.line = l;
+    }
+    for (const w of workers) { if (w.isCap) this._capLine = w.line; else w.owner.line = w.line; }
+
+    // Hired hands: more bodies out of the cabin while rods go unmanned.
+    const unmanned = busy.filter((l) => !workers.some((w) => w.line === l)).length;
+    if (S.door && f.crew && unmanned > 0) {
+      this.spawnAcc += dt;
+      const extras = this.hands.filter((h) => h.extra).length;
+      if (this.spawnAcc > 0.6 && extras < EXTRA_MAX) {
+        this.spawnAcc = 0;
+        const h = this.addHand({ ...S.door, f: 0, kind: 'extra', pose: 'idle' }, 1000 + extras * 17 + (this.hullId?.length || 0), true);
+        h.ch.y = S.door.y;
+      }
+    } else {
+      this.spawnAcc = 0;
+    }
+
+    // --- the captain ---
+    const capCtx = { steer: b.steerSmooth };
+    if (this.prop) this.prop.userData.wheel.rotation.z = -(b.steerSmooth || 0) * 0.7;
+    if (capSeat === 'tender') {
+      cap.station = seatT;
+      cap.seatH = (seatT.seatH ?? 0.42) / this.scale;
+      cap.rod = null;
+      cap.lookAt = null;
+      cap.setState('seat');
+      cap.update(dt, t, () => seatT.y, { steer: td.steerDemand || 0 });
+    } else {
+      if (this._capLine) this.workLine(cap, this._capLine);
+      else this.helmCaptain(cap);
+      cap.update(dt, t, this.deckFn(cap), capCtx);
     }
 
     // --- the hands ---
-    // Fishing crew: hand out the busy lines, stickily, nearest first.
-    if (crewFishing) {
-      const busy = f.lines.filter((l) => l.busy);
-      for (const h of fishers) if (h.line && !h.line.busy) h.line = null;
-      for (const l of busy) {
-        if (fishers.some((h) => h.line === l)) continue;
-        const spot = this.rodSpot(l.rodIndex);
-        let best = null, bd = Infinity;
-        for (const h of fishers) {
-          if (h.line) continue;
-          const d = Math.hypot(h.ch.pos.x - spot.x, h.ch.pos.y - spot.z);
-          if (d < bd) { bd = d; best = h; }
-        }
-        if (best) best.line = l;
-      }
-    } else {
-      for (const h of fishers) h.line = null;
-    }
-
-    let railN = 0;
-    for (const h of this.hands) {
+    for (let i = this.hands.length - 1; i >= 0; i--) {
+      const h = this.hands[i];
       const ch = h.ch;
-      let deckY = (x, z) => b.deckHeightAt(x, z);
+      let deck = this.deckFn(ch);
       let ctx = { steer: b.steerSmooth };
-      switch (h.role) {
-        case 'helm':
-          this.post(ch, S.helm, 'helm');
-          break;
-        case 'sonar':
-          this.post(ch, S.sonar, b.spec.features.sonar ? 'station' : 'lounge');
-          break;
-        case 'deck':
-          this.post(ch, S.stern, b.trawling ? 'station' : 'lounge');
-          break;
-        case 'tender': {
-          const td = this.tender;
-          const aboardTender = td.deployed && !helmIsTender;
-          this.seat(h, aboardTender ? 'tender' : 'boat');
-          if (aboardTender) {
-            ch.setState('sit');
-            ch.lookAt = td.lineFx?.bob?.visible ? td.lineFx.bob.position : null;
-            if (td.lineFx && td.lineFx.timer > 0 && td.lineFx.timer > 2.9) ch.play('wave', 0.9);
-            deckY = () => td.hullBounds?.deckY ?? 0.4;
-            ctx = { steer: td.steerDemand || 0 };
-          } else {
-            this.post(ch, S.crane, 'lounge');
-          }
-          break;
+      if (h.seat === 'tender') {
+        ch.station = seatT;
+        ch.seatH = (seatT.seatH ?? 0.42) / this.scale;
+        ch.rod = null;
+        ch.setState('seat');
+        ch.lookAt = td.lineFx?.bob?.visible ? td.lineFx.bob.position : null;
+        if (td.lineFx && td.lineFx.timer > 2.9) ch.play('wave', 0.9);
+        deck = () => seatT.y;
+        ctx = { steer: td.steerDemand || 0 };
+      } else if (h.line) {
+        h.idle = 0;
+        this.workLine(ch, h.line);
+      } else if (h.extra) {
+        // Nothing to do: back to the door, and inside once there.
+        h.idle += dt;
+        if (h.idle > EXTRA_IDLE_S) {
+          this.post(ch, { ...S.door, f: 0 }, 'idle');
+          if (ch.arrived) { ch.dispose(); this.hands.splice(i, 1); continue; }
+        } else {
+          ch.rod = null; ch.lookAt = null;
+          ch.setState('idle');
         }
-        case 'fisher':
-          if (h.line) this.workLine(ch, h.line);
-          else this.post(ch, S.rail[(railN++) % S.rail.length], 'lounge');
-          break;
-        default:
-          this.post(ch, h.spot, 'idle');
+      } else {
+        const p = h.post;
+        let state = p.pose;
+        if (p.kind === 'net' && b.trawling) state = 'console';       // hauling the winch
+        this.post(ch, p, state);
       }
-      ch.update(dt, t, deckY, ctx);
+      ch.update(dt, t, deck, ctx);
     }
   }
 }

@@ -36,7 +36,7 @@ const BOBBER_MAT = {
 class Line {
   constructor(scene) {
     this.scene = scene;
-    this.state = 'idle';            // idle | flying | out | landing
+    this.state = 'idle';            // idle | pending | flying | out | landing
     this.rodIndex = 0;
     this.fish = null;               // the visible fish, once one is hooked
     this.reset();
@@ -286,13 +286,12 @@ export class Fishing {
     line.target.copy(target);
     this.boat.rodTipWorld(rodIndex, line.start);
     line.pos.copy(line.start);
-    line.state = 'flying';
-    line.driftAngle = Math.random() * Math.PI * 2;
-    line.show(true);
-    line.bobber.rotation.set(0, 0, 0);
-    // The rod's own swing happens when whoever works it reaches it (see
-    // deckcrew.js); until then the cast is only pending on the line.
-    line.castPending = { yaw: Math.atan2(dir.x, dir.z) - this.boat.heading, t: 0 };
+    // The line does not leave yet. The rod is claimed, and the cast waits
+    // for whoever is going to make it to reach the rod and swing it (see
+    // deckcrew.js) — the lure flies off the whip of that swing. If nobody
+    // comes it goes anyway after a few seconds.
+    line.state = 'pending';
+    line.castPending = { yaw: Math.atan2(dir.x, dir.z) - this.boat.heading, t: 0, launchAt: null };
     this.noteWork(line, 'cast');
 
     // Swing the bow toward the cast — but only on a nimble boat, and only
@@ -302,6 +301,19 @@ export class Fishing {
       this.boat.nudgeHeading(Math.atan2(-dir.x, -dir.z), 0.3);
     }
     return true;
+  }
+
+  /** Let a pending cast go: the lure leaves the rod tip now. */
+  launch(line) {
+    if (line.state !== 'pending') return;
+    this.boat.rodTipWorld(line.rodIndex, line.start);
+    line.pos.copy(line.start);
+    line.timer = 0;
+    line.state = 'flying';
+    line.castPending = null;
+    line.driftAngle = Math.random() * Math.PI * 2;
+    line.show(true);
+    line.bobber.rotation.set(0, 0, 0);
   }
 
   pull(line, power, quiet = false) {
@@ -608,6 +620,18 @@ export class Fishing {
     if (!line.busy) return;
     line.timer += dt;
     this.boat.rodTipWorld(line.rodIndex, line.rodTip);
+
+    if (line.state === 'pending') {
+      const p = line.castPending;
+      if (!p) { line.state = 'idle'; line.reset(); return; }
+      p.t += dt;
+      // The swing has started: the lure leaves at its whip. A cast nobody
+      // has claimed goes on its own after a moment; one somebody is walking
+      // to waits for them, within reason.
+      if (p.launchAt != null && p.t >= p.launchAt) this.launch(line);
+      else if (p.t > (p.claimed ? 12 : 4.5)) this.launch(line);
+      return;
+    }
 
     if (line.state === 'flying') {
       const T = 0.65;

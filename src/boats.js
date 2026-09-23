@@ -78,7 +78,7 @@ export const BOATS = [
     maxSpeed: 11.0,
     accel: 8.0,
     turn: 2.9,
-    length: 8.4,
+    length: 10.5,
     features: { trawl: true },
   },
   {
@@ -123,14 +123,16 @@ export const BOATS = [
     maxSpeed: 9.5,
     accel: 6.5,
     turn: 2.2,
-    length: 15.0,
+    // 17m rather than the 15 it was modelled at: the pilothouse was too
+    // small for a person to stand in.
+    length: 17.0,
     features: { trawl: true, sonar: true, pots: true },
     // Funnel mouths, in the model's own space (bow at -z, waterline at y=0),
     // read off the hull's geometry and checked by eye. Re-measure these if the
     // model is ever replaced — nothing detects them at runtime.
     stacks: [
-      { x: 1.29, y: 5.84, z: -4.75, r: 0.39 },
-      { x: -0.04, y: 6.03, z: -6.34, r: 0.35 },
+      { x: 1.46, y: 6.62, z: -5.38, r: 0.44 },
+      { x: -0.05, y: 6.83, z: -7.19, r: 0.40 },
     ],
   },
   {

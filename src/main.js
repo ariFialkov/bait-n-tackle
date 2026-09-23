@@ -273,7 +273,7 @@ function frame() {
   const driving = state === 'play' && !marina.open;
   const move = driving ? input.moveVector() : { x: 0, z: 0 };
   boat.update(dt, helm === boat ? move : { x: 0, z: 0 }, t);
-  tender.update(dt, t, helm === tender ? move : { x: 0, z: 0 }, boat);
+  tender.update(dt, t, helm === tender ? move : { x: 0, z: 0 }, boat, helm === tender);
   const eye = helm === tender ? tender.pos : boat.pos;
   lake.update(t, eye.x, eye.z);
   ambientFish.setFocus(eye.x, eye.z);

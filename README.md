@@ -159,19 +159,33 @@ through one long turn. The shop's Handling pips show that real yaw rate, not
 the raw agility rating, because the same rating buys far less on a long
 hull.
 
-There are people aboard. The **captain** is you: always on deck, running to
-whichever rod you cast or crank — the rod swings the moment the captain
-reaches it, the hands ride on its grip and reel, and the body braces when a
-fish loads it up. Nothing to fish and the captain takes the wheel (or stands
-forward directing, on a hull big enough to carry a helmsman). The bigger
-hulls carry **crew**, posted by what the boat has: a helmsman, a hand bent
-over the sonar console, a hand at the stern for the net, the seiner's tender
-captain who goes out in the tender, and the steamboat's fishing crew who
-work the rods when the crew is hired. Three bodies are rotated through those
-posts and dressed differently — hair, hat, top, trousers and boots each
-recoloured per hand, skin and eyes kept as painted — so no two look alike.
-All of it is animated procedurally on the rigged skeletons (`crew.js`): the
-models arrive with no animation at all.
+There are people aboard. The **captain** is you: at the helm — a hand back
+on the skiff's outboard tiller, the driver's seat of the speedboat and the
+cuddy, the wheel inside the trawler's and dredger's cabins, the open wheel on
+the top deck of the paddlers — and off it the moment there is a rod to work.
+A cast is not thrown until someone is there to throw it: the line waits, the
+nearest free body walks to the rod, the rod swings and the lure leaves off
+the whip of that swing. The bigger hulls carry **crew**, posted by what the
+boat has: a hand at the net on the stern, the dredger's crane operator, the
+gillnetter's lookout on the rail, the seiner's tender driver (who also takes
+the tender out to keep station on the seiner's quarter while you drive the
+big boat, and gives the seat back when you take the tender's helm), the
+steamboat's engineer and spotters. Any of them will leave a post to work a
+rod when they are the nearest body to it, and hiring the steamboat's crew
+brings more hands out of the deckhouse until every rod in the water has one.
+Three bodies are rotated through the posts and dressed differently — hair,
+hat, top, trousers and boots each recoloured per hand, skin and eyes kept as
+painted — so no two look alike. All of it is animated procedurally on the
+rigged skeletons (`crew.js`): the models arrive with no animation at all.
+
+Where people can stand is read off each model (`deckmap.js`): every surface
+in the hull's working band with standing room over it is a floor, walls are
+found by raying between neighbouring cells at body height, and paths go
+round a wheelhouse and up the ladders the hull has rather than through
+anything. The posts themselves, the rod rails and the size of a person on
+each boat are measured by hand (`stations.js`) — the models were built at
+different human scales, so the people are sized to their boat rather than
+the boats to a person.
 
 The moving parts move. The converter carves them out of each model and the
 game drives them from the hull's own motion: the **outboards** (Skiff,
@@ -282,6 +296,8 @@ src/
   crew.js      a fisherman: rig, dressing, procedural animation and IK
   crewlook.js  recolouring a crew member's clothes from the classed atlas
   deckcrew.js  who is on deck and what they are doing
+  deckmap.js   where on a hull a person can stand and walk
+  stations.js  the posts, rails and ladders of each hull, measured by hand
   wake.js      the Kelvin-angle wake ribbon and its foam shader
   hookedfish.js the fish on your line: fighting, breaching, swung aboard
   fishing.js   trawl + cast/bite/reel state machines

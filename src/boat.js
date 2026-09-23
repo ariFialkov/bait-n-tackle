@@ -15,6 +15,8 @@ import { WakeTrail } from './wake.js';
 import { Stacks } from './smoke.js';
 import { driveHull, wrapAngle } from './hullphysics.js';
 import { buildRod, aimRods, updateRods, castRod } from './rods.js';
+import { DeckMap } from './deckmap.js';
+import { stationsFor, rodHolders } from './stations.js';
 
 const loader = new GLTFLoader();
 const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
@@ -78,7 +80,8 @@ function fallbackHull(length) {
 // part's pivot (an outboard's transom clamp, a paddlewheel's shaft). Anything
 // tagged this way is collected here and driven from the hull's own motion.
 // A hull with no tagged parts simply has none of this.
-const ROD_HOLDER_H = 0.72;       // rail-height rod holders on the deck
+const ROD_HOLDER_H = 0.72;       // rail-height rod holders on a hull with no stations
+const ROD_GRIP_H = 1.02;         // the grip sits here above the deck, for a 1.7m body
 const OUTBOARD_STEER = 0.52;     // radians the leg swings hard over
 const OUTBOARD_TILT = 0.62;      // radians it lifts clear when idling
 
@@ -193,14 +196,34 @@ export class Boat {
     // pointing, and drag the rod mounts and tow points around with it.
     const box = new THREE.Box3().setFromObject(hull);
 
+    // The working deck, and where a person can stand on it. Built while the
+    // hull is still detached, in its own frame. Stations are measured off
+    // each model by hand (stations.js); a hull with none gets the old
+    // guess and a deck map at it.
+    this.stations = stationsFor(spec.hullId);
+    const st = this.stations;
+    const range = st?.deck || [Math.max(0.2, box.max.y * 0.22) - 0.45, Math.max(0.2, box.max.y * 0.22) + 0.45];
+    const deckY = st?.helm?.y ?? (range[0] + range[1]) / 2;
+    this.crewScale = st?.crewScale ?? 1;
+    this.deck = new DeckMap(hull, range, box, {
+      cell: st?.cell || 0.5,
+      headroom: 1.7 * this.crewScale + 0.02,
+      links: st?.links || [],
+      join: st?.join,
+      from: st?.helm || null,
+    });
+
     this.hullHolder.clear();
     this.hullHolder.add(hull);
     this.parts = collectParts(hull);
     this._deckCache.clear();
 
+    // The deck the trawl gear sits on: where the net hand stands, if the
+    // hull has one, else the working deck.
+    const netY = st?.posts?.find((p) => p.kind === 'net')?.y ?? deckY;
     this.hullBounds = {
       halfBeam: (box.max.x - box.min.x) / 2,
-      deckY: Math.max(0.2, box.max.y * 0.22),
+      deckY: netY,
       minY: box.min.y,
       maxY: box.max.y,
       length: box.max.z - box.min.z,
@@ -209,15 +232,27 @@ export class Boat {
     // --- rods ---
     this.rodHolder.clear();
     this.rods = [];
-    const rodScale = Math.min(1.9, Math.max(0.85, spec.length / 6));
-    for (const m of rodMounts(spec, this.hullBounds)) {
+    // Rods are sized to the people who work them, a little longer on the
+    // big boats so they still read from the game's camera.
+    const rodScale = st
+      ? this.crewScale * (0.85 + 0.55 * Math.min(1, Math.max(0, (spec.length - 4.6) / 22)))
+      : Math.min(1.9, Math.max(0.85, spec.length / 6));
+    const authored = rodHolders(spec.hullId, spec.rods);
+    const mounts = authored || this.rodPositions(spec);
+    for (const m of mounts) {
       const r = buildRod(m.side, rodScale);
-      // In a holder at rail height on the deck that is actually there, so a
-      // fisherman standing beside it has the grip at the hip, not the knee.
-      m.y = this.deckHeightAt(m.x, m.z) + ROD_HOLDER_H;
+      // In a holder on the rail, set so the grip comes to the chest of the
+      // fisherman standing beside it — the hands go to the grip, so its
+      // height decides whether the arms look right.
+      r.rod.updateMatrix();
+      const gripOff = r.grip.position.clone().applyMatrix4(r.rod.matrix);   // grip, rod at the origin
+      const deckAt = authored ? m.y : this.deckHeightAt(m.x, m.z);
+      m.y = authored ? deckAt + ROD_GRIP_H * this.crewScale - gripOff.y : deckAt + ROD_HOLDER_H * this.crewScale;
       r.rod.position.set(m.x, m.y, m.z);
       this.rodHolder.add(r.rod);
-      this.rods.push({ ...r, group: r.rod, pos: new THREE.Vector3(m.x, m.y, m.z) });
+      // Where the grip rests, in the boat's frame, for whoever comes to work it.
+      const gripRest = gripOff.clone().add(r.rod.position);
+      this.rods.push({ ...r, group: r.rod, pos: new THREE.Vector3(m.x, m.y, m.z), deckY: deckAt, gripRest });
     }
 
     // --- trawl gear placement ---
@@ -294,6 +329,44 @@ export class Boat {
     aimRods(this.rods, this.pos, this.heading, aims);
   }
 
+  /**
+   * Rod holders along the real edge of the working deck — the deck map's
+   * rail, not the bounding box's widest point (on the paddlers that is the
+   * wheel housing, hanging out over the water). Pairs are spread along
+   * whatever length of deck each side has.
+   */
+  rodPositions(spec) {
+    const n = spec.rods;
+    const d = this.deck;
+    const fallback = rodMounts(spec, this.hullBounds);
+    if (!d) return fallback;
+    // Every station along the hull where this side has deck, then holders
+    // spread over those — a paddler's side walkways are under an overhang
+    // and the holders skip them for the open decks fore and aft.
+    const railZ = { 1: [], '-1': [] };
+    for (const side of [1, -1]) {
+      for (let iz = 0; iz < d.nz; iz++) {
+        const z = d.minZ + iz * d.cell;
+        if (d.railAt(z, side) !== null) railZ[side].push(z);
+      }
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const side = n === 1 ? 1 : (i % 2 === 0 ? 1 : -1);
+      const zs = railZ[side];
+      if (zs.length < 2) { out.push(fallback[i]); continue; }
+      const pairs = Math.max(1, Math.ceil(n / 2));
+      const pair = Math.floor(i / 2);
+      // Aft to forward, keeping the very ends clear.
+      const t = pairs === 1 ? 0.5 : pair / (pairs - 1);
+      const lo = Math.floor(zs.length * 0.12), hi = Math.ceil(zs.length * 0.88) - 1;
+      const z = zs[Math.round(hi - (hi - lo) * t)];
+      const rail = d.railAt(z, side);
+      out.push({ x: rail + side * 0.1, y: 0, z, side });
+    }
+    return out;
+  }
+
   /** Swing rod `i` through a cast toward a bearing in the boat's frame. */
   castRod(i, yaw) {
     const r = this.rods[Math.min(i, this.rods.length - 1)];
@@ -306,9 +379,13 @@ export class Boat {
    * rod-mount deck level, so a hand on the rail of a two-storey riverboat
    * stands on the deck the rods are at rather than on the roof.
    */
-  deckHeightAt(x, z) {
+  deckHeightAt(x, z, yHint) {
     const b = this.hullBounds;
     if (!b) return 0.5;
+    if (this.deck) {
+      const h = this.deck.heightAt(x, z, yHint);
+      if (Number.isFinite(h) && (yHint == null || Math.abs(h - yHint) < 1.0)) return h;
+    }
     const key = `${(x * 4) | 0},${(z * 4) | 0}`;
     const hit = this._deckCache.get(key);
     if (hit !== undefined) return hit;
