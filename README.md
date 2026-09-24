@@ -276,8 +276,17 @@ empty or your cash cannot cover what is left in it. Aboard, the tender
 stands on chocks in the seiner's stern well (the model's own painted-on
 tender is carved off so the real hull can take its place); in the water it
 is a second hull on the same lake — it keeps station off the seiner's
-quarter, steers round her rather than through her, and neither boat can be
-driven through the other (`hullphysics.js separateHulls`). The **crew** (Steamboat) work the rods through the very same `cast()` and
+quarter (or the other quarter, or astern, whichever has water round it),
+steers round her rather than through her, and neither boat can be driven
+through the other (`hullphysics.js separateHulls`). Its helmsman has an eye
+for the shore: feelers fan out either side of the wanted course and the
+tender turns to the nearest one with a metre of water all the way out,
+holds off any bank within a boat's length, and backs out toward the
+deepest water in sight when it has been pushing into a corner. The tender
+carries a **mate** who works its rods whoever is driving, and the cuddy
+has one too, so on the small boats a cast never needs the boat to stop:
+under way the captain keeps the helm and the mate throws; stopped, either
+takes the nearest rod. The **crew** (Steamboat) work the rods through the very same `cast()` and
 `pull()` calls your swipes use — extra hands, identical bets.
 
 The **sonar** on the Mud-Dredger reads nearby hotspots and names the bait

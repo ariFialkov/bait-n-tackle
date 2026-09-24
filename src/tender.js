@@ -13,7 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
 import { boatModelURL, rodMounts, hullDrag } from './boats.js';
-import { buildRod, aimRods, updateRods } from './rods.js';
+import { buildRod, aimRods, updateRods, castRod } from './rods.js';
 import { driveHull, wrapAngle, hullYawRate, steerClear } from './hullphysics.js';
 import { WakeTrail } from './wake.js';
 import { applySkin } from './skinner.js';
@@ -24,6 +24,11 @@ let hullPromise = null;
 
 // The tender floats shallower than any mother ship.
 const TENDER_MIN_DEPTH = 0.3;
+// ... but its own helmsman keeps it off the banks: this much water under it
+// is the least they will steer for, and shallower is a shore to shy from.
+const SAFE_DEPTH = 1.0;
+const FEELERS = [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, 1.6, -1.6];   // radians off the wanted course
+const STUCK_S = 1.4;             // wanting to go, going nowhere, for this long
 const AUTO_CAST_EVERY = 3.2;     // seconds between autonomous attempts
 const HOME_RADIUS = 9;           // close enough to the seiner to hand over
 
@@ -66,6 +71,8 @@ export class Tender {
     this.wander = Math.random() * Math.PI * 2;
     this.lureIndex = 0;
 
+    this.stuckT = 0;              // how long the helmsman has been trying to move and failing
+    this.backT = 0;               // time left backing out of a corner
     this._v = new THREE.Vector3();
     this.lineFx = this.buildLineFx();
     this.wake = new WakeTrail(scene);
@@ -168,11 +175,17 @@ export class Tender {
 
     // A short rod at each mount so the tender reads as a fishing boat — the
     // same rod the mother ship carries, raked out over the water.
+    // The cockpit sole, where a body stands, in the hull frame.
+    const sole = def.sole ?? -0.235;
     for (const m of rodMounts(this.spec, this.hullBounds)) {
       const r = buildRod(m.side, 0.8);
       r.rod.position.set(m.x, m.y, m.z);
+      r.rest = r.rod.position.clone();
+      r.holdPos.copy(r.rest);
       this.hullFrame.add(r.rod);
-      this.rods.push({ ...r, group: r.rod });
+      r.rod.updateMatrix();
+      const gripRest = r.grip.position.clone().applyMatrix4(r.rod.matrix);
+      this.rods.push({ ...r, group: r.rod, pos: r.rod.position.clone(), deckY: sole, gripRest });
     }
     this.loaded = true;
   }
@@ -283,6 +296,82 @@ export class Tender {
     aimRods(this.rods, this.pos, this.heading, aims);
   }
 
+  /** Swing rod `i` through a cast toward a bearing in the tender's frame. */
+  castRod(i, yaw) {
+    const r = this.rods[Math.min(i, this.rods.length - 1)];
+    if (r) castRod(r, yaw);
+  }
+
+  // --- the helmsman's eye for the shore -----------------------------------
+
+  /** The least water along a line from here, out to `reach` metres. */
+  depthAlong(dx, dz, reach) {
+    let least = Infinity;
+    for (let d = 2; d <= reach; d += 2) least = Math.min(least, waterDepth(this.pos.x + dx * d, this.pos.z + dz * d));
+    return least;
+  }
+
+  /**
+   * Bend a wanted course away from the shore. Feelers fan out either side
+   * of it; the course is turned to the nearest feeler with safe water all
+   * the way out, and if none has any, the tender backs off toward the
+   * deepest water it can see. A corner it has been pushing into for a
+   * while is backed out of the same way.
+   */
+  shyFromShore(want, dt) {
+    const mag = Math.hypot(want.x, want.z);
+    if (this.backT > 0) {
+      this.backT -= dt;
+      return this.backOff();
+    }
+    // Stuck: trying to go somewhere and not getting there.
+    if (mag > 0.25 && this.speed < 0.5) this.stuckT += dt; else this.stuckT = Math.max(0, this.stuckT - dt);
+    if (this.stuckT > STUCK_S) { this.stuckT = 0; this.backT = 1.6; return this.backOff(); }
+    if (mag < 0.05) return want;
+    const base = Math.atan2(want.z, want.x);
+    const reach = 6 + this.speed * 2.5;
+    let bestA = null, bestD = -Infinity;
+    for (const off of FEELERS) {
+      const a = base + off;
+      const d = this.depthAlong(Math.cos(a), Math.sin(a), reach);
+      if (d >= SAFE_DEPTH) { bestA = a; break; }         // feelers are ordered nearest-first
+      if (d > bestD) { bestD = d; bestA = a; }
+    }
+    if (bestA == null) return want;
+    // Hold off the bank as well: a push away from the shallowest side.
+    let px = 0, pz = 0;
+    for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4;
+      const d = waterDepth(this.pos.x + Math.cos(a) * 5, this.pos.z + Math.sin(a) * 5);
+      if (d < SAFE_DEPTH) { const w = (SAFE_DEPTH - Math.max(0, d)) / SAFE_DEPTH; px -= Math.cos(a) * w; pz -= Math.sin(a) * w; }
+    }
+    let x = Math.cos(bestA) * mag + px * 0.6, z = Math.sin(bestA) * mag + pz * 0.6;
+    const m = Math.hypot(x, z);
+    if (m > 1) { x /= m; z /= m; }
+    return { x, z };
+  }
+
+  /** Straight for the deepest water in sight, whichever way that is. */
+  backOff() {
+    let bestA = 0, bestD = -Infinity;
+    for (let k = 0; k < 12; k++) {
+      const a = k * Math.PI / 6;
+      const d = this.depthAlong(Math.cos(a), Math.sin(a), 10);
+      if (d > bestD) { bestD = d; bestA = a; }
+    }
+    return { x: Math.cos(bestA) * 0.8, z: Math.sin(bestA) * 0.8 };
+  }
+
+  /** Is there room for the tender at a spot, with water to spare round it? */
+  roomAt(x, z) {
+    if (waterDepth(x, z) < SAFE_DEPTH) return false;
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      if (waterDepth(x + Math.cos(a) * 4, z + Math.sin(a) * 4) < TENDER_MIN_DEPTH) return false;
+    }
+    return true;
+  }
+
   // --- autonomous behaviour ------------------------------------------------
 
   /** One autonomous fishing attempt — identical economics to a player cast. */
@@ -353,16 +442,12 @@ export class Tender {
         wantZ = mother.pos.z - this.pos.z;
       }
     }
-    // Steer off shallows.
-    const probeX = this.pos.x + Math.sin(this.heading) * 5;
-    const probeZ = this.pos.z + Math.cos(this.heading) * 5;
-    if (!navigable(probeX, probeZ)) {
-      this.wander += 2.2 * dt;
-      wantX = Math.cos(this.wander);
-      wantZ = Math.sin(this.wander);
-    }
     const l = Math.hypot(wantX, wantZ) || 1;
-    return steerClear(this, mother, { x: wantX / l, z: wantZ / l }, 4);
+    const clear = steerClear(this, mother, { x: wantX / l, z: wantZ / l }, 4);
+    const shy = this.shyFromShore(clear, dt);
+    // Keep the wander pointing the way the shore let it go.
+    if (Math.hypot(shy.x, shy.z) > 0.2) this.wander = Math.atan2(shy.z, shy.x);
+    return shy;
   }
 
   /** Report on the run. The catch itself was banked as it was landed. */
@@ -390,26 +475,30 @@ export class Tender {
    * enough to be craned back aboard without a chase, far enough not to be
    * run down. It only ever follows; the seiner never follows it.
    */
-  steerFollow(mother) {
-    // A spot a couple of lengths off the port quarter.
+  steerFollow(mother, dt) {
+    // A spot a couple of lengths off the port quarter — or the starboard
+    // one, or dead astern, whichever has water round it when the seiner
+    // is running close along a bank.
     const bx = Math.sin(mother.heading), bz = Math.cos(mother.heading);    // astern
     const px = -bz, pz = bx;                                                // to port
     const L = mother.hullBounds?.length || 19;
-    const tx = mother.pos.x + bx * L * 0.55 + px * (L * 0.35 + 5);
-    const tz = mother.pos.z + bz * L * 0.55 + pz * (L * 0.35 + 5);
+    const off = L * 0.35 + 5;
+    const spots = [[L * 0.55, off], [L * 0.55, -off], [L * 0.5 + off, 0]];
+    let tx = null, tz = null;
+    for (const [back, side] of spots) {
+      const x = mother.pos.x + bx * back + px * side, z = mother.pos.z + bz * back + pz * side;
+      if (this.roomAt(x, z)) { tx = x; tz = z; break; }
+    }
+    if (tx == null) { tx = mother.pos.x + bx * (L * 0.5 + off); tz = mother.pos.z + bz * (L * 0.5 + off); }
     let wantX = tx - this.pos.x, wantZ = tz - this.pos.z;
     const d = Math.hypot(wantX, wantZ);
-    if (d < 4) return { x: 0, z: 0 };
-    const probeX = this.pos.x + Math.sin(this.heading) * 5;
-    const probeZ = this.pos.z + Math.cos(this.heading) * 5;
-    if (!navigable(probeX, probeZ)) {
-      this.wander += 2.2 * 0.05;
-      wantX = Math.cos(this.wander); wantZ = Math.sin(this.wander);
-    }
-    // Ease off close in, so it settles rather than overshoots — and never
-    // straight through the mother ship to get there.
+    if (d < 4) { this.stuckT = 0; return { x: 0, z: 0 }; }
+    // Ease off close in, so it settles rather than overshoots — never
+    // straight through the mother ship to get there, and never into the
+    // bank.
     const k = Math.min(1, (d - 4) / 10) / (Math.hypot(wantX, wantZ) || 1);
-    return steerClear(this, mother, { x: wantX * k, z: wantZ * k }, 4);
+    const clear = steerClear(this, mother, { x: wantX * k, z: wantZ * k }, 4);
+    return this.shyFromShore(clear, dt);
   }
 
   update(dt, t, moveVec, mother, helmed = false) {
@@ -429,7 +518,7 @@ export class Tender {
       // Run finished and back alongside: report in.
       if (this.runDone && this.distanceTo(mother) <= HOME_RADIUS) this.deliver();
     } else if (!helmed) {
-      move = this.steerFollow(mother);
+      move = this.steerFollow(mother, dt);
     }
 
     const was = this.heading;

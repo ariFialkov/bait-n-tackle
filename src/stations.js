@@ -59,10 +59,12 @@ export const STATIONS = {
   cuddy: {
     // Cockpit sole at -0.27, hardtop at 1.19: a small person. The bench
     // behind the console seats the driver.
-    deck: [-0.4, 0.1], cell: 0.3, crewScale: 0.75, lift: 0.8,
+    deck: [-0.4, 0.1], cell: 0.3, crewScale: 0.75, lift: 0.8, railH: 0.5,
     helm: { x: 0.35, y: -0.27, z: 1.5, f: 0, pose: 'seat', seatH: 0.31 },
     door: { x: -0.35, y: -0.27, z: 0.6 },
-    posts: [],
+    // A mate in the cockpit, on the port gunwale, who works the rods so
+    // the driver need not stop for a cast.
+    posts: [{ kind: 'mate', x: -0.5, y: -0.27, z: 2.05, f: HALF, pose: 'rail' }],
     rails: [
       { side: 1, x: 0.8, y: -0.27, z0: 1.9, z1: 2.4 },
       { side: -1, x: -0.8, y: -0.27, z0: 1.9, z1: 2.4 },
@@ -166,6 +168,9 @@ export const STATIONS = {
     // The tender's driver: on the bench in the open cockpit, feet on the
     // sole. The cuddy hull is scaled to 5.4/6.2 as a tender.
     tenderSeat: { x: 0.3, y: -0.235, z: 1.31, f: 0, pose: 'seat', seatH: 0.27 },
+    // ... and the tender's mate, in its cockpit on the port gunwale, who
+    // works its rods whoever is driving.
+    tenderMate: { x: -0.42, y: -0.235, z: 1.8, f: HALF, pose: 'rail', railH: 0.45 },
     // Where the tender stands when aboard: on chocks in the stern well.
     tenderWell: { x: 0, y: 0.1, z: 6.8 },
   },

@@ -118,6 +118,22 @@ export class CrewDirector {
     const seedBase = [...spec.hullId].reduce((a, c) => a + c.charCodeAt(0), 0);
     (this.st.posts || []).forEach((post, i) => this.addHand(post, seedBase * 7 + i * 13 + 1, false));
     this.hullId = spec.hullId;
+
+    // The tender's own mate: lives in the tender, so it is only seen when
+    // the tender is in the water, and works the tender's rods whoever is
+    // at its wheel.
+    this.mate?.ch.dispose();
+    this.mate = null;
+    const tm = this.st.tenderMate;
+    if (tm && this.tender) {
+      const ch = new Character(BODIES[(seedBase + 2) % BODIES.length], lookFor(seedBase * 7 + 41), this.scale);
+      ch.walkSpeed = 2.9 * this.scale;
+      ch.railH = (tm.railH ?? 0.5) / this.scale;
+      ch.placeAt(tm.x, tm.z, tm.f);
+      ch.y = tm.y;
+      this.mate = { post: tm, ch, line: null };
+      this._mateParented = false;
+    }
   }
 
   addHand(post, seed, extra) {
@@ -137,8 +153,8 @@ export class CrewDirector {
    * Where to stand to work rod `i`, and which way to face: outboard, with
    * the grip in front of the chest and a little to the right.
    */
-  rodSpot(i) {
-    const r = this.boat.rods[i];
+  rodSpot(i, vessel = this.boat) {
+    const r = vessel.rods[i];
     if (!r) return null;
     const side = r.side;
     const g = r.gripRest || r.pos;
@@ -146,8 +162,8 @@ export class CrewDirector {
     // Facing outboard (-HALF_PI to starboard, +HALF_PI to port): forward is
     // (side, 0, 0), the body's right is (0, 0, side).
     let x = g.x - side * GRIP_FWD * s, z = g.z - side * GRIP_SIDE * s;
-    const deckY = r.deckY ?? this.boat.hullBounds?.deckY ?? 0;
-    const d = this.boat.deck;
+    const deckY = r.deckY ?? vessel.hullBounds?.deckY ?? 0;
+    const d = vessel.deck;
     let y = deckY;
     if (d) {
       // The spot must be on the deck the rail stands on — not up on the
@@ -193,20 +209,20 @@ export class CrewDirector {
     ch.setState(ch.arrived ? state : 'idle');
   }
 
-  /** The way a body at (x, z) in the hull frame should turn to face a world point. */
-  facingToward(x, z, worldPt) {
+  /** The way a body at (x, z) in a hull frame should turn to face a world point. */
+  facingToward(x, z, worldPt, vessel = this.boat) {
     const p = this._v.copy(worldPt);
-    this.boat.hullFrame.worldToLocal(p);
+    vessel.hullFrame.worldToLocal(p);
     return Math.atan2(-(p.x - x), -(p.z - z));
   }
 
   /** Put a character on a line: walk to its rod and work it. */
-  workLine(ch, line) {
-    const spot = this.rodSpot(line.rodIndex);
+  workLine(ch, line, vessel = this.boat) {
+    const spot = this.rodSpot(line.rodIndex, vessel);
     if (!spot) return;
     ch.station = null;
     if (Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) > 0.12 || (ch.route && ch.route.length)) {
-      ch.goTo(spot.x, spot.z, spot.f, this.pathfinder(), spot.y);
+      ch.goTo(spot.x, spot.z, spot.f, vessel === this.boat ? this.pathfinder() : null, spot.y);
     }
     ch.rod = spot.rod;
     // Within reach: lift the rod out of its holder into the hands, and keep
@@ -217,7 +233,7 @@ export class CrewDirector {
       ch.actor.updateWorldMatrix(true, false);
       const p = this._v.copy(CARRY);
       ch.actor.localToWorld(p);
-      this.boat.hullFrame.worldToLocal(p);
+      vessel.hullFrame.worldToLocal(p);
       spot.rod.hold = spot.rod.hold || new THREE.Vector3();
       spot.rod.hold.copy(p);
       spot.rod.holdFresh = true;
@@ -232,7 +248,7 @@ export class CrewDirector {
       // A cast yaw is 0 aft, +PI/2 to starboard; a facing is the yaw of -z.
       ch.aimFacing = p.yaw + Math.PI;
     } else if (line.bobber.visible) {
-      ch.aimFacing = this.facingToward(ch.pos.x, ch.pos.y, line.bobber.position);
+      ch.aimFacing = this.facingToward(ch.pos.x, ch.pos.y, line.bobber.position, vessel);
     } else {
       ch.aimFacing = null;
     }
@@ -242,7 +258,7 @@ export class CrewDirector {
     if (p) p.claimed = true;
     if (p && p.launchAt == null && spot.rod && ch.aimed && spot.rod.pickup > 0.9 &&
         Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) < 0.5) {
-      this.boat.castRod(line.rodIndex, p.yaw);
+      vessel.castRod(line.rodIndex, p.yaw);
       ch.play('cast', 1.1);
       p.launchAt = p.t + CAST_WHIP_S;
     }
@@ -272,8 +288,12 @@ export class CrewDirector {
     const lift = this.hands.find((h) => h.post.kind === 'lift');
     // A rod nobody asks for this frame goes back to its holder.
     for (const r of b.rods) r.holdFresh = false;
+    for (const r of td.rods) r.holdFresh = false;
     try { this.updateBodies(dt, t, helmIsTender, b, f, S, td, cap, lift); }
-    finally { for (const r of b.rods) if (!r.holdFresh) r.hold = null; }
+    finally {
+      for (const r of b.rods) if (!r.holdFresh) r.hold = null;
+      for (const r of td.rods) if (!r.holdFresh) r.hold = null;
+    }
   }
 
   updateBodies(dt, t, helmIsTender, b, f, S, td, cap, lift) {
@@ -303,14 +323,20 @@ export class CrewDirector {
     }
 
     // --- the rods: whoever is nearest works them ---
-    const onBoat = capSeat === 'boat';
+    // The lines belong to whichever vessel is fishing: the big boat's crew
+    // work them on the big boat, the tender's mate on the tender.
+    const onBoat = capSeat === 'boat' && f.boat === b;
     const busy = onBoat ? f.lines.filter((l) => l.busy) : [];
     const workers = [];
-    if (onBoat) workers.push({ ch: cap, isCap: true, owner: null });
     for (const h of this.hands) {
       if (h.seat !== 'boat' || h.post.fixed) continue;
       workers.push({ ch: h.ch, isCap: false, owner: h });
     }
+    // The captain fishes too — unless the boat is under way and there is
+    // a hand to do it, in which case the captain keeps the helm and the
+    // hand goes to the rod, so a cast never needs the boat to stop.
+    const underWay = b.throttle > 0.1 || b.speed > 1.0;
+    if (onBoat && !(underWay && workers.length)) workers.push({ ch: cap, isCap: true, owner: null });
     // Sticky: a body stays on its line while the line is busy.
     for (const w of workers) {
       const cur = w.isCap ? this._capLine : w.owner.line;
@@ -397,6 +423,44 @@ export class CrewDirector {
         this.post(ch, p, state);
       }
       ch.update(dt, t, deck, ctx);
+    }
+
+    // --- the tender's mate ---
+    const m = this.mate;
+    if (m && td.hullFrame) {
+      if (!this._mateParented) { td.hullFrame.add(m.ch.actor); this._mateParented = true; }
+      const ch = m.ch;
+      const mp = m.post;
+      const deckM = () => mp.y;
+      if (tenderOut && f.boat === td) {
+        // The player fishes from the tender: the mate works its rods.
+        const tb = f.lines.filter((l) => l.busy);
+        if (!(m.line && m.line.busy && tb.includes(m.line))) m.line = tb[0] || null;
+        if (m.line) this.workLine(ch, m.line, td);
+        else this.post(ch, mp, mp.pose);
+      } else if (tenderOut && td.state === 'auto') {
+        // Out on its own: the mate has the rod, the driver drives.
+        m.line = null;
+        const r = td.rods[0];
+        const spot = this.rodSpot(0, td);
+        if (spot) {
+          ch.station = null;
+          if (Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) > 0.12 || (ch.route && ch.route.length)) ch.goTo(spot.x, spot.z, spot.f, null, spot.y);
+          ch.rod = r;
+          ch.actor.updateWorldMatrix(true, false);
+          const p = this._v.copy(CARRY); ch.actor.localToWorld(p); td.hullFrame.worldToLocal(p);
+          r.hold = r.hold || new THREE.Vector3(); r.hold.copy(p); r.holdFresh = true;
+          const fx = td.lineFx;
+          ch.lookAt = fx.bob.visible ? fx.bob.position : null;
+          ch.aimFacing = fx.bob.visible ? this.facingToward(ch.pos.x, ch.pos.y, fx.bob.position, td) : null;
+          ch.setState(fx.bob.visible && fx.timer < 0.5 ? 'reel' : 'hold');
+          if (fx.timer > 1.05) { td.castRod(0, ch.aimFacing != null ? ch.aimFacing - Math.PI : 0); ch.play('cast', 1.1); }
+        }
+      } else {
+        m.line = null;
+        this.post(ch, mp, mp.pose);
+      }
+      ch.update(dt, t, deckM, { steer: td.steerDemand || 0 });
     }
   }
 }
