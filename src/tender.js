@@ -23,10 +23,10 @@ const loader = new GLTFLoader();
 let hullPromise = null;
 
 // The tender floats shallower than any mother ship.
-const TENDER_MIN_DEPTH = 0.3;
+const TENDER_MIN_DEPTH = 0.15;
 // ... but its own helmsman keeps it off the banks: this much water under it
 // is the least they will steer for, and shallower is a shore to shy from.
-const SAFE_DEPTH = 1.0;
+const SAFE_DEPTH = 0.45;
 const FEELERS = [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, 1.6, -1.6];   // radians off the wanted course
 const STUCK_S = 1.4;             // wanting to go, going nowhere, for this long
 const AUTO_CAST_EVERY = 3.2;     // seconds between autonomous attempts

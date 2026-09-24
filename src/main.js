@@ -125,6 +125,7 @@ function refreshShipPanel() {
     balance: player.balance,
     tender: {
       deployed: tender.deployed,
+      busy: tender.hoisting,
       auto: tender.state === 'auto',
       controlling: atHelmOfTender(),
       remaining: tender.remaining,
@@ -279,6 +280,7 @@ function updateSonar(dt) {
 // --- Loop ---
 const clock = new THREE.Clock();
 let saveAcc = 0;
+let lastTenderState = tender.state;
 
 function frame() {
   requestAnimationFrame(frame);
@@ -309,6 +311,8 @@ function frame() {
 
   hud.setWallet(player.balance, rtp.netRound());
   hud.setTenderChip(tender);
+  // The ship panel follows the tender through the crane's own timing.
+  if (tender.state !== lastTenderState) { lastTenderState = tender.state; refreshShipPanel(); }
   if (state === 'play') {
     const mar = docks.nearest(eye.x, eye.z);
     hud.setFinders(eye, mar.dist <= DOCK_HINT_RANGE ? mar : null);

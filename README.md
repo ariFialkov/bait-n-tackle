@@ -210,7 +210,10 @@ deck stays clear of the water even heeled hard over in a turn, trimmed by
 the throttle and down in a wave trough. The heel itself is capped by beam
 (`boat.js`), so a wide hull rolls only a few degrees.
 
-The shore stops the whole hull (`hullphysics.js`). A hull is a footprint of
+Anything under water floats a hull: the navigable depth is a hand's
+breadth, so the submerged banks across a channel mouth are a place to
+drive, not a wall, and the tender can follow the seiner through the
+narrows. The shore stops the whole hull (`hullphysics.js`). A hull is a footprint of
 points down its centreline and along both sides, tapered to a stem, and a
 move or a swing of the heading is allowed only if it leaves no more of those
 points aground than before — so a seiner's bow can no longer ride up the
@@ -326,13 +329,18 @@ tender on its chocks, takes the weight, lifts it clear of the bulwark,
 swings it out over the starboard side and lowers it to the water; let go,
 it is a boat with the ship's way on it. Called back, the tender comes
 alongside under the hook and the same film runs backwards into the well.
-The **trawl net** goes over the stern in stages: the bundle lifts off the
-deck to the gallows, swings out over the transom, drops in, and pays out
-from a bundle into its full funnel as the winch lets the ropes run; stowing
-winds it back to a bundle and the same path brings it aboard. A **pot** is
-lobbed off the rail in a tumbling arc, splashes, and its cage sinks away
-under the float until the rope is straight; reached, the cage is hauled up
-to the surface and swung in over the rail, and only then is the haul shown.
+The **trawl net** and the **pots** are worked by a deckhand, the way the
+rods are: the net hand (or whoever is loose) walks to the bundle on the
+stern deck, lifts it into their hands, winds up and heaves it over the
+transom off the whip of the throw, and it pays out from a bundle into its
+full funnel as the winch lets the ropes run; stowing winds it back to a
+bundle and the same hand hauls it in over the transom and sets it down.
+A pot is carried to the rail and thrown in a tumbling arc, splashes, and
+its cage sinks away under the float until the rope is straight; reached,
+the hand goes to the rail, the cage is hauled up to the surface and lifted
+into their arms, and only then is the haul shown. With nobody free to
+come (a skiff has no deckhand), the gear goes over on its own after a
+moment, from the gallows or the rail.
 A **line that parts** whips back: the rod springs the other way, the loose
 end flies up toward the tip and settles slack on the water, and the
 cut-off float rolls over and goes under.

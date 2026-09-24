@@ -264,6 +264,138 @@ export class CrewDirector {
     }
   }
 
+  // --- the gear -------------------------------------------------------------
+  //
+  // The net and the pots are thrown and hauled by a deckhand, the way the
+  // rods are worked: the gear waits on the deck (boat.js, fishing.js) with
+  // a hand-point the director fills in each frame while someone is holding
+  // it, and goes over off the whip of that person's heave. Nobody free to
+  // come, it goes over on its own after a moment.
+
+  /** The hand who does the deck work: the net hand, else whoever is loose. */
+  gearHand() {
+    const free = (h) => h.seat === 'boat' && !h.extra && h.post.kind !== 'lift';
+    return this.hands.find((h) => h.post.kind === 'net' && free(h)) ||
+      this.hands.find((h) => free(h) && h.post.kind !== 'lookout') ||
+      this.hands.find(free) || null;
+  }
+
+  /** A point on the deck near (x, z) a body can stand on, facing `f`. */
+  deckSpot(x, z, f, yHint) {
+    const d = this.boat.deck;
+    let y = yHint;
+    if (d) {
+      const h = d.heightAt(x, z, yHint);
+      if (Number.isFinite(h) && Math.abs(h - yHint) < 0.7) y = h;
+      else { const n = d.nearest(x, z, yHint); if (n) { x = n.x; z = n.z; y = n.y; } }
+    }
+    return { x, y, z, f };
+  }
+
+  /** Where to stand at the rail on one side, abreast z, facing outboard. */
+  railSpot(side, z, yHint) {
+    const b = this.boat.hullBounds || { halfBeam: 1 };
+    const s = this.scale;
+    let x = side * (b.halfBeam * 0.92 - 0.3 * s);
+    const d = this.boat.deck;
+    let y = yHint;
+    if (d) {
+      let ok = false;
+      for (let k = 0; k <= 6 && !ok; k++) {
+        const xx = x - side * 0.12 * k;
+        const h = d.heightAt(xx, z, yHint);
+        if (Number.isFinite(h) && Math.abs(h - yHint) < 0.35) { x = xx; y = h; ok = true; }
+      }
+      if (!ok) { const n = d.nearest(x, z, yHint); if (n) { x = n.x; z = n.z; y = n.y; } }
+    }
+    return { x, y, z, f: side > 0 ? -HALF_PI : HALF_PI };
+  }
+
+  /** Where a body's hands are holding something, into `out` (world). */
+  carryPoint(ch, out) {
+    ch.actor.updateWorldMatrix(true, false);
+    return ch.actor.localToWorld(out.copy(CARRY));
+  }
+
+  /** Hand out the net and pot jobs, and take them back when they are done. */
+  assignGear(b, f) {
+    const a = b.netAnim;
+    const netOut = a && (a.phase === 'ready' || a.phase === 'pickup' || a.phase === 'heave');
+    const netIn = a && (a.phase === 'gather' || a.phase === 'haulIn' || a.phase === 'setDown');
+    const potOut = f.boat === b ? f.pots.find((p) => p.anim && (p.anim.kind === 'ready' || p.anim.kind === 'carried')) : null;
+    const potIn = f.boat === b ? f.hauls[0] : null;
+    // Jobs whose gear has moved on are over.
+    for (const h of this.hands) {
+      const j = h.job;
+      if (!j) continue;
+      const live = (j.kind === 'netOut' && netOut) || (j.kind === 'netIn' && netIn) ||
+        (j.kind === 'potOut' && j.pot === potOut) || (j.kind === 'potIn' && f.hauls.includes(j.pot));
+      if (!live) h.job = null;
+    }
+    const taken = (kind, pot) => this.hands.some((h) => h.job && h.job.kind === kind && (!pot || h.job.pot === pot));
+    const give = (kind, pot) => {
+      if (taken(kind, pot)) return;
+      const h = this.gearHand();
+      if (h && !h.job) h.job = { kind, pot, played: false };
+    };
+    if (netOut) give('netOut');
+    if (netIn) give('netIn');
+    if (potOut) give('potOut', potOut);
+    if (potIn) give('potIn', potIn);
+    // Pots waiting their turn keep waiting while there is someone to throw them.
+    if (f.boat === b && this.gearHand()) {
+      for (const p of f.pots) if (p.anim && p.anim.kind === 'ready') p.anim.queued = true;
+    }
+  }
+
+  /** One frame of a hand's deck job. */
+  workJob(h, dt, t) {
+    const ch = h.ch, b = this.boat, f = this.fishing, j = h.job;
+    let spot;
+    if (j.kind === 'netOut' || j.kind === 'netIn') {
+      // Beside the bundle on the stern deck, facing aft over the transom.
+      const s = b.netSpot;
+      spot = this.deckSpot(s.x + 0.45 * this.scale, s.z - 0.2, s.f, s.y);
+    } else {
+      const r = f.potRail(j.pot);
+      spot = this.railSpot(r.side, r.z, r.y);
+    }
+    ch.station = null;
+    ch.rod = null;
+    ch.lookAt = null;
+    if (Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) > 0.12 || (ch.route && ch.route.length)) {
+      ch.goTo(spot.x, spot.z, spot.f, this.pathfinder(), spot.y);
+    }
+    const near = ch.ready && Math.hypot(ch.pos.x - spot.x, ch.pos.y - spot.z) < 0.5;
+    ch.aimFacing = near ? spot.f : null;
+    if (!near) { ch.setState('idle'); return; }
+
+    const p = this.carryPoint(ch, this._v);
+    if (j.kind === 'netOut') {
+      const a = b.netAnim;
+      b.hullFrame.worldToLocal(p);
+      a.handPos.copy(p); a.handFresh = true;
+      // Wind up and throw once it is in the hands and the body is turned.
+      if (a.phase === 'heave' && !j.played && ch.aimed) { ch.play('cast', 1.1); j.played = true; }
+      else if (a.phase === 'heave' && !j.played) a.t = 0;      // not turned yet: hold the wind-up
+      ch.setState('hold');
+    } else if (j.kind === 'netIn') {
+      const a = b.netAnim;
+      b.hullFrame.worldToLocal(p);
+      a.handPos.copy(p); a.handFresh = true;
+      ch.setState(a.phase === 'gather' || a.phase === 'haulIn' ? 'reel' : 'hold');
+    } else if (j.kind === 'potOut') {
+      const pot = j.pot, a = pot.anim;
+      pot.handPos.copy(p); pot.handFresh = true;
+      if (a.kind === 'carried' && !a.thrown && ch.aimed) { ch.play('cast', 1.1); a.thrown = true; }
+      ch.setState('hold');
+    } else if (j.kind === 'potIn') {
+      const pot = j.pot, a = pot.anim;
+      pot.handPos.copy(p); pot.handFresh = true;
+      ch.setState(a && a.kind === 'haul' ? 'reel' : 'hold');
+    }
+  }
+
   /** The helm, in whatever form this hull has. */
   helmCaptain(cap) {
     const h = this.st.helm;
@@ -329,7 +461,7 @@ export class CrewDirector {
     const busy = onBoat ? f.lines.filter((l) => l.busy) : [];
     const workers = [];
     for (const h of this.hands) {
-      if (h.seat !== 'boat' || h.post.fixed) continue;
+      if (h.seat !== 'boat' || h.post.fixed || h.job) continue;
       workers.push({ ch: h.ch, isCap: false, owner: h });
     }
     // The captain fishes too — unless the boat is under way and there is
@@ -388,13 +520,19 @@ export class CrewDirector {
       cap.update(dt, t, this.deckFn(cap), capCtx);
     }
 
+    // --- the gear: the net and the pots want a hand each ---
+    this.assignGear(b, f);
+
     // --- the hands ---
     for (let i = this.hands.length - 1; i >= 0; i--) {
       const h = this.hands[i];
       const ch = h.ch;
       let deck = this.deckFn(ch);
       let ctx = { steer: b.steerSmooth };
-      if (h.seat === 'tender') {
+      if (h.job) {
+        h.idle = 0;
+        this.workJob(h, dt, t);
+      } else if (h.seat === 'tender') {
         ch.station = seatT;
         ch.seatH = (seatT.seatH ?? 0.42) / this.scale;
         ch.rod = null;

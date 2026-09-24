@@ -25,6 +25,8 @@ import { HookedFish } from './hookedfish.js';
 import { HAUL_TOAST_MS, TOAST_FADE_MS } from './hud.js';
 
 const SNAP_S = 1.0;            // a parted line whipping back and settling
+const POT_WAIT_S = 2.5;        // how long a pot waits on deck for a hand to take it
+const POT_WHIP_S = 0.48;       // into the heave, when it leaves the hands
 const POT_DROP_S = 0.7;        // a pot's arc from the rail to the water
 const POT_SINK_S = 1.2;        // ... and the cage going down out of sight
 const POT_HAUL_S = 1.0;        // the cage coming up to the surface
@@ -525,9 +527,11 @@ export class Fishing {
     pot.side = side;
     pot.ready = CONFIG.POT_SOAK_S;
     pot.phase = Math.random() * Math.PI * 2;
-    // Off the rail and into the water, cage sinking away under the float.
-    pot.anim = { kind: 'drop', t: 0, from: this.railPoint(side, new THREE.Vector3()) };
-    pot.mesh.position.copy(pot.anim.from);
+    // Waits on the deck for a hand to carry it to the rail and throw it;
+    // nobody coming, it goes over from the rail on its own.
+    pot.anim = { kind: 'ready', t: 0 };
+    pot.mesh.visible = false;
+    pot.mesh.position.copy(this.railPoint(side, this._v));
     this.potGroup.add(pot.mesh, pot.splash);
     this.pots.push(pot);
     this.hud.hint(`Pot set — $${stake.toFixed(2)} staked, soak ${CONFIG.POT_SOAK_S}s`);
@@ -560,7 +564,17 @@ export class Fishing {
     }));
     splash.renderOrder = 4;
     splash.visible = false;
-    return { mesh, cage, float, rope, splash, splashT: 0, anim: null, result: null };
+    return {
+      mesh, cage, float, rope, splash, splashT: 0, anim: null, result: null,
+      // Where a hand is holding it this frame (world), if one is.
+      handPos: new THREE.Vector3(), handFresh: false,
+    };
+  }
+
+  /** The rail a pot is thrown from or hauled over: where a hand stands for it. */
+  potRail(pot) {
+    const b = this.boat.hullBounds || { halfBeam: 1, length: 5, deckY: 0.5 };
+    return { side: pot.side, x: pot.side * b.halfBeam * 0.92, z: b.length * 0.12, y: b.deckY };
   }
 
   /** Where a pot goes in: a little off the boat's side, abreast the working deck. */
@@ -606,7 +620,24 @@ export class Fishing {
       pot.float.material.color.setHex(soaked ? 0x7dedae : 0xe8b23a);
 
       const a = pot.anim;
-      if (a && a.kind === 'drop') {
+      const hand = pot.handFresh ? pot.handPos : null;
+      pot.handFresh = false;
+      if (a && a.kind === 'ready') {
+        // On the deck until a hand has it; nobody after a while, it is
+        // thrown from the rail by itself.
+        if (!a.queued) a.t += dt;
+        a.queued = false;
+        if (hand) { pot.anim = { kind: 'carried', t: 0, thrown: false, byHand: true }; pot.mesh.visible = true; }
+        else if (a.t > POT_WAIT_S) { pot.anim = { kind: 'carried', t: 0, thrown: true, byHand: false }; pot.mesh.visible = true; }
+      } else if (a && a.kind === 'carried') {
+        // In the hands at the rail (or on the rail): thrown off the whip
+        // of the heave, which the crew director starts.
+        pot.mesh.position.copy(hand || (a.byHand ? pot.handPos : this.railPoint(pot.side, this._v)));
+        if (a.thrown) a.t += dt;
+        if (a.t >= (a.byHand ? POT_WHIP_S : 0)) {
+          pot.anim = { kind: 'drop', t: 0, from: pot.mesh.position.clone() };
+        }
+      } else if (a && a.kind === 'drop') {
         // A lob off the rail: out and over in an arc, tumbling, then the splash.
         a.t += dt;
         const k = Math.min(1, a.t / POT_DROP_S);
@@ -654,9 +685,12 @@ export class Fishing {
           pot.splashT = 1;
         }
       } else {
-        // Up out of the water and in over the rail, on the side it lies.
+        // Up out of the water and in over the rail, on the side it lies —
+        // into the hands of whoever is there to take it.
         const k = Math.min(1, a.t / POT_LIFT_S);
-        const rail = this.railPoint(pot.side, this._v);
+        const hand = pot.handFresh ? pot.handPos : null;
+        pot.handFresh = false;
+        const rail = hand || this.railPoint(pot.side, this._v);
         pot.mesh.position.lerpVectors(a.from, rail, smooth(k));
         pot.mesh.position.y = rail.y * k + Math.sin(k * Math.PI) * 0.9;
         pot.cage.position.y = -0.35 + 0.2 * k;

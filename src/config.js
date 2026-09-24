@@ -67,7 +67,7 @@ export const CONFIG = {
   // Speed, acceleration, drag and turn rate are per hull and per skin — see
   // boats.js and skins.js. Nothing generic lives here any more; the values
   // that used to did not match any boat and were read by nothing.
-  MIN_NAV_DEPTH: 0.45,       // shallower than this blocks the hull
+  MIN_NAV_DEPTH: 0.15,       // shallower than this blocks the hull: anything under water floats it
 
   // --- World ---
   SEED: 1337,

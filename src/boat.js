@@ -25,6 +25,9 @@ import { DeckCrane } from './crane.js';
 const NET_LIFT_S = 0.8, NET_SWING_S = 0.7, NET_DROP_S = 0.5;
 const NET_CARRY_S = NET_LIFT_S + NET_SWING_S + NET_DROP_S;
 const NET_PAYOUT_S = 1.6, NET_GATHER_S = 1.4;
+// With a hand to throw it: waits this long for one to come, is lifted into
+// the hands, held through the wind-up, and flies off the whip of the throw.
+const NET_WAIT_S = 2.2, NET_PICKUP_S = 0.45, NET_WHIP_S = 0.48, NET_FLY_S = 0.6, NET_HAUL_S = 0.8;
 const smooth = (k) => k * k * (3 - 2 * k);
 
 const loader = new GLTFLoader();
@@ -351,11 +354,28 @@ export class Boat {
     if (on) {
       if (a?.phase === 'carryIn') a.phase = 'carryOut', a.t = NET_CARRY_S - a.t;
       else if (a?.phase === 'gather') a.phase = 'payout';
-      else if (!this.net.active) this.netAnim = { phase: 'carryOut', t: 0 };
+      else if (a?.phase === 'haulIn' || a?.phase === 'setDown') this.netAnim = this.freshNetAnim();
+      else if (!this.net.active && !a) this.netAnim = this.freshNetAnim();
     } else {
-      if (a?.phase === 'carryOut') a.phase = 'carryIn', a.t = NET_CARRY_S - a.t;
-      else if (this.net.active) this.netAnim = { phase: 'gather', t: 0 };
+      if (a?.phase === 'ready') { this.netAnim = null; this.netBundle.position.copy(this.netRest); }
+      else if (a?.phase === 'pickup' || (a?.phase === 'heave' && a.t < NET_WHIP_S)) {
+        this.netAnim = { phase: 'setDown', t: 0, from: this.netBundle.position.clone(), handPos: new THREE.Vector3(), handFresh: false };
+      } else if (a?.phase === 'heave') a.abort = true;
+      else if (a?.phase === 'carryOut') a.phase = 'carryIn', a.t = NET_CARRY_S - a.t;
+      else if (a?.phase === 'payout') a.phase = 'gather';
+      else if (this.net.active) this.netAnim = { phase: 'gather', t: 0, handPos: new THREE.Vector3(), handFresh: false };
     }
+  }
+
+  /** A net waiting on the deck for a hand to come and throw it. */
+  freshNetAnim() {
+    return { phase: 'ready', t: 0, handPos: new THREE.Vector3(), handFresh: false, from: new THREE.Vector3() };
+  }
+
+  /** Where the net waits, and which way the thrower faces (hull frame). */
+  get netSpot() {
+    const r = this.netRest;
+    return { x: r.x, y: r.y - 0.4, z: r.z, f: Math.PI };
   }
 
   /** The bundle's place along its path over the stern: s in [0, NET_CARRY_S]. */
@@ -373,10 +393,74 @@ export class Boat {
     return out.lerpVectors(P2, P3, k * k);
   }
 
+  /** Drop the bundle in and let the netting take over. */
+  netHitsWater() {
+    this.netBundle.visible = false;
+    this.towPoints();
+    const beam = (this.hullBounds?.halfBeam ?? 1) * 2;
+    const width = THREE.MathUtils.clamp(beam * 1.25, 3.4, 7.5);
+    this.net.deploy(this._anchorL, this._anchorR, this._backDir, this.netDef?.color,
+      { width, length: width * 1.7 }, 1);
+  }
+
   updateNetAnim(dt) {
     const a = this.netAnim;
     const bundle = this.netBundle;
-    if (a.phase === 'carryOut' || a.phase === 'carryIn') {
+    // A hand on it this frame? The crew director says so each frame it is.
+    const hand = a.handFresh ? a.handPos : null;
+    a.handFresh = false;
+    if (a.phase === 'ready') {
+      // On the deck, waiting for someone to pick it up. Nobody coming:
+      // the gallows lifts it the old way.
+      a.t += dt;
+      bundle.position.copy(this.netRest);
+      bundle.visible = true;
+      if (hand) { a.phase = 'pickup'; a.t = 0; a.from.copy(bundle.position); }
+      else if (a.t > NET_WAIT_S) { this.netAnim = { phase: 'carryOut', t: 0 }; }
+    } else if (a.phase === 'pickup') {
+      // Up into the hands.
+      a.t += dt;
+      const k = Math.min(1, a.t / NET_PICKUP_S);
+      if (hand) bundle.position.lerpVectors(a.from, hand, smooth(k));
+      if (k >= 1) { a.phase = 'heave'; a.t = 0; }
+    } else if (a.phase === 'heave') {
+      // Held while the thrower winds up; off the whip it flies over the
+      // transom and into the water.
+      a.t += dt;
+      if (a.t < NET_WHIP_S) {
+        if (hand) bundle.position.copy(hand);
+        a.from.copy(bundle.position);
+      } else {
+        const k = Math.min(1, (a.t - NET_WHIP_S) / NET_FLY_S);
+        const P3 = this._p3.set(0, -0.15, this.hullBounds.length * 0.5 + 1.6);
+        bundle.position.lerpVectors(a.from, P3, k);
+        bundle.position.y += Math.sin(k * Math.PI) * 1.1;
+        bundle.rotation.z += dt * 5;
+        if (k >= 1) {
+          this.netHitsWater();
+          bundle.rotation.z = 0;
+          this.netAnim = a.abort
+            ? { phase: 'gather', t: 0, handPos: new THREE.Vector3(), handFresh: false }
+            : { phase: 'payout', t: 0 };
+        }
+      }
+    } else if (a.phase === 'haulIn') {
+      // Out of the water and up into the hands at the rail.
+      a.t += dt;
+      const k = Math.min(1, a.t / NET_HAUL_S);
+      const to = hand || a.handPos;
+      bundle.position.lerpVectors(a.from, to, smooth(k));
+      bundle.position.y += Math.sin(k * Math.PI) * 0.6;
+      if (k >= 1) { a.phase = 'setDown'; a.t = 0; a.from.copy(bundle.position); }
+    } else if (a.phase === 'setDown') {
+      // Set back on the deck where it lives.
+      a.t += dt;
+      const k = Math.min(1, a.t / NET_PICKUP_S);
+      bundle.position.lerpVectors(a.from, this.netRest, smooth(k));
+      bundle.rotation.z = 0;
+      bundle.visible = true;
+      if (k >= 1) this.netAnim = null;
+    } else if (a.phase === 'carryOut' || a.phase === 'carryIn') {
       a.t += dt;
       const s = a.phase === 'carryOut' ? a.t : NET_CARRY_S - a.t;
       this.netBundleAt(THREE.MathUtils.clamp(s, 0, NET_CARRY_S), bundle.position);
@@ -385,12 +469,7 @@ export class Boat {
       if (a.t >= NET_CARRY_S) {
         if (a.phase === 'carryOut') {
           // Splash: the bundle is in the water and the netting takes over.
-          bundle.visible = false;
-          this.towPoints();
-          const beam = (this.hullBounds?.halfBeam ?? 1) * 2;
-          const width = THREE.MathUtils.clamp(beam * 1.25, 3.4, 7.5);
-          this.net.deploy(this._anchorL, this._anchorR, this._backDir, this.netDef?.color,
-            { width, length: width * 1.7 }, 1);
+          this.netHitsWater();
           this.netAnim = { phase: 'payout', t: 0 };
         } else {
           bundle.position.copy(this.netRest);
@@ -407,7 +486,10 @@ export class Boat {
         this.net.stow();
         this.netBundleAt(NET_CARRY_S, bundle.position);
         bundle.visible = true;
-        this.netAnim = { phase: 'carryIn', t: 0 };
+        // A hand at the rail hauls it in; else the gallows brings it aboard.
+        this.netAnim = hand
+          ? { phase: 'haulIn', t: 0, from: bundle.position.clone(), handPos: hand.clone(), handFresh: false }
+          : { phase: 'carryIn', t: 0 };
       }
     }
   }

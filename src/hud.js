@@ -205,8 +205,8 @@ export class HUD {
     if (f.tender) {
       const g = group('Tender');
       const t = state.tender || {};
-      button(g, t.deployed ? 'Recall tender' : 'Launch tender', null, t.deployed,
-        () => this.onTenderLaunch && this.onTenderLaunch());
+      button(g, t.busy ? 'Crane working…' : t.deployed ? 'Recall tender' : 'Launch tender',
+        null, t.deployed, () => this.onTenderLaunch && this.onTenderLaunch(), !!t.busy);
       if (t.deployed) {
         button(g, t.controlling ? 'Take the seiner' : 'Take the tender',
           null, t.controlling, () => this.onTenderSwitch && this.onTenderSwitch(),
