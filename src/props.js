@@ -326,20 +326,28 @@ const FALLS_FRONT = fallsMaterial(1.45, 0.6);
 // The river above the falls and the white water off a rapid's boulders:
 // streaks that flow along the surface (uv.x runs downstream).
 const FLOW_MAT = new THREE.ShaderMaterial({
-  transparent: true, depthWrite: false,
+  // Double-sided: the wake and lane strips are wound from the flow direction,
+  // which puts their face down as often as up.
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
   uniforms: { uTime: { value: 0 } },
   vertexShader: /* glsl */`
-    varying vec2 vUv; attribute float phase; varying float vPhase;
-    void main() { vUv = uv; vPhase = phase; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    varying vec2 vUv; attribute float phase, fade; varying float vPhase, vFade;
+    void main() { vUv = uv; vPhase = phase; vFade = fade; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */`
-    uniform float uTime; varying vec2 vUv; varying float vPhase; ${GLSL_NOISE}
+    uniform float uTime; varying vec2 vUv; varying float vPhase, vFade; ${GLSL_NOISE}
     void main() {
-      float n = vnoise(vec2(vUv.x * 6.0 - uTime * 2.1 + vPhase * 7.0, vUv.y * 3.5 + vPhase));
-      float n2 = vnoise(vec2(vUv.x * 15.0 - uTime * 3.4, vUv.y * 8.0 + vPhase * 3.0));
-      float white = smoothstep(0.3, 0.62, n * 0.6 + n2 * 0.5);
-      float shape = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.72, vUv.x) * smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.78, vUv.y);
-      vec3 col = mix(vec3(0.62, 0.85, 0.92), vec3(1.0), white);
-      gl_FragColor = vec4(col, (0.3 + white * 0.7) * shape * 0.95);
+      // uv.x runs downstream in texture repeats (a streak every few metres);
+      // fade runs 0..1 over the whole length, whatever that is.
+      // Streaks: the noise is stretched along the flow and fine across it,
+      // so the foam reads as threads racing downstream, not bands across.
+      float n = vnoise(vec2(vUv.x * 2.5 - uTime * 2.6 + vPhase * 7.0, vUv.y * 11.0 + vPhase * 3.0));
+      float n2 = vnoise(vec2(vUv.x * 6.0 - uTime * 3.8 + vPhase, vUv.y * 22.0 + vPhase * 5.0));
+      float across = vUv.y * 2.0 - 1.0;
+      float edge = 1.0 - across * across;
+      float white = smoothstep(0.42, 0.72, (n * 0.65 + n2 * 0.45) * (0.8 + 0.2 * edge));
+      float shape = smoothstep(0.0, 0.12, vFade) * smoothstep(1.0, 0.75, vFade) * edge * edge;
+      vec3 col = mix(vec3(0.7, 0.9, 0.95), vec3(1.0), white);
+      gl_FragColor = vec4(col, (0.12 + white * 0.85) * shape);
     }`,
 });
 
@@ -365,16 +373,18 @@ function flowMesh(geos, parent) {
   if (!geos.length) return null;
   let total = 0;
   for (const g of geos) total += g.attributes.position.count;
-  const pos = new Float32Array(total * 3), uv = new Float32Array(total * 2), ph = new Float32Array(total);
+  const pos = new Float32Array(total * 3), uv = new Float32Array(total * 2), ph = new Float32Array(total), fd = new Float32Array(total);
   let o = 0;
   for (const g of geos) {
     pos.set(g.attributes.position.array, o * 3); uv.set(g.attributes.uv.array, o * 2); ph.set(g.attributes.phase.array, o);
+    fd.set(g.attributes.fade.array, o);
     o += g.attributes.position.count;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setAttribute('phase', new THREE.BufferAttribute(ph, 1));
+  geo.setAttribute('fade', new THREE.BufferAttribute(fd, 1));
   const mesh = new THREE.Mesh(geo, FLOW_MAT);
   mesh.renderOrder = 4;
   mesh.frustumCulled = false;
@@ -423,15 +433,18 @@ export function buildFalls(f, parent) {
   stream.rotateX(-Math.PI / 2);
   const sp = stream.attributes.position;
   const suv = stream.attributes.uv;
+  const fades = new Float32Array(sp.count);
   for (let i = 0; i < sp.count; i++) {
     const along = 2.4 + (sp.getZ(i) + 20);         // 2.4 .. 42 m in from the lip
     const across = sp.getX(i);
     const floor = terrainHeight(f.x + f.nx * along, f.z + f.nz * along);
     sp.setXYZ(i, f.x + f.nx * along + px * across, floor + 0.16, f.z + f.nz * along + pz * across);
-    // Flow toward the lip: uv.x runs downstream.
-    suv.setXY(i, 1 - (along - 2.4) / 40, suv.getX(i) + 0.5);
+    // Flow toward the lip: uv.x runs downstream, a streak every nine metres.
+    suv.setXY(i, (40 - (along - 2.4)) / 9, suv.getX(i) + 0.5);
+    fades[i] = 1 - (along - 2.4) / 40;
   }
   stream.setAttribute('phase', new THREE.Float32BufferAttribute(new Array(sp.count).fill(rng()), 1));
+  stream.setAttribute('fade', new THREE.Float32BufferAttribute(fades, 1));
   const river = flowMesh([stream.toNonIndexed()], g);
 
   // Rocks: the feature's own (terrain.js placed them; nav.js makes them solid).
@@ -522,20 +535,23 @@ export function buildBoulderWakes(list, parent) {
       v.x = Math.cos(r.flow || 0); v.z = Math.sin(r.flow || 0); sp = 1;
     }
     ux = v.x / sp; uz = v.z / sp;
-    const r = b.s * 0.85, len = 6 + b.s * 3 + sp * 1.5;
+    const r = b.s * 0.85, len = 7 + b.s * 3 + sp * 1.8;
     const px = -uz, pz = ux;
     const geo = new THREE.PlaneGeometry(1, 1, 5, 1);
     const p = geo.attributes.position, uv = geo.attributes.uv;
+    const fades = new Float32Array(p.count);
     for (let i = 0; i < p.count; i++) {
       const u = p.getX(i) + 0.5;                 // 0 at the boulder .. 1 downstream
-      const w = r * 0.9 + u * (r + 2.2);
+      const w = r * 0.8 + u * (r * 0.8 + 1.4);     // a wedge, not a slab
       const side = p.getY(i) * 2;                // -1 .. 1 across
       const x = b.x + ux * (r * 0.6 + u * len) + px * side * w;
       const z = b.z + uz * (r * 0.6 + u * len) + pz * side * w;
+      fades[i] = u;
       p.setXYZ(i, x, CONFIG.WATER_LEVEL + 0.07, z);
-      uv.setXY(i, u, p.getY(i) + 0.5);
+      uv.setXY(i, u * len / 9, p.getY(i) + 0.5);
     }
     geo.setAttribute('phase', new THREE.Float32BufferAttribute(new Array(p.count).fill(b.r / 6.28), 1));
+    geo.setAttribute('fade', new THREE.Float32BufferAttribute(fades, 1));
     geos.push(geo.toNonIndexed());
   }
   return flowMesh(geos, parent);
@@ -606,7 +622,7 @@ export function buildRapidLanes(cell, region, parent) {
     }
     if (pts.length < 8) continue;
     const w = 0.9 + rng() * 1.2, phase = rng();
-    const pos = [], uv = [], ph = [];
+    const pos = [], uv = [], ph = [], fd = [];
     let along = 0;
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
@@ -616,6 +632,8 @@ export function buildRapidLanes(cell, region, parent) {
       pos.push(p.x + px * ww, CONFIG.WATER_LEVEL + 0.08, p.z + pz * ww, p.x - px * ww, CONFIG.WATER_LEVEL + 0.08, p.z - pz * ww);
       uv.push(along / 9, 0, along / 9, 1);
       ph.push(phase, phase);
+      const f = i / (pts.length - 1);
+      fd.push(f, f);
     }
     const idx = [];
     for (let i = 0; i < pts.length - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
@@ -623,6 +641,7 @@ export function buildRapidLanes(cell, region, parent) {
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setAttribute('phase', new THREE.Float32BufferAttribute(ph, 1));
+    g.setAttribute('fade', new THREE.Float32BufferAttribute(fd, 1));
     g.setIndex(idx);
     geos.push(g.toNonIndexed());
   }
