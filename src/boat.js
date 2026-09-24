@@ -13,7 +13,7 @@ import { applySkin } from './skinner.js';
 import { buildProceduralHull } from './hullshapes.js';
 import { WakeTrail } from './wake.js';
 import { Stacks } from './smoke.js';
-import { driveHull, wrapAngle } from './hullphysics.js';
+import { driveHull, wrapAngle, aground } from './hullphysics.js';
 import { buildRod, buildHolder, aimRods, updateRods, castRod, HOLDER_LAY } from './rods.js';
 import { DeckMap } from './deckmap.js';
 import { stationsFor, rodHolders } from './stations.js';
@@ -774,8 +774,10 @@ export class Boat {
     // changes where you are, never what a bet pays).
     const cur = this.lake.currentAt ? this.lake.currentAt(this.pos.x, this.pos.z) : null;
     if (cur && (cur.x || cur.z)) {
+      // The same rule as the helm: the whole footprint, never more of it aground.
       const nx = this.pos.x + cur.x * dt, nz = this.pos.z + cur.z * dt;
-      if (isNavigable(nx, nz)) { this.pos.x = nx; this.pos.z = nz; }
+      const here = aground(this, this.pos.x, this.pos.z, this.heading, isNavigable);
+      if (aground(this, nx, nz, this.heading, isNavigable) <= here) { this.pos.x = nx; this.pos.z = nz; }
     }
 
     // Smoothed rate of turn and throttle: the machinery, the heel and the
