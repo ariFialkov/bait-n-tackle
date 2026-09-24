@@ -7,6 +7,10 @@ import { fishIconURL } from './fishicons.js';
 
 const $ = (id) => document.getElementById(id);
 
+// The ➤ glyph points RIGHT at rest; a bearing of 0 means straight up the
+// screen, so every arrow is turned back a quarter before its bearing.
+const arrowRot = (bearing) => `rotate(${bearing - Math.PI / 2}rad)`;
+
 export class HUD {
   constructor() {
     this.el = {
@@ -315,7 +319,7 @@ export class HUD {
       const d = entry.dock;
       // Screen-space bearing: the camera never rotates, so world -Z is up.
       const ang = Math.atan2(d.headX - boatPos.x, -(d.headZ - boatPos.z));
-      el.querySelector('.finder-arrow').style.transform = `rotate(${ang}rad)`;
+      el.querySelector('.finder-arrow').style.transform = arrowRot(ang);
       el.querySelector('.finder-text b').textContent =
         atDock ? 'here' : `${Math.round(entry.dist)}m`;
     };
@@ -333,7 +337,7 @@ export class HUD {
     }
     this.el.sonarRows.innerHTML = entries.map((e) =>
       `<div class="sonar-row">` +
-        `<span class="sonar-bear" style="transform:rotate(${e.bearing}rad)">➤</span>` +
+        `<span class="sonar-bear" style="transform:${arrowRot(e.bearing)}">➤</span>` +
         `<span class="sonar-lure">${e.lure.emoji} ${e.lure.name}</span>` +
         `<span class="sonar-dist">${Math.round(e.dist)}m</span>` +
       `</div>`).join('');

@@ -76,7 +76,12 @@ It changes how many bets you place, never what one pays.
 - **Trawling** costs per meter with the net down and scoops up whatever you
   drive over. Four nets set the stakes — $0.06/m Skiff Net up to the $6/m
   Deep Trawl — and each net's rating caps the biggest tier it can land.
-  Legend-tier fish never end up in a net.
+  Legend-tier fish never end up in a net. The net itself (`net.js`) is a
+  cloth-physics funnel sized to the hull, towed on two warps and held open
+  at the mouth as otter boards would, drawn as a square rope mesh with cork
+  floats along the headline; it lags and swings wide through a turn. Each
+  haul's fish appear flopping in the cod end — the fish the bet already
+  produced, shown after the fact, exactly as a hooked fish is on the line.
 - **Casting** is the high-stakes bet. Pick one of 8 lures
   ($1 Garden Worm → $200 Trophy Rig) and swipe. Pricier lures target
   proportionally bigger prize fish, and casting is the only way to land
@@ -200,6 +205,15 @@ deck stays clear of the water even heeled hard over in a turn, trimmed by
 the throttle and down in a wave trough. The heel itself is capped by beam
 (`boat.js`), so a wide hull rolls only a few degrees.
 
+The shore stops the whole hull (`hullphysics.js`). A hull is a footprint of
+points down its centreline and along both sides, tapered to a stem, and a
+move or a swing of the heading is allowed only if it leaves no more of those
+points aground than before — so a seiner's bow can no longer ride up the
+beach while its middle floats. Into a bank the hull scrapes along it rather
+than sticking: the part of the move heading into the shore is stripped and
+the rest slides, and a hull that has somehow been put on the bank (a shove
+from another hull) always has a way off, and only off.
+
 The moving parts move. The converter carves them out of each model and the
 game drives them from the hull's own motion: the **outboards** (Skiff,
 Speedboat) swing with the helm and tilt clear of the water at idle, and the
@@ -240,7 +254,15 @@ faces, then painted straight into its UV footprint — because the source
 atlases are mosaics of thousands of shaded islands and nothing derived from
 their brightness could ever come out solid. The camo map is that brightness
 bake, shipped as a `<hull>-camo.png` sidecar and fetched only when a camo
-skin is worn. A hull with no model falls back to a procedural shape
+skin is worn. The atlases are not clean partitions either: where a triangle
+shares UV space with an unrelated part and would read the wrong label, the
+converter re-points it at a solid swatch of its own label in an unused
+corner of the atlas. It also drops the clutter a model is better without —
+the seiner's roofs were strewn with pea-sized blobs that read as black warts
+on most skins — and lets a hull set its own threshold for what counts as a
+"small fitting", which is what stopped the mud-dredger's second roof plate
+being painted dark and z-fighting with the white roof around it. A hull with
+no model falls back to a procedural shape
 ([`src/hullshapes.js`](src/hullshapes.js)). Wake size is purely cosmetic.
 
 **Boats never change the odds.** More rods, more speed and sharper handling

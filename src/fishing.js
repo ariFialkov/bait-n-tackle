@@ -467,6 +467,8 @@ export class Fishing {
       catches.push(c);
       total += c.value;
       this.player.bank(c);
+      // Already paid for: show it in the bag.
+      this.boat.net?.addCatch(c.species, c.sizeMult);
     }
     this.rtp.book(total);
     this.hud.showTrawlHaul(catches, total);
@@ -814,5 +816,8 @@ export class Fishing {
     this.updatePots(dt, t);
     for (const l of this.lines) this.updateLine(l, dt, t);
     this.aimRods();
+    // The bite marker follows the lines every frame, so a biting line that
+    // snaps, times out or is reeled in can never leave it flashing.
+    this.hud.setBite(this.lines.some((l) => l.biting));
   }
 }

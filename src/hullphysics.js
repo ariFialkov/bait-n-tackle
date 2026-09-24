@@ -126,6 +126,91 @@ export function steerClear(o, other, want, clear) {
 }
 
 /**
+ * Where a hull meets the water, as points in the plane: down the centreline
+ * from stem to transom and along both sides, the sides drawn in a little and
+ * the bow tapered, so the shore stops the whole hull and not just the point
+ * it is steered from. Every point must float for the hull to count as clear.
+ * Written into `out` (reused); returns how many points were written.
+ */
+const STATIONS = [-1, -0.65, -0.3, 0.05, 0.4, 0.7, 0.9, 1];
+function footprint(o, x, z, heading, out) {
+  const b = o.hullBounds || { halfBeam: 1, length: 5 };
+  const half = b.length / 2, beam = b.halfBeam * 0.85;
+  const fx = -Math.sin(heading), fz = -Math.cos(heading);      // toward the bow
+  const rx = Math.cos(heading), rz = -Math.sin(heading);       // to starboard
+  let n = 0;
+  for (const s of STATIONS) {
+    const cx = x + fx * half * s, cz = z + fz * half * s;
+    out[n++] = cx; out[n++] = cz;
+    // The waterline narrows over the forward third to a stem.
+    const w = beam * (s > 0.4 ? Math.max(0.12, 1 - (s - 0.4) / 0.6 * 0.95) : 1);
+    if (w < 0.2) continue;
+    out[n++] = cx + rx * w; out[n++] = cz + rz * w;
+    out[n++] = cx - rx * w; out[n++] = cz - rz * w;
+  }
+  return n / 2;
+}
+
+const _fp = new Float64Array(STATIONS.length * 6);
+
+/** How many of the hull's footprint points would NOT float at this pose. */
+export function aground(o, x, z, heading, navigable) {
+  const n = footprint(o, x, z, heading, _fp);
+  let bad = 0;
+  for (let i = 0; i < n; i++) if (!navigable(_fp[i * 2], _fp[i * 2 + 1])) bad++;
+  return bad;
+}
+
+const _n = [0, 0];
+/**
+ * Which way the water lies from the part of the hull that would ground at
+ * this pose: a unit vector, into `out`. Taken from the mean of the grounded
+ * footprint points, by which of a ring of probes round it still float; if
+ * none do, back toward the hull's own centre.
+ */
+function shoreNormal(o, x, z, heading, navigable, out) {
+  const n = footprint(o, x, z, heading, _fp);
+  let gx = 0, gz = 0, k = 0;
+  for (let i = 0; i < n; i++) {
+    if (navigable(_fp[i * 2], _fp[i * 2 + 1])) continue;
+    gx += _fp[i * 2]; gz += _fp[i * 2 + 1]; k++;
+  }
+  if (!k) { gx = x; gz = z; } else { gx /= k; gz /= k; }
+  const R = Math.max(1.5, (o.hullBounds?.halfBeam ?? 1) * 1.2);
+  let sx = 0, sz = 0;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * TWO_PI, dx = Math.cos(a), dz = Math.sin(a);
+    if (navigable(gx + dx * R, gz + dz * R)) { sx += dx; sz += dz; }
+  }
+  let d = Math.hypot(sx, sz);
+  if (d < 1e-3) { sx = x - gx; sz = z - gz; d = Math.hypot(sx, sz); }
+  if (d < 1e-3) { sx = Math.sin(heading); sz = Math.cos(heading); d = 1; }
+  out[0] = sx / d; out[1] = sz / d;
+  return out;
+}
+
+/**
+ * A hull with part of its footprint on the bank is eased back toward the
+ * water: it drifts away from the mean of its grounded points, a little a
+ * frame, as long as each step leaves fewer points aground.
+ */
+function nudgeOff(o, navigable, dt, here) {
+  const n = footprint(o, o.pos.x, o.pos.z, o.heading, _fp);
+  let gx = 0, gz = 0, k = 0;
+  for (let i = 0; i < n; i++) {
+    if (navigable(_fp[i * 2], _fp[i * 2 + 1])) continue;
+    gx += _fp[i * 2]; gz += _fp[i * 2 + 1]; k++;
+  }
+  if (!k) return;
+  let dx = o.pos.x - gx / k, dz = o.pos.z - gz / k;
+  const d = Math.hypot(dx, dz);
+  if (d < 1e-3) { dx = Math.sin(o.heading); dz = Math.cos(o.heading); } else { dx /= d; dz /= d; }
+  const step = 0.6 * dt;
+  const nx = o.pos.x + dx * step, nz = o.pos.z + dz * step;
+  if (aground(o, nx, nz, o.heading, navigable) <= here) { o.pos.x = nx; o.pos.z = nz; }
+}
+
+/**
  * Ceiling on how fast a hull may swing, in radians per second. `turn` is the
  * agility rating from the catalog; length is what drags it down, so the same
  * rating buys far less on a long hull than on a short one.
@@ -153,10 +238,34 @@ export function driveHull(o, spec, dt, input, navigable) {
   if (sp > maxSpeed) { o.vel.x *= maxSpeed / sp; o.vel.z *= maxSpeed / sp; }
   o.speed = Math.min(sp, maxSpeed);
 
-  const nx = o.pos.x + o.vel.x * dt;
-  const nz = o.pos.z + o.vel.z * dt;
-  if (navigable(nx, o.pos.z)) o.pos.x = nx; else o.vel.x *= -0.15;
-  if (navigable(o.pos.x, nz)) o.pos.z = nz; else o.vel.z *= -0.15;
+  // The shore stops the whole hull, not just the point it is steered from:
+  // a move or a swing is allowed only if it leaves no more of the footprint
+  // aground than there is now. (Never fewer than now, so a hull that has
+  // somehow been put on the bank — a shove from another hull, say — can
+  // always work its way off again, and only off.)
+  const here = aground(o, o.pos.x, o.pos.z, o.heading, navigable);
+  let mx = o.vel.x * dt, mz = o.vel.z * dt;
+  if (aground(o, o.pos.x + mx, o.pos.z + mz, o.heading, navigable) <= here) {
+    o.pos.x += mx; o.pos.z += mz;
+  } else {
+    // Into the bank. Find which way the water lies from the points that
+    // would ground, strip that part of the move, and slide along the shore
+    // with the rest — the hull scrapes along, it does not stick.
+    const n = shoreNormal(o, o.pos.x + mx, o.pos.z + mz, o.heading, navigable, _n);
+    const into = -(mx * n[0] + mz * n[1]);
+    if (into > 0) { mx += n[0] * into; mz += n[1] * into; }
+    if ((mx !== 0 || mz !== 0) && aground(o, o.pos.x + mx, o.pos.z + mz, o.heading, navigable) <= here) {
+      o.pos.x += mx; o.pos.z += mz;
+      const vin = -(o.vel.x * n[0] + o.vel.z * n[1]);
+      if (vin > 0) { o.vel.x += n[0] * vin * 1.15; o.vel.z += n[1] * vin * 1.15; }
+    } else {
+      // No slide either: try each axis on its own, and bounce off the rest.
+      const nx = o.pos.x + o.vel.x * dt, nz = o.pos.z + o.vel.z * dt;
+      if (aground(o, nx, o.pos.z, o.heading, navigable) <= here) o.pos.x = nx; else o.vel.x *= -0.15;
+      if (aground(o, o.pos.x, nz, o.heading, navigable) <= here) o.pos.z = nz; else o.vel.z *= -0.15;
+    }
+  }
+  if (here > 0) nudgeOff(o, navigable, dt, here);
 
   // The hull swings to line up with where it is actually going — eased, and
   // capped at what a boat that size could manage.
@@ -167,7 +276,13 @@ export function driveHull(o, spec, dt, input, navigable) {
     const d = wrapAngle(want - o.heading);
     const rate = Math.min(Math.abs(d) * spec.turn, spec.yawRate);
     const step = Math.min(Math.abs(d), rate * dt);
-    o.heading = wrapAngle(o.heading + Math.sign(d) * step);
+    // The bow (or the stern) may not swing up onto the bank either: try
+    // the full swing, then half of it, else hold the heading this frame.
+    const now = aground(o, o.pos.x, o.pos.z, o.heading, navigable);
+    for (const k of [1, 0.5]) {
+      const h = wrapAngle(o.heading + Math.sign(d) * step * k);
+      if (aground(o, o.pos.x, o.pos.z, h, navigable) <= now) { o.heading = h; break; }
+    }
     // How far off the bow the boat is actually trying to go: the helm demand,
     // which is what a rudder or an outboard leg answers. It is not the same
     // as the rate of turn — a big hull can be hard over and barely swinging.

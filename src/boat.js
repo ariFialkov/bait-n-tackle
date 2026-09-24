@@ -312,7 +312,11 @@ export class Boat {
     this.netBundle.visible = !on && !!this.spec.features.trawl;
     if (on) {
       this.towPoints();
-      this.net.deploy(this._anchorL, this._anchorR, this._backDir, netDef?.color);
+      // A net to suit the hull: a little wider than the boat, and long.
+      const beam = (this.hullBounds?.halfBeam ?? 1) * 2;
+      const width = THREE.MathUtils.clamp(beam * 1.25, 3.4, 7.5);
+      this.net.deploy(this._anchorL, this._anchorR, this._backDir, netDef?.color,
+        { width, length: width * 1.7 });
     } else {
       this.net.stow();
     }
@@ -498,7 +502,8 @@ export class Boat {
     this.smoke.update(dt, t, this);
     if (this.trawling) {
       this.towPoints();
-      this.net.update(dt, t, this._anchorL, this._anchorR, this._ropeL, this._ropeR);
+      this.net.update(dt, t, this._anchorL, this._anchorR, this._ropeL, this._ropeR,
+        this._backDir, this.speed);
     }
   }
 }
