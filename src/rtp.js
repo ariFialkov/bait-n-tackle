@@ -38,9 +38,13 @@ export class RTPEngine {
     return stake * (last.lo + rng() * (last.hi - last.lo));
   }
 
-  /** Weighted pick of a species whose inherent value sits near `value`. */
-  pickSpecies(value, minTier, maxTier, rng = Math.random) {
-    const pool = speciesInTiers(minTier, maxTier);
+  /**
+   * Weighted pick of a species whose inherent value sits near `value`, from
+   * the pool of the water it is caught in ('fresh' | 'salt' | 'both'). The
+   * water only decides which fish is shown for a value already drawn.
+   */
+  pickSpecies(value, minTier, maxTier, rng = Math.random, water = 'fresh') {
+    const pool = speciesInTiers(minTier, maxTier, water);
     let totalW = 0;
     const weights = pool.map((s) => {
       const rel = Math.abs(Math.log((s.value + 0.01) / Math.max(value, 0.02)));
@@ -60,16 +64,16 @@ export class RTPEngine {
    * Build the catch for a payout that has already been drawn.
    * Returns { species, sizeMult, kg, value } with value === payout (rounded).
    */
-  describeCatch(payout, minTier, maxTier, rng = Math.random) {
+  describeCatch(payout, minTier, maxTier, rng = Math.random, water = 'fresh') {
     const value = Math.max(0.01, Math.round(payout * 100) / 100);
-    const species = this.pickSpecies(value, minTier, maxTier, rng);
+    const species = this.pickSpecies(value, minTier, maxTier, rng, water);
     const sizeMult = clamp(value / species.value, 0.5, 1.6);
     const kg = Math.max(0.005, species.kg * sizeMult * sizeMult);
     return { species, sizeMult, kg, value };
   }
 
   /** Convenience: resolve a full isolated bet in one go. */
-  resolveBet(stake, minTier, maxTier, rng = Math.random) {
-    return this.describeCatch(this.samplePayout(stake, rng), minTier, maxTier, rng);
+  resolveBet(stake, minTier, maxTier, rng = Math.random, water = 'fresh') {
+    return this.describeCatch(this.samplePayout(stake, rng), minTier, maxTier, rng, water);
   }
 }

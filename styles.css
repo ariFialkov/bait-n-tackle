@@ -218,6 +218,34 @@ html, body {
   75% { transform: translate(-50%, -50%) scale(1.1) rotate(8deg); }
 }
 
+/* Where you are: a clean, central name that fades in and out. */
+#region-name {
+  position: absolute;
+  left: 50%; top: 21%;
+  transform: translate(-50%, -50%) translateY(8px);
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.8s ease, transform 0.8s ease;
+  pointer-events: none;
+}
+#region-name.show { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
+.rn-name {
+  color: #fff;
+  font-size: clamp(1.5rem, 4.6vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 14px rgba(5, 30, 45, 0.7), 0 0 2px rgba(5, 30, 45, 0.9);
+}
+.rn-sub {
+  margin-top: 4px;
+  color: #dbeef7;
+  font-size: clamp(0.72rem, 2vw, 0.9rem);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 8px rgba(5, 30, 45, 0.8);
+}
+
 #hint {
   position: absolute;
   left: 50%;
@@ -457,6 +485,21 @@ html, body {
   font-size: 0.8rem;
   font-weight: 600;
 }
+.dex-filter { display: flex; gap: 4px; margin-left: 6px; }
+.dex-filter button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cfe3ec;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dex-filter button.on { background: #ffd166; color: #063346; border-color: #ffd166; }
+.dex-water { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #6db7d4; margin-left: 6px; }
+.dex-card.salt .dex-water { color: #7fd8ff; }
 #dex-close {
   margin-left: auto;
   width: 38px; height: 38px;

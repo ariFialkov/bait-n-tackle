@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
+import { poolFor } from './fishdata.js';
 import { boatModelURL, rodMounts, hullDrag } from './boats.js';
 import { buildRod, aimRods, updateRods, castRod } from './rods.js';
 import { driveHull, wrapAngle, hullYawRate, steerClear } from './hullphysics.js';
@@ -572,7 +573,7 @@ export class Tender {
     this.spent += lure.cost;
     this.player.balance -= lure.cost;
     this.rtp.wager(lure.cost);
-    const c = this.rtp.resolveBet(lure.cost, 0, lure.tiers[1]);
+    const c = this.rtp.resolveBet(lure.cost, 0, lure.tiers[1], Math.random, poolFor(this.lake.waterKind(this.pos.x, this.pos.z)));
     this.rtp.book(c.value);
     // Paid the instant it is landed rather than carried home, so a run that
     // is interrupted (quitting, recalling, a dead battery) can never destroy

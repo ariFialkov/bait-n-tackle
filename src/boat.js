@@ -770,6 +770,13 @@ export class Boat {
     const s = this.spec;
     const was = this.heading;
     driveHull(this, s, dt, inputVec, isNavigable);
+    // Rapids carry the hull along with them (a picture of moving water — it
+    // changes where you are, never what a bet pays).
+    const cur = this.lake.currentAt ? this.lake.currentAt(this.pos.x, this.pos.z) : null;
+    if (cur && (cur.x || cur.z)) {
+      const nx = this.pos.x + cur.x * dt, nz = this.pos.z + cur.z * dt;
+      if (isNavigable(nx, nz)) { this.pos.x = nx; this.pos.z = nz; }
+    }
 
     // Smoothed rate of turn and throttle: the machinery, the heel and the
     // trim all read these, and raw per-frame values are far too twitchy.

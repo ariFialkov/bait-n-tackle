@@ -52,7 +52,9 @@ export class HUD {
       trRows: $('tr-rows'),
       trTotal: $('tr-total'),
       trClose: $('tr-close'),
+      region: $('region-name'),
     };
+    this.regionTimer = null;
     this.hintTimer = null;
     this.onLureSelect = null;
     this.onNetSelect = null;
@@ -385,6 +387,16 @@ export class HUD {
     this.el.bite.classList.toggle('show', on);
   }
 
+  /** The name of the water you have just come onto, faded in and out again. */
+  showRegion(name, sub, ms = 3600) {
+    const el = this.el.region;
+    el.querySelector('.rn-name').textContent = name;
+    el.querySelector('.rn-sub').textContent = sub;
+    el.classList.add('show');
+    clearTimeout(this.regionTimer);
+    this.regionTimer = setTimeout(() => el.classList.remove('show'), ms);
+  }
+
   setTrawling(on, net) {
     this.el.trawlBadge.classList.toggle('show', on);
     if (on && net) this.el.trawlBadge.textContent = `${net.emoji} ${net.name.toUpperCase()}`;
@@ -506,6 +518,7 @@ export class HUD {
     this.el.lures.classList.add('collapsed');
     this.el.nets.classList.add('collapsed');
     this.el.pots.classList.add('collapsed');
+    this.el.region.classList.remove('show');
     this.el.hud.classList.add('hidden');
     this.el.tenderReport.classList.add('hidden');
     this.el.ship.classList.add('collapsed');

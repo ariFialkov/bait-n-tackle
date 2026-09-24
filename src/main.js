@@ -18,6 +18,10 @@ import { Tender } from './tender.js';
 import { separateHulls } from './hullphysics.js';
 import { CrewDirector } from './deckcrew.js';
 import { SPECIES } from './fishdata.js';
+import { Climate } from './climate.js';
+import { Labels } from './labels.js';
+import { findStart } from './terrain.js';
+import { regionBlend, BIOMES } from './regions.js';
 
 // --- Renderer / scene ---
 const canvas = document.getElementById('game');
@@ -47,24 +51,36 @@ sun.shadow.camera.far = 200;
 sun.shadow.bias = -0.0015;
 scene.add(sun);
 scene.add(sun.target);
-scene.add(new THREE.AmbientLight(0xcfe6f0, 0.75));
-scene.add(new THREE.HemisphereLight(0xd8ecf5, 0x3a5f3f, 0.75));
+const ambientLight = new THREE.AmbientLight(0xcfe6f0, 0.75);
+const hemiLight = new THREE.HemisphereLight(0xd8ecf5, 0x3a5f3f, 0.75);
+scene.add(ambientLight);
+scene.add(hemiLight);
+
+// --- Game objects ---
+const player = new Player();
+const lake = new Lake(scene);
+// Somewhere new every time: a random reach of fresh water with sea room.
+const start = findStart();
+lake.update(0, start.x, start.z);
+const boat = new Boat(scene, lake, player);
+boat.placeAt(start.x, start.z, start.heading);
+const docks = new Docks(scene);
+lake.onDocksChanged = (list) => docks.sync(list);
+docks.sync(lake.docks);
+const labels = new Labels(scene);
+lake.onLandmarksChanged = (list) => labels.sync(list);
+labels.sync(lake.landmarks);
+const climate = new Climate(scene, sun, ambientLight, hemiLight);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  labels.setAspect(camera.aspect);
 });
 
-// --- Game objects ---
-const player = new Player();
-const lake = new Lake(scene);
-const boat = new Boat(scene, lake, player);
-const docks = new Docks(scene);
-lake.onDocksChanged = (list) => docks.sync(list);
-docks.sync(lake.docks);
-
 const ambientFish = new AmbientFish(scene, 16);
+ambientFish.setFocus(start.x, start.z);
 const rig = new CameraRig(camera);
 const hud = new HUD();
 const dex = new Dex();
@@ -282,6 +298,24 @@ function updateSonar(dt) {
   })));
 }
 
+// --- Where you are ---
+// The name of the water comes up as you come well onto it (not at the
+// border, where you would be flickering between two), and goes again.
+let lastRegion = null;
+let regionAcc = 0;
+const WATER_LABEL = { fresh: 'fresh water', brackish: 'brackish water', salt: 'salt water' };
+function updateRegion(dt, x, z) {
+  regionAcc += dt;
+  if (regionAcc < 0.4) return;
+  regionAcc = 0;
+  const bl = regionBlend(x, z);
+  if (bl.t < 0.35) return;
+  const r = bl.a;
+  if (r === lastRegion) return;
+  lastRegion = r;
+  hud.showRegion(r.name, `${r.biome.label} · ${WATER_LABEL[lake.waterKind(x, z)]}`);
+}
+
 // --- Loop ---
 const clock = new THREE.Clock();
 let saveAcc = 0;
@@ -306,8 +340,11 @@ function frame() {
     fishing.update(dt, t);
     updateDocks(dt);
     updateSonar(dt);
+    updateRegion(dt, eye.x, eye.z);
   }
   crew.update(dt, t, helm === tender);
+  climate.update(dt, eye.x, eye.z, lake);
+  labels.update(eye.x, eye.z);
   rig.update(dt, t, (helm === tender ? tender : boat).group.position);
 
   // Keep the sun (and its shadow frustum) centered on the boat.
@@ -333,8 +370,9 @@ frame();
 // Debug/test handle (harmless in production).
 window.BNT = {
   hud, rtp, fishing, boat, tender, crew, player, dex, marina, docks, lake, rig, SPECIES,
-  equipBoat, refreshShipPanel, separateHulls,
+  equipBoat, refreshShipPanel, separateHulls, labels, climate, start, BIOMES,
   get helm() { return helm; },
+  get region() { return lastRegion; },
 };
 
 // --- PWA ---

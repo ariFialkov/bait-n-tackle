@@ -39,7 +39,12 @@
   <div id="dex" class="hidden">
     <div class="dex-head">
       <h2>📖 Fishopedia</h2>
-      <span class="dex-count">60 species</span>
+      <span class="dex-count" id="dex-count">120 species</span>
+      <div class="dex-filter">
+        <button class="on" data-water="all">All</button>
+        <button data-water="fresh">Freshwater</button>
+        <button data-water="salt">Saltwater</button>
+      </div>
       <button id="dex-close">✕</button>
     </div>
     <div id="dex-grid"></div>
@@ -105,6 +110,12 @@
 
     <div id="joystick">
       <div id="joystick-thumb"></div>
+    </div>
+
+    <!-- Where you are: fades in as you enter a named water -->
+    <div id="region-name">
+      <div class="rn-name"></div>
+      <div class="rn-sub"></div>
     </div>
 
     <div id="bite">❗</div>

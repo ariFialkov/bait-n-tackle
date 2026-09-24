@@ -1,6 +1,6 @@
 // 2D species icons rendered from the actual 3D prefabs by a small offscreen
 // renderer — every icon automatically matches its in-game model, with one
-// consistent camera angle and studio lighting across all 60 species.
+// consistent camera angle and studio lighting across all 120 species.
 
 import * as THREE from 'three';
 import { buildFishMesh } from './fishmodels.js';

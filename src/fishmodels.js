@@ -40,6 +40,28 @@ const ARCH = {
   barra:     { depth: 0.34, width: 0.42, maxPos: 0.46, ped: 0.30, elong: 0.95, tail: 'round', hump: 0.08, dorsal: { pos: 0.36, len: 0.26, h: 0.55, type: 'double' }, anal: { pos: 0.66, len: 0.16, h: 0.48 } },
   knife:     { depth: 0.38, width: 0.30, maxPos: 0.28, ped: 0.10, elong: 1.05, tail: 'point', dorsal: { pos: 0.42, len: 0.10, h: 0.35, type: 'tri' }, anal: { pos: 0.34, len: 0.60, h: 0.40, type: 'ribbon', bottom: true } },
   ray:       { special: 'ray' },
+  // --- the sea's ---
+  tuna:      { depth: 0.28, width: 0.62, maxPos: 0.40, ped: 0.10, elong: 1.1, tail: 'lunate', dorsal: { pos: 0.36, len: 0.14, h: 0.6, type: 'tri' }, anal: { pos: 0.66, len: 0.12, h: 0.45 } },
+  mackerel:  { depth: 0.20, width: 0.55, maxPos: 0.42, ped: 0.12, elong: 1.25, tail: 'lunate', snout: 'point', dorsal: { pos: 0.30, len: 0.18, h: 0.5, type: 'double' }, anal: { pos: 0.70, len: 0.12, h: 0.4 } },
+  jack:      { depth: 0.38, width: 0.32, maxPos: 0.40, ped: 0.12, elong: 0.9, tail: 'lunate', dorsal: { pos: 0.34, len: 0.30, h: 0.55, type: 'double' }, anal: { pos: 0.62, len: 0.22, h: 0.45 } },
+  rooster:   { depth: 0.36, width: 0.34, maxPos: 0.40, ped: 0.14, elong: 0.95, tail: 'lunate', dorsal: { pos: 0.26, len: 0.30, h: 1.4, type: 'spiny' }, anal: { pos: 0.64, len: 0.2, h: 0.45 } },
+  snapper:   { depth: 0.36, width: 0.42, maxPos: 0.40, ped: 0.24, elong: 0.9, tail: 'fork', dorsal: { pos: 0.30, len: 0.40, h: 0.5, type: 'spiny' }, anal: { pos: 0.66, len: 0.16, h: 0.42 } },
+  grouper:   { depth: 0.38, width: 0.5, maxPos: 0.38, ped: 0.30, elong: 0.95, tail: 'round', headBulge: true, dorsal: { pos: 0.30, len: 0.44, h: 0.48, type: 'spiny' }, anal: { pos: 0.68, len: 0.16, h: 0.42 } },
+  shark:     { depth: 0.24, width: 0.72, maxPos: 0.36, ped: 0.18, elong: 1.5, tail: 'hetero', snout: 'point', dorsal: { pos: 0.40, len: 0.16, h: 0.95, type: 'tri' }, anal: { pos: 0.76, len: 0.08, h: 0.3 } },
+  hammer:    { depth: 0.24, width: 0.72, maxPos: 0.38, ped: 0.18, elong: 1.5, tail: 'hetero', snout: 'hammer', dorsal: { pos: 0.40, len: 0.16, h: 1.0, type: 'tri' }, anal: { pos: 0.76, len: 0.08, h: 0.3 } },
+  thresher:  { depth: 0.24, width: 0.68, maxPos: 0.36, ped: 0.18, elong: 1.35, tail: 'scythe', snout: 'point', dorsal: { pos: 0.42, len: 0.14, h: 0.85, type: 'tri' }, anal: { pos: 0.76, len: 0.08, h: 0.3 } },
+  marlin:    { depth: 0.22, width: 0.5, maxPos: 0.40, ped: 0.12, elong: 1.55, tail: 'lunate', snout: 'bill', dorsal: { pos: 0.34, len: 0.18, h: 0.95, type: 'tri' }, anal: { pos: 0.70, len: 0.10, h: 0.4 } },
+  sailfish:  { depth: 0.22, width: 0.45, maxPos: 0.40, ped: 0.12, elong: 1.55, tail: 'lunate', snout: 'bill', dorsal: { pos: 0.32, len: 0.44, h: 1.7, type: 'sail' }, anal: { pos: 0.70, len: 0.10, h: 0.4 } },
+  mahi:      { depth: 0.34, width: 0.30, maxPos: 0.22, ped: 0.14, elong: 1.0, tail: 'fork', snout: 'blunt', dorsal: { pos: 0.10, len: 0.80, h: 0.55, type: 'ribbon' }, anal: { pos: 0.55, len: 0.38, h: 0.35 } },
+  cod:       { depth: 0.28, width: 0.5, maxPos: 0.36, ped: 0.22, elong: 1.1, tail: 'square', barbels: 1, dorsal: { pos: 0.28, len: 0.48, h: 0.5, type: 'double' }, anal: { pos: 0.62, len: 0.28, h: 0.4 } },
+  eel:       { depth: 0.11, width: 0.8, maxPos: 0.30, ped: 0.45, elong: 2.4, tail: 'point', dorsal: { pos: 0.20, len: 0.75, h: 0.5, type: 'ribbon' }, anal: { pos: 0.45, len: 0.5, h: 0.4, type: 'ribbon' } },
+  oar:       { depth: 0.13, width: 0.35, maxPos: 0.25, ped: 0.35, elong: 2.6, tail: 'point', dorsal: { pos: 0.04, len: 0.92, h: 0.9, type: 'ribbon' }, anal: { pos: 0.6, len: 0.3, h: 0.2 } },
+  flat:      { special: 'flat', elong: 1.0 },
+  mola:      { special: 'mola', elong: 0.8 },
+  octopus:   { special: 'octopus', elong: 1.0 },
+  squid:     { special: 'squid', elong: 1.3 },
+  lobster:   { special: 'lobster', elong: 0.9 },
+  crab:      { special: 'crab', elong: 0.55 },
 };
 
 const AREAS = {
@@ -54,11 +76,30 @@ const AREAS = {
   drum: ['Open water', 'Sandy flats'], ribbon: ['Backwaters', 'Weedy bays'],
   barra: ['River mouths', 'Rocky points'], knife: ['Backwaters', 'Deep holes'],
   ray: ['Sandy flats', 'Deep holes'],
+  tuna: ['Blue water', 'Open sea'], mackerel: ['Open sea', 'Bait balls'],
+  jack: ['Reefs', 'Surf'], rooster: ['Surf', 'Sandy beaches'], snapper: ['Reefs', 'Wrecks'],
+  grouper: ['Reefs', 'Wrecks'], shark: ['Open sea', 'Deep water'], hammer: ['Open sea', 'Reef edges'],
+  thresher: ['Deep water', 'Open sea'], marlin: ['Blue water', 'Deep water'], sailfish: ['Blue water', 'Open sea'],
+  mahi: ['Blue water', 'Weed lines'], cod: ['Cold banks', 'Deep water'], eel: ['Rocky shore', 'Wrecks'],
+  oar: ['The deep', 'Open sea'], flat: ['Sandy bottom', 'Estuaries'], mola: ['Open sea', 'Blue water'],
+  octopus: ['Rocky shore', 'Reefs'], squid: ['Open sea', 'Deep water'], lobster: ['Rocky shore', 'Reefs'],
+  crab: ['Harbours', 'Rocky shore'],
 };
 
 export function speciesAreas(species) {
-  return AREAS[species.style.arch] || ['Open water'];
+  const areas = AREAS[species.style.arch] || ['Open water'];
+  // The sea's bass, pike, drum and rays live by the sea's names.
+  if (species.water === 'salt' && !['tuna', 'mackerel', 'jack', 'rooster', 'snapper', 'grouper', 'shark', 'hammer', 'thresher', 'marlin', 'sailfish', 'mahi', 'cod', 'eel', 'oar', 'flat', 'mola', 'octopus', 'squid', 'lobster', 'crab'].includes(species.style.arch)) {
+    return SALT_AREAS[species.style.arch] || ['Estuaries', 'Open sea'];
+  }
+  return areas;
 }
+
+const SALT_AREAS = {
+  minnow: ['Harbours', 'Bait balls'], panfish: ['Harbours', 'Rocky shore'], perch: ['Estuaries', 'Grass flats'],
+  bass: ['Rocky shore', 'Surf'], drum: ['Surf', 'Estuaries'], pike: ['Reefs', 'Blue water'],
+  barra: ['Estuaries', 'Mangroves'], ray: ['Reefs', 'Open sea'],
+};
 
 /** Approximate visual body length in meters. */
 export function visualLength(species) {
@@ -226,6 +267,9 @@ function profiles(a) {
     if (snout === 'gar' && t < 0.3) d *= lerp(0.16, 1, Math.pow(t / 0.3, 1.4));
     if (snout === 'paddle' && t < 0.28) d *= lerp(0.14, 1, Math.pow(t / 0.28, 1.3));
     if (snout === 'point' && t < 0.25) d *= lerp(0.3, 1, t / 0.25);
+    if (snout === 'bill' && t < 0.32) d *= lerp(0.05, 1, Math.pow(t / 0.32, 1.7));
+    if (snout === 'blunt' && t < 0.1) d *= lerp(0.6, 1, t / 0.1);
+    if (snout === 'hammer' && t < 0.12) d *= lerp(0.45, 1, t / 0.12);
     return d;
   };
   const widthAt = (t) => {
@@ -233,6 +277,8 @@ function profiles(a) {
     if (a.headBulge && t < 0.3) w *= 1 + (0.3 - t) * 1.6;
     if (snout === 'gar' && t < 0.3) w *= lerp(0.5, 1, t / 0.3);
     if (snout === 'paddle' && t < 0.28) w *= lerp(2.4, 1, Math.pow(t / 0.28, 0.8));
+    if (snout === 'bill' && t < 0.32) w *= lerp(0.6, 1, t / 0.32);
+    if (snout === 'hammer' && t < 0.12) w *= lerp(3.4, 1, Math.pow(t / 0.12, 0.7));
     return w;
   };
   const spineAt = (t) => (a.hump ? a.hump * Math.sin(Math.PI * clamp(t / 0.85, 0, 1)) : 0);
@@ -296,6 +342,10 @@ function tailGeometry(type, h) {
     case 'hetero': return finShape([[0, 0], [L * 0.6, h * 0.5, L * 1.25, h * 0.72], [L * 0.55, h * 0.1, L * 0.55, -h * 0.3], [L * 0.2, -h * 0.2, 0, 0]]);
     case 'point': return finShape([[0, h * 0.22], [L * 0.9, h * 0.05], [L * 0.9, -h * 0.05], [0, -h * 0.22]]);
     case 'whip': return finShape([[0, h * 0.1], [L * 2.6, 0], [0, -h * 0.1]]);
+    // A crescent: the narrow-stemmed, deeply swept tail of the fast swimmers.
+    case 'lunate': return finShape([[0, h * 0.08], [L * 0.3, h * 0.4, L * 1.05, h * 0.8], [L * 0.6, h * 0.2, L * 0.5, 0], [L * 0.6, -h * 0.2, L * 1.05, -h * 0.8], [L * 0.3, -h * 0.4, 0, -h * 0.08]]);
+    // The thresher's: an upper lobe as long as the body.
+    case 'scythe': return finShape([[0, 0], [L * 0.8, h * 0.9, L * 2.4, h * 1.6], [L * 0.7, h * 0.15, L * 0.55, -h * 0.3], [L * 0.2, -h * 0.18, 0, 0]]);
     default: return tailGeometry('fork', h);
   }
 }
@@ -349,6 +399,9 @@ function speciesParts(species) {
     disc.scale(1.55, 0.16, 1.25);
     parts.bodyGeo = disc;
     parts.tailGeo = tailGeometry('whip', len * 0.16);
+  } else if (a.special) {
+    parts.bodyGeo = null;
+    parts.tailGeo = null;
   } else {
     parts.bodyGeo = buildBodyGeometry(species, a, len);
     parts.tailGeo = tailGeometry(a.tail, a.depth * len * (0.9 + (a.ped || 0.25)));
@@ -369,6 +422,180 @@ function speciesParts(species) {
 const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0c1014, roughness: 0.2 });
 const eyeGeo = new THREE.SphereGeometry(1, 8, 6);
 
+// --- The bodies that are not fish-shaped -----------------------------------
+// Each builds into `g` (nose toward -Z) and returns the part to beat as a tail.
+function eyes(g, r, pts) {
+  for (const [x, y, z] of pts) {
+    const eye = new THREE.Mesh(eyeGeo, eyeMat);
+    eye.scale.setScalar(r);
+    eye.position.set(x, y, z);
+    g.add(eye);
+  }
+}
+
+/** A cone from `from` toward `to`, `r` thick at the base. */
+function limb(from, to, r, mat, tipR = 0.002) {
+  const d = new THREE.Vector3().subVectors(to, from);
+  const len = d.length();
+  const geo = new THREE.CylinderGeometry(tipR, r, len, 5);
+  geo.translate(0, len / 2, 0);
+  const m = new THREE.Mesh(geo, mat);
+  m.position.copy(from);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  return m;
+}
+
+const SPECIALS = {
+  // Flounder, sole, halibut: a flat oval lying on its side, eyes on top.
+  flat(g, len, bodyMat, finMat) {
+    const body = new THREE.Mesh(new THREE.SphereGeometry(len * 0.33, 16, 10), bodyMat);
+    body.scale.set(0.62, 0.13, 1.45);
+    g.add(body);
+    // The fringe of fin all round.
+    const fringe = new THREE.Mesh(new THREE.SphereGeometry(len * 0.33, 16, 10), finMat);
+    fringe.scale.set(0.8, 0.05, 1.5);
+    g.add(fringe);
+    const tail = new THREE.Mesh(tailGeometry('round', len * 0.14), finMat);
+    tail.position.z = len * 0.46;
+    tail.rotation.x = Math.PI / 2;   // lying flat like the body
+    g.add(tail);
+    eyes(g, len * 0.022, [[len * 0.04, len * 0.045, -len * 0.3], [-len * 0.04, len * 0.045, -len * 0.33]]);
+    return tail;
+  },
+  // Ocean sunfish: a tall disc with a fin above, a fin below, and no tail to speak of.
+  mola(g, len, bodyMat, finMat) {
+    const body = new THREE.Mesh(new THREE.SphereGeometry(len * 0.34, 16, 12), bodyMat);
+    body.scale.set(0.34, 1.25, 1.0);
+    g.add(body);
+    const up = new THREE.Mesh(dorsalGeometry('tri', len * 0.2, len * 0.42), finMat);
+    up.position.set(0, len * 0.38, len * 0.02);
+    g.add(up);
+    const down = new THREE.Mesh(dorsalGeometry('tri', len * 0.2, len * 0.42), finMat);
+    down.rotation.z = Math.PI;
+    down.position.set(0, -len * 0.38, len * 0.02);
+    g.add(down);
+    const tail = new THREE.Mesh(tailGeometry('square', len * 0.5), finMat);
+    tail.scale.x = 0.45;
+    tail.position.z = len * 0.3;
+    g.add(tail);
+    eyes(g, len * 0.03, [[len * 0.1, len * 0.06, -len * 0.27], [-len * 0.1, len * 0.06, -len * 0.27]]);
+    return tail;
+  },
+  // Octopus: mantle behind, head and eyes, eight arms trailing forward and down.
+  octopus(g, len, bodyMat, finMat) {
+    const mantle = new THREE.Mesh(new THREE.SphereGeometry(len * 0.2, 12, 9), bodyMat);
+    mantle.scale.set(0.9, 1.0, 1.35);
+    mantle.position.z = len * 0.14;
+    g.add(mantle);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(len * 0.13, 10, 8), bodyMat);
+    head.position.z = -len * 0.1;
+    g.add(head);
+    const arms = new THREE.Group();
+    arms.position.set(0, -len * 0.04, -len * 0.12);
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const from = new THREE.Vector3(Math.cos(ang) * len * 0.05, 0, Math.sin(ang) * len * 0.04);
+      const to = new THREE.Vector3(Math.cos(ang) * len * 0.34, -len * 0.16, -len * 0.42 + Math.sin(ang) * len * 0.14);
+      arms.add(limb(from, to, len * 0.035, bodyMat));
+    }
+    g.add(arms);
+    eyes(g, len * 0.03, [[len * 0.1, len * 0.06, -len * 0.14], [-len * 0.1, len * 0.06, -len * 0.14]]);
+    return arms;
+  },
+  // Squid: a pointed mantle behind with its fins, head and arms forward.
+  squid(g, len, bodyMat, finMat) {
+    const mantle = new THREE.Mesh(new THREE.ConeGeometry(len * 0.11, len * 0.6, 9), bodyMat);
+    mantle.rotation.x = Math.PI / 2;      // tip aft
+    mantle.position.z = len * 0.12;
+    g.add(mantle);
+    for (const s of [1, -1]) {
+      const fin = new THREE.Mesh(new THREE.SphereGeometry(len * 0.12, 8, 6), finMat);
+      fin.scale.set(1.2, 0.08, 1.6);
+      fin.position.set(s * len * 0.1, 0, len * 0.28);
+      g.add(fin);
+    }
+    const head = new THREE.Mesh(new THREE.SphereGeometry(len * 0.09, 10, 8), bodyMat);
+    head.position.z = -len * 0.22;
+    g.add(head);
+    const arms = new THREE.Group();
+    arms.position.z = -len * 0.28;
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      const from = new THREE.Vector3(Math.cos(ang) * len * 0.04, Math.sin(ang) * len * 0.04, 0);
+      const to = new THREE.Vector3(Math.cos(ang) * len * 0.07, Math.sin(ang) * len * 0.07, -len * 0.28);
+      arms.add(limb(from, to, len * 0.02, bodyMat));
+    }
+    for (const s of [1, -1]) {
+      arms.add(limb(new THREE.Vector3(s * len * 0.03, -len * 0.02, 0), new THREE.Vector3(s * len * 0.06, -len * 0.04, -len * 0.5), len * 0.018, bodyMat, len * 0.02));
+    }
+    g.add(arms);
+    eyes(g, len * 0.035, [[len * 0.085, 0, -len * 0.22], [-len * 0.085, 0, -len * 0.22]]);
+    return arms;
+  },
+  // Lobster: carapace, a segmented abdomen ending in a fan, two claws, long antennae.
+  lobster(g, len, bodyMat, finMat) {
+    const cara = new THREE.Mesh(new THREE.CylinderGeometry(len * 0.1, len * 0.11, len * 0.36, 9), bodyMat);
+    cara.rotation.x = Math.PI / 2;
+    cara.position.z = -len * 0.06;
+    g.add(cara);
+    for (let i = 0; i < 5; i++) {
+      const seg = new THREE.Mesh(new THREE.SphereGeometry(len * (0.1 - i * 0.012), 9, 7), bodyMat);
+      seg.scale.set(1, 0.7, 0.75);
+      seg.position.set(0, -len * 0.01, len * (0.14 + i * 0.075));
+      g.add(seg);
+    }
+    const fan = new THREE.Group();
+    fan.position.z = len * 0.46;
+    for (const ang of [-0.5, -0.25, 0, 0.25, 0.5]) {
+      const blade = new THREE.Mesh(new THREE.SphereGeometry(len * 0.07, 8, 5), finMat);
+      blade.scale.set(0.6, 0.15, 1.3);
+      blade.position.set(Math.sin(ang) * len * 0.09, 0, Math.cos(ang) * len * 0.06);
+      blade.rotation.y = -ang;
+      fan.add(blade);
+    }
+    g.add(fan);
+    for (const s of [1, -1]) {
+      const arm = limb(new THREE.Vector3(s * len * 0.08, -len * 0.02, -len * 0.16), new THREE.Vector3(s * len * 0.16, -len * 0.02, -len * 0.4), len * 0.028, bodyMat, len * 0.025);
+      g.add(arm);
+      const claw = new THREE.Mesh(new THREE.SphereGeometry(len * 0.07, 9, 7), bodyMat);
+      claw.scale.set(0.8, 0.55, 1.7);
+      claw.position.set(s * len * 0.17, -len * 0.02, -len * 0.48);
+      g.add(claw);
+      for (let i = 0; i < 4; i++) {
+        const z = -len * 0.16 + i * len * 0.07;
+        g.add(limb(new THREE.Vector3(s * len * 0.08, -len * 0.03, z), new THREE.Vector3(s * len * 0.2, -len * 0.14, z + len * 0.03), len * 0.014, bodyMat));
+      }
+      g.add(limb(new THREE.Vector3(s * len * 0.03, len * 0.03, -len * 0.24), new THREE.Vector3(s * len * 0.12, len * 0.06, -len * 0.85), len * 0.008, bodyMat));
+    }
+    eyes(g, len * 0.018, [[len * 0.045, len * 0.05, -len * 0.23], [-len * 0.045, len * 0.05, -len * 0.23]]);
+    return fan;
+  },
+  // Crab: a wide flat carapace, eight legs, two claws held forward.
+  crab(g, len, bodyMat, finMat) {
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(len * 0.4, 12, 9), bodyMat);
+    shell.scale.set(1.35, 0.32, 0.95);
+    g.add(shell);
+    const legs = new THREE.Group();
+    for (const s of [1, -1]) {
+      for (let i = 0; i < 4; i++) {
+        const z = -len * 0.18 + i * len * 0.13;
+        const knee = new THREE.Vector3(s * len * 0.72, len * 0.06, z + len * 0.04);
+        legs.add(limb(new THREE.Vector3(s * len * 0.44, -len * 0.02, z), knee, len * 0.03, bodyMat, len * 0.02));
+        legs.add(limb(knee, new THREE.Vector3(s * len * 0.9, -len * 0.22, z + len * 0.08), len * 0.02, bodyMat));
+      }
+      const arm = limb(new THREE.Vector3(s * len * 0.3, 0, -len * 0.3), new THREE.Vector3(s * len * 0.45, 0, -len * 0.6), len * 0.04, bodyMat, len * 0.03);
+      g.add(arm);
+      const claw = new THREE.Mesh(new THREE.SphereGeometry(len * 0.12, 9, 7), bodyMat);
+      claw.scale.set(0.8, 0.5, 1.5);
+      claw.position.set(s * len * 0.48, 0, -len * 0.7);
+      g.add(claw);
+    }
+    g.add(legs);
+    eyes(g, len * 0.03, [[len * 0.12, len * 0.14, -len * 0.34], [-len * 0.12, len * 0.14, -len * 0.34]]);
+    return legs;
+  },
+};
+
 /**
  * Build a prefab instance. Returns { group, tail, len } — `tail` is the
  * caudal-fin mesh for swim animation; nose points toward -Z.
@@ -376,6 +603,10 @@ const eyeGeo = new THREE.SphereGeometry(1, 8, 6);
 export function buildFishMesh(species) {
   const { a, len, bodyGeo, tailGeo, bodyMat, finMat } = speciesParts(species);
   const g = new THREE.Group();
+  if (a.special && a.special !== 'ray') {
+    const tail = SPECIALS[a.special](g, len, bodyMat, finMat);
+    return { group: g, tail, len };
+  }
 
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   g.add(body);
@@ -437,10 +668,11 @@ export function buildFishMesh(species) {
     for (const s of [1, -1]) {
       const eye = new THREE.Mesh(eyeGeo, eyeMat);
       eye.scale.setScalar(eyeR);
+      const eyeT = a.snout === 'gar' || a.snout === 'paddle' || a.snout === 'bill' ? 0.32 : a.snout === 'hammer' ? 0.05 : 0.13;
       eye.position.set(
-        s * a.width * maxDepth * 0.38,
+        s * a.width * maxDepth * (a.snout === 'hammer' ? 1.5 : 0.38),
         spineAt(0.14) * len + maxDepth * 0.16,
-        zAt(a.snout === 'gar' || a.snout === 'paddle' ? 0.32 : 0.13));
+        zAt(eyeT));
       g.add(eye);
     }
   } else {

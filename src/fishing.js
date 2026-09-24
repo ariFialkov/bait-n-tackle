@@ -22,6 +22,7 @@ import { CONFIG, LURES, NETS, POTS } from './config.js';
 import { waterDepth } from './lake.js';
 import { clamp, lerp } from './noise.js';
 import { HookedFish } from './hookedfish.js';
+import { poolFor } from './fishdata.js';
 import { HAUL_TOAST_MS, TOAST_FADE_MS } from './hud.js';
 
 const SNAP_S = 1.0;            // a parted line whipping back and settling
@@ -180,6 +181,13 @@ export class Fishing {
   get trawlNet() { return NETS[this.netIndex]; }
   get potGear() { return POTS[this.potIndex]; }
   get spec() { return this.boat.spec; }
+
+  /**
+   * Which species pool a catch here is shown from: the river's, the sea's,
+   * or both where the water is brackish. Only ever the picture of a payout
+   * already drawn — the water changes the fish, never the money.
+   */
+  poolAt(x, z) { return poolFor(this.lake.waterKind(x, z)); }
 
   setLure(i) {
     this.lureIndex = clamp(i, 0, LURES.length - 1);
@@ -377,7 +385,7 @@ export class Fishing {
 
     this.player.balance -= cost;
     this.rtp.wager(cost);
-    const c = this.rtp.resolveBet(cost, 0, LURES[line.lureIndex].tiers[1]);
+    const c = this.rtp.resolveBet(cost, 0, LURES[line.lureIndex].tiers[1], Math.random, this.poolAt(line.pos.x, line.pos.z));
     this.rtp.book(c.value);
     // Banked on the hook rather than at the rail, so quitting, a snapped rod
     // or a closed tab can never destroy a bet the player has already won.
@@ -488,7 +496,7 @@ export class Fishing {
     for (let i = 0; i < n; i++) {
       const bump = Math.random() < CONFIG.TRAWL_RARE_TIER_CHANCE ? 1 : 0;
       const maxTier = Math.min(this.trawlNet.maxTier + bump, CONFIG.TRAWL_TIER_CAP);
-      const c = this.rtp.describeCatch(payout * (cuts[i] / cutSum), 0, maxTier);
+      const c = this.rtp.describeCatch(payout * (cuts[i] / cutSum), 0, maxTier, Math.random, this.poolAt(this.boat.pos.x, this.boat.pos.z));
       catches.push(c);
       total += c.value;
       this.player.bank(c);
@@ -787,7 +795,7 @@ export class Fishing {
       // The bait picks the species that can be in the cage — the value each
       // one is worth was drawn above from the stake and nothing else.
       const maxTier = Math.min((pot.gear || POTS[0]).maxTier, CONFIG.TRAWL_TIER_CAP);
-      const c = this.rtp.describeCatch(payout * (cuts[k] / cutSum), 0, maxTier);
+      const c = this.rtp.describeCatch(payout * (cuts[k] / cutSum), 0, maxTier, Math.random, this.poolAt(pot.x, pot.z));
       catches.push(c);
       total += c.value;
       this.player.bank(c);

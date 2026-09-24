@@ -2,11 +2,14 @@
 // its own — cruising, turning with smooth noise, steering away from
 // shallows — completely independent of the boat. The boat's position is only
 // used to recycle fish that have drifted far outside the view (they respawn
-// in fresh water near the edge of the visible area, never mid-screen).
+// in fresh water near the edge of the visible area, never mid-screen). A
+// fish recycled into water of the other kind comes back as one of that
+// water's species, so the sea is full of the sea's fish.
 
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { waterDepth } from './lake.js';
+import { waterKind } from './regions.js';
 import { SPECIES } from './fishdata.js';
 import { buildFishMesh } from './fishmodels.js';
 
@@ -14,15 +17,21 @@ const VIEW_R = 46;      // fish farther than this get recycled
 const SPAWN_R = 38;     // recycled fish reappear around this radius
 
 // Ambient population skews toward common small species, with the odd big one.
-function pickAmbientSpecies(rng = Math.random) {
-  const weights = SPECIES.map((s) => 1 / Math.pow(s.value + 1.5, 0.55));
+function pickAmbientSpecies(water = 'fresh', rng = Math.random) {
+  const pool = SPECIES.filter((s) => water === 'both' || s.water === water);
+  const weights = pool.map((s) => 1 / Math.pow(s.value + 1.5, 0.55));
   const total = weights.reduce((a, b) => a + b, 0);
   let r = rng() * total;
-  for (let i = 0; i < SPECIES.length; i++) {
+  for (let i = 0; i < pool.length; i++) {
     r -= weights[i];
-    if (r <= 0) return SPECIES[i];
+    if (r <= 0) return pool[i];
   }
-  return SPECIES[0];
+  return pool[0];
+}
+
+function poolAt(x, z) {
+  const k = waterKind(x, z);
+  return k === 'salt' ? 'salt' : k === 'brackish' ? 'both' : 'fresh';
 }
 
 export class AmbientFish {
@@ -33,28 +42,33 @@ export class AmbientFish {
     this.focus = new THREE.Vector3();
     this.fish = [];
     for (let i = 0; i < count; i++) {
-      const species = pickAmbientSpecies();
-      const { group, tail, len } = buildFishMesh(species);
-      // Individual size variation within the species.
-      const sizeMult = 0.8 + Math.random() * 0.5;
-      group.scale.setScalar(sizeMult);
-      this.group.add(group);
       const f = {
-        mesh: group,
-        tail,
-        species,
+        mesh: null, tail: null, species: null,
         x: 0, z: 0,
         heading: Math.random() * Math.PI * 2,
-        // Bigger fish cruise slower but cover ground with their size.
-        speed: (0.45 + Math.random() * 0.7) * (0.7 + len * 0.35),
+        speed: 1,
         turnBias: 0,
-        depthPref: 0.5 + Math.random() * 1.8 + len * 0.5,
+        depthPref: 0.5 + Math.random() * 1.8,
         phase: Math.random() * Math.PI * 2,
       };
+      this.dress(f, pickAmbientSpecies('fresh'));
       // Initial spread: anywhere in view, in water.
       this.place(f, 6 + Math.random() * (SPAWN_R - 6));
       this.fish.push(f);
     }
+  }
+
+  /** Give a fish a species and the body to go with it. */
+  dress(f, species) {
+    if (f.mesh) this.group.remove(f.mesh);
+    const { group, tail, len } = buildFishMesh(species);
+    const sizeMult = 0.8 + Math.random() * 0.5;
+    group.scale.setScalar(sizeMult);
+    this.group.add(group);
+    f.mesh = group; f.tail = tail; f.species = species;
+    // Bigger fish cruise slower but cover ground with their size.
+    f.speed = (0.45 + Math.random() * 0.7) * (0.7 + len * 0.35);
+    f.depthPref = 0.5 + Math.random() * 1.8 + len * 0.5;
   }
 
   setFocus(x, z) { this.focus.set(x, 0, z); }
@@ -68,6 +82,9 @@ export class AmbientFish {
       if (waterDepth(x, z) > 1.2) {
         f.x = x; f.z = z;
         f.heading = Math.random() * Math.PI * 2;
+        // The wrong kind of fish for this water: it comes back as the right one.
+        const pool = poolAt(x, z);
+        if (pool !== 'both' && f.species.water !== pool) this.dress(f, pickAmbientSpecies(pool));
         return true;
       }
     }
@@ -110,7 +127,7 @@ export class AmbientFish {
       // Nose (-Z of the mesh) points along the heading.
       f.mesh.rotation.y = Math.atan2(-Math.sin(f.heading), -Math.cos(f.heading));
       // Swim animation: tail beat + gentle body roll.
-      f.tail.rotation.y = Math.sin(t * (5 + f.speed * 3) + f.phase) * 0.55;
+      if (f.tail) f.tail.rotation.y = Math.sin(t * (5 + f.speed * 3) + f.phase) * 0.55;
       f.mesh.rotation.z = Math.sin(t * 1.7 + f.phase) * 0.06;
     }
   }

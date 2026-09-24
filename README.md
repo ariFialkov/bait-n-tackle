@@ -1,9 +1,11 @@
 # Bait N’ Tackle 🎣
 
 A casual 3D betting game for desktop and mobile, built as an installable PWA.
-Pilot a little fishing boat across an infinite, procedurally generated lake —
-trawl the shallows for steady low-stakes hauls, or park in a glowing cove and
-cast an expensive lure for a trophy fish.
+Pilot a little fishing boat across an infinite, procedurally generated
+country of named lakes, rivers, coves, lagoons, marshes, mangroves, falls and
+rapids that runs out, to the east, into the open sea — trawl the shallows for
+steady low-stakes hauls, park in a glowing cove and cast an expensive lure
+for a trophy fish, or cross the coast for the sea's own sixty species.
 
 No build step: plain ES modules + a vendored Three.js.
 
@@ -134,6 +136,74 @@ The fish is chosen to fit the drawn payout (species weighted by how close
 their inherent value is, size roll makes the catch worth exactly the
 payout), not the other way around. A million-draw simulation of the
 paytable converges to 0.940.
+
+### The country
+
+The map is the same every time (it is all seeded), but you start
+**somewhere new every time** you open it: a random reach of fresh water with
+sea room (`terrain.js findStart`). Everything in it is deterministic, so a
+place is where you left it and a name is what it was.
+
+The world is tiled into big cells with wandering borders, each one a named
+body of water of one **biome** (`regions.js`), chosen by a slow temperature
+field — the cold country runs to pines, coves and falls, the warm to lagoons
+and mangroves:
+
+| Biome | The water | The country | What grows and lies there |
+| --- | --- | --- | --- |
+| Lake | deep, clear blue, sometimes a *Lac du …* | broad basins | pines, rocks |
+| River / Waterway | winding carved channels | land between them | pines, reeds, logs |
+| Cove | rocky, jagged, dark | steep shingle shores | boulders, driftwood, pines |
+| Lagoon | shallow, turquoise, a soft floor | white sand, sinuous sandbars | palms, reeds |
+| Marsh | murky green-brown flats | mud, low and wide, grey drizzle | reeds, cattails, lily pads, logs, sticks |
+| Mangroves | warm green shallows, hazy | mud | mangroves on prop roots |
+| Falls | cold, clear | mountains, snow above the line | waterfalls, snow pines, boulders |
+| Rapids | rough, running | narrow rock channels | boulders in the stream, white water |
+| Beaver creek | still, brown-green | low country | beaver dams and lodges, lily pads, sticks |
+| Pond | flat calm | small and sheltered | lily pads, cattails |
+| Delta | silty, braided, brackish | sand flats | reeds, driftwood |
+| Bay | rough, salt | headlands opening to the sea | sea stacks, driftwood |
+| Open sea | deep blue swell, whitecaps | none: a jagged coastline and then nothing | sea stacks off the coast |
+
+The height of the ground is one seeded noise shaped by whichever regions a
+point lies between (`terrain.js`) — a lake sits lower and deeper, a river is
+land cut by channels, a marsh is pressed into flats, falls country climbs —
+blended over seventy metres at every border so nothing has a seam. Each
+region then **builds its features** into the ground and caches them per
+cell: a waterfall raises a cliff with a sheer face behind its lip, cuts the
+stream's gully across the top of it and digs a plunge pool at its foot (a
+hotspot, as it happens); a beaver dam is a ridge thrown across a creek that
+really does block it, with a lodge in the water off one end; rapids get
+boulders in the stream, white water lying along the flow, and a **current**
+that carries the hull along; the coast gets sea stacks standing out of the
+swell. The props (`props.js`) are instanced per chunk by the biome's own
+weights.
+
+The one water plane is re-coloured **per vertex** from the regions under it
+whenever it steps, with its own chop, murk and depth: a lagoon is turquoise,
+a marsh is brown and half opaque, and where the water is rough the swell
+rolls in and **breaks white on its crests** and on every shore, hardest on
+the coast. Sky, fog, the colour and strength of the sun, and what is falling
+(rain over the marshes, snow in falls country) are the regions' too
+(`climate.js`), eased toward as you cross from one to the next.
+
+**The sea.** To the east the whole freshwater system runs out into the
+ocean: across a band of deltas and bays the water turns brackish, and beyond
+a single jagged coastline it is salt, deep, and goes on for ever. Fresh water
+gives the river's 60 species; salt gives the **sea's own 60** — anchovy to
+whale shark, with octopus, squid, lobster, crab, flatfish, sunfish, sharks,
+tuna and billfish among them (`fishdata.js`, and their bodies in
+`fishmodels.js`); brackish water gives both. Which pool a catch is shown from
+is decided by the water it is caught in; the payout it is drawn to fit is
+not — the water changes the fish, never the money. The Fishopedia lists all
+120 and filters by water.
+
+**Names.** Every region is named (Heron Lake, Lac du Cerf, Widow's Creek,
+Farrow Delta, Broken Reach …) and the name fades in, centred and out of the
+way, as you come well onto it, with the kind of water under it. Landmarks
+worth a name get one on a pin in the world, the way a maps app marks them —
+Mount X, X Hill, X Beach, X Rock or Island, X Point, X Dam, X Falls — kept
+the same size on screen and faded out with distance (`labels.js`).
 
 ### Boats and the shore
 
@@ -398,13 +468,18 @@ src/
   skinner.js   repaints a hull's neutral texture for the skin it is wearing
   tender.js    the Seiner's launchable / autonomous tender
   crane.js     the deck crane that puts it over the side and back
-  fishdata.js  the 60 species: values, weights, tiers + visual style data
+  fishdata.js  the 120 species (60 fresh, 60 salt): values, weights, tiers + style
   fishmodels.js procedural per-species fish prefabs (bodies, fins, skins)
   fishicons.js 2D species icons rendered from the 3D prefabs
   dex.js       the Fishopedia overlay
   rtp.js       RTP engine: wager/earn ledger + catch resolution
   noise.js     seeded value noise / fbm
-  lake.js      infinite chunked lake, water shader, hotspots + ripple FX
+  regions.js   the named biome cells, the coast and salinity, the climates
+  terrain.js   the ground: per-biome heights, the ocean floor, built features, landmarks
+  props.js     the props strewn by biome, waterfalls, white water, dams, sea stacks
+  climate.js   sky, fog, sun and precipitation eased toward the regions round the boat
+  labels.js    the landmark pins in the world
+  lake.js      infinite chunked water and country, the per-region water shader, hotspots
   boat.js      boat mesh, trawl net, and the working machinery on it
   hullphysics.js how a hull answers the helm: yaw rate, thrust, keel grip
   rods.js      the rods as gear: raked outboard, aimed at their lines
