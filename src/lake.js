@@ -14,7 +14,8 @@ import { terrainHeight, waterDepth, cellFeatures } from './terrain.js';
 import { isNavigable } from './nav.js';
 import { currentAt, FlowField } from './currents.js';
 import { CELL, regionBlend, regionAt, salinity, waterKind, mixHex } from './regions.js';
-import { buildChunkProps, buildFalls, buildBoulders, buildBoulderWakes, buildDam, buildLodge, buildStack, tickEffects, updateBrush } from './props.js';
+import { buildChunkProps, buildFalls, buildBoulders, buildBoulderWakes, buildDam, buildLodge, buildStack, buildRapidLanes, tickEffects, updateBrush } from './props.js';
+import { cellRegion } from './regions.js';
 
 export { terrainHeight, waterDepth, isNavigable, salinity, waterKind, regionAt, currentAt };
 const _still = { x: 0, z: 0 };
@@ -114,7 +115,10 @@ class Chunk {
       for (let cz = c0z; cz <= c1z; cz++) {
         const f = cellFeatures(cx, cz);
         for (const fall of f.falls) if (inside(fall)) this.features.push(buildFalls(fall, parent));
-        for (const d of f.dams) if (inside(d)) { const im = buildDam(d, parent); if (im) this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } }); }
+        for (const d of f.dams) if (inside(d)) this.features.push(buildDam(d, parent));
+        // A rapid's foam lanes belong to the chunk its site is in.
+        const reg = cellRegion(cx, cz);
+        if (reg.type === 'rapids' && inside(reg)) { const lanes = buildRapidLanes(f, reg, parent); if (lanes) this.features.push(lanes); }
         for (const l of f.lodges) if (inside(l)) { const im = buildLodge(l, parent); if (im) this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } }); }
         for (const st of f.stacks) if (inside(st)) this.features.push(buildStack(st, parent));
         const boulders = f.boulders.filter(inside);

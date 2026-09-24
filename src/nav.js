@@ -23,6 +23,14 @@ export function isNavigable(x, z) {
     const dx = x - b[i].x, dz = z - b[i].z, r = b[i].s * 0.85;
     if (dx * dx + dz * dz < r * r) return false;
   }
+  // ... and the rocks at a waterfall's foot.
+  for (const fall of f.falls) {
+    if (Math.abs(x - fall.x) > 40 || Math.abs(z - fall.z) > 40) continue;
+    for (const rk of fall.rocks) {
+      const dx = x - rk.x, dz = z - rk.z, r = rk.s * 0.85;
+      if (dx * dx + dz * dz < r * r) return false;
+    }
+  }
   return true;
 }
 

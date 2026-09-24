@@ -163,16 +163,25 @@ const FIRST = [
 ];
 const ADJ = ['Old', 'Upper', 'Lower', 'Far', 'North', 'South', 'East', 'West', 'Great', 'Little'];
 const FR = ['du Loup', 'du Héron', 'des Brumes', 'du Cerf', 'du Castor', 'de la Lune', 'des Sapins',
-  'du Renard', "de l'Ours", 'du Saumon', 'Perdu', 'Caché', 'des Îles', 'Tranquille'];
+  'du Renard', "de l'Ours", 'du Saumon', 'Perdu', 'Caché', 'des Îles', 'Tranquille', 'du Lynx', 'des Roches',
+  'de la Truite', 'du Brochet', 'des Pins', 'du Vent', 'des Nuages', 'de la Rivière', 'du Sable', "de l'Aigle",
+  'du Cygne', 'des Cèdres', 'de la Pluie', 'du Tonnerre', 'des Ombres', 'du Soleil', 'de la Neige', 'des Rapides',
+  'du Bouleau', 'des Fées', 'du Vieux Moulin', 'de la Baie', 'du Nord', 'des Érables', 'du Silence', 'de la Grive'];
 
 function pick(rng, list) { return list[Math.floor(rng() * list.length) % list.length]; }
 
-/** A name for a region of this biome. Deterministic per seed. */
-export function regionName(type, seed) {
+/**
+ * A name for a region of this biome. The first word comes off a lattice of
+ * the cell's coordinates rather than a roll, so no two cells within a wide
+ * neighbourhood can share one (the same first word recurs only many cells
+ * apart, and then usually with a different kind and adjective).
+ */
+export function regionName(type, seed, cx = 0, cz = 0) {
   const rng = mulberry32(seed);
   const b = BIOMES[type];
-  if (b.fr && rng() < b.fr) return `Lac ${pick(rng, FR)}`;
-  const first = pick(rng, FIRST);
+  const lat = ((cx % 1000) + 1000) * 1 + ((cz % 1000) + 1000) * 9;
+  if (b.fr && rng() < b.fr) return `Lac ${FR[lat % FR.length]}`;
+  const first = FIRST[lat % FIRST.length];
   const kind = pick(rng, b.names);
   const adj = rng() < 0.22 ? pick(rng, ADJ) + ' ' : '';
   if (type === 'ocean') return `${first} ${kind}`;
@@ -246,7 +255,7 @@ export function cellRegion(cx, cz) {
   r = {
     cx, cz, x, z, type, seed,
     biome: BIOMES[type],
-    name: regionName(type, seed ^ 0x5bd1e995),
+    name: regionName(type, seed ^ 0x5bd1e995, cx, cz),
     temp: temperature(x, z),
     flow: null,       // filled in by terrain.js for the running water
   };

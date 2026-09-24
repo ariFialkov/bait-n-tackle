@@ -56,11 +56,16 @@ export function currentAt(x, z, out) {
       let tx = -gz / g, tz = gx / g;           // along the ridge
       const px = potential(x + e, z) - potential(x - e, z);
       const pz = potential(x, z + e) - potential(x, z - e);
-      if (tx * px + tz * pz > 0) { tx = -tx; tz = -tz; }   // downhill of the potential
-      const speed = r.type === 'rapids' ? 3.2 : running ? 1.5 : 0.8;
+      const pl = Math.hypot(px, pz) || 1;
+      const down = (tx * px + tz * pz) / pl;    // how much of the channel runs down the potential
+      if (down > 0) { tx = -tx; tz = -tz; }   // downhill of the potential
+      // Where a channel turns across the potential the stream would flip
+      // sign: it slackens through the turn instead of snapping round.
+      const turn = ss(0.05, 0.35, Math.abs(down));
+      const speed = r.type === 'rapids' ? 6.0 : running ? 1.5 : 0.8;
       // Shallows drag it, and a rapid runs hardest where the strait is thin.
       const depthK = ss(0.25, 1.2, d) * (r.type === 'rapids' ? (0.6 + 0.4 * ss(9, 2.5, d)) : 1);
-      const k = speed * inChannel * depthK;
+      const k = speed * inChannel * depthK * (r.type === 'rapids' ? Math.max(0.5, turn) : turn);
       vx += tx * k; vz += tz * k;
     }
   }

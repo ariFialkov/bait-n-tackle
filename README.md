@@ -139,8 +139,9 @@ paytable converges to 0.940.
 
 ### The country
 
-The map is the same every time (it is all seeded), but you start
-**somewhere new every time** you open it: a random reach of fresh water with
+The map is infinite and the same every time — it is all generated from
+one seed, so a place is where it was and a name is what it was, however
+far out you go — but you start **somewhere new every time** you open it: a random reach of fresh water with
 sea room (`terrain.js findStart`). Everything in it is deterministic, so a
 place is where you left it and a name is what it was.
 
@@ -176,12 +177,16 @@ hotspot, as it happens) — the water pours off in two curved sheets, one
 behind the other, ropes of white racing down glassy blue, into a boil of
 foam and spray, framed by boulders along the lip and at the foot, fed by a
 river of flowing water laid down the gully above; a falls region has
-several, and a cove the odd one. A beaver dam is a jumble of logs on a
-ridge thrown across a creek that really does block it, with a stick lodge
-in the water off one end — creeks carry several, rivers and ponds the odd
-one. Rapids are a strait, the channel narrowed, boulders along both edges
-funnelling the stream and a few standing in it, each with a wake of white
-water tearing off downstream. The coast gets sea stacks standing out of the
+several, and a cove the odd one. A beaver dam is two dense, messy
+bundles of logs and sticks reaching in from each bank — a half-built
+bridge of timber, three times in four with a gap between the wings a boat
+can take, and once in four finished right across and blocking the creek
+(which is which re-rolls every twenty minutes, each dam on its own clock),
+with a stick lodge in the water off one end — creeks carry several, rivers
+and ponds the odd one. Rapids are a strait, the channel narrowed, boulders along both edges
+funnelling the stream and more standing in it, each with a wake of white
+water tearing off downstream, and lanes of foam traced along the current
+the whole way through, rushing. The coast gets sea stacks standing out of the
 swell. The props (`props.js`) are instanced per chunk from lists decided
 once per chunk (`scatter.js`), and the **solid** ones — rocks, boulders,
 logs, driftwood, mangrove trunks — are obstacles the hull physics respects
@@ -195,7 +200,9 @@ of the trench through a lake — a current runs, seaward more or less (a slow
 potential wanders the way), and where warm water meets cold an **eddy** runs
 along the contour through deep water: long winding flows that follow the
 country and can carry a hull for kilometres, with still water either side
-of them. Through a rapid the whole strait runs, at three metres a second.
+of them. Through a rapid the whole strait runs, at six metres a second. Where a
+channel turns across the seaward potential the stream slackens through
+the turn rather than snapping round.
 A hull in a current is carried — the helm can turn out of it, and can
 fight it, but it is work — and the flow is drawn as streaks riding the
 surface, so it can be seen before it is felt. A mother ship with nobody at
@@ -222,7 +229,8 @@ not — the water changes the fish, never the money. The Fishopedia lists all
 120 and filters by water.
 
 **Names.** Every region is named (Heron Lake, Lac du Cerf, Widow's Creek,
-Farrow Delta, Broken Reach …) and the name fades in, centred and out of the
+Farrow Delta, Broken Reach …), the first word off a lattice of the cell's
+coordinates so no two waters within a wide neighbourhood share one, and the name fades in, centred and out of the
 way, as you come well onto it, with the kind of water under it. Landmarks
 worth a name get one on a pin, the way a maps app marks them — Mount X,
 X Hill, X Beach, X Rock or Island, X Point, X Dam, X Falls — an HTML pill

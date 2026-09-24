@@ -104,7 +104,10 @@ function bumpOf(f, x, z) {
   if (f.kind === 'dam') {
     const along = dx * f.ax + dz * f.az;
     const across = dx * f.az - dz * f.ax;
-    const k = ss(1.7, 0.6, Math.abs(across)) * ss(f.len / 2 + 1.5, f.len / 2 - 1, Math.abs(along));
+    // The wings reach in from each bank; the gap between them (if it is
+    // open) is left as the creek bed it always was.
+    const gapK = f.gap > 0 ? ss(f.gap / 2 - 0.4, f.gap / 2 + 1.2, Math.abs(along)) : 1;
+    const k = ss(2.0, 0.7, Math.abs(across)) * ss(f.len / 2 + 1.5, f.len / 2 - 1, Math.abs(along)) * gapK;
     if (k <= 0) return 0;
     return k * Math.max(0, 0.55 - baseHeight(x, z));
   }
@@ -146,6 +149,38 @@ export function terrainHeight(x, z) {
 export function waterDepth(x, z) {
   const h = terrainHeight(x, z);
   return h < 0 ? -h : 0;
+}
+
+/** Is this dam open right now: a session-wide roll on a twenty-minute clock. */
+const DAM_CLOCK = Math.floor(Date.now() / 1200000);
+export function damOpen(seed) {
+  return hash2(seed & 0xffff, (seed >>> 16) + DAM_CLOCK, S + 55) < 0.75;
+}
+
+/**
+ * The boulders framing a waterfall: along both edges of the lip, at the
+ * foot, and in the river above. Data here (nav.js makes them solid); props.js
+ * draws them.
+ */
+function fallsRocks(f) {
+  const rng = mulberry32(f.seed);
+  const px = f.nz, pz = -f.nx;
+  const rocks = [];
+  for (const s of [1, -1]) {
+    for (let i = 0; i < 3; i++) {
+      const along = 1.2 + i * 1.6 + rng() * 0.6, across = s * (f.w / 2 + 0.5 + i * 0.7);
+      rocks.push({ x: f.x + f.nx * along + px * across, z: f.z + f.nz * along + pz * across, s: 1.0 + rng() * 0.8, r: rng() * 6.28, at: 'lip' });
+    }
+    for (let i = 0; i < 2; i++) {
+      const along = -0.5 - i * 2.2, across = s * (f.w / 2 + 0.6 + rng() * 1.2);
+      rocks.push({ x: f.x + f.nx * along + px * across, z: f.z + f.nz * along + pz * across, s: 0.9 + rng() * 0.9, r: rng() * 6.28, at: 'foot', y: -0.45 + rng() * 0.2 });
+    }
+  }
+  for (const along of [11, 22, 33]) {
+    const across = (rng() - 0.5) * f.w * 0.8;
+    rocks.push({ x: f.x + f.nx * along + px * across, z: f.z + f.nz * along + pz * across, s: 0.5 + rng() * 0.6, r: rng() * 6.28, at: 'river' });
+  }
+  return rocks;
 }
 
 /** Uphill direction and slope at a point (base terrain). */
@@ -204,32 +239,38 @@ export function cellFeatures(cx, cz) {
         // The plunge pool: just off the foot of the falls, where it digs deepest.
         pool: { x: lx - g.nx * 5.5, z: lz - g.nz * 5.5 }, seed: (rng() * 1e9) | 0,
       };
+      fall.rocks = fallsRocks(fall);
       f.falls.push(fall); f.bumps.push(fall);
       f.landmarks.push({ kind: 'falls', x: lx + g.nx * 4, z: lz + g.nz * 4, name: landmarkName('falls', fall.seed) });
       f.hotspots.push({ x: fall.pool.x, z: fall.pool.z, strength: 1.3, phase: rng() * Math.PI * 2, lureIdx: Math.floor(rng() * 8) });
     }
   }
 
-  if (type === 'beaver' || ((type === 'river' || type === 'pond') && rng() < 0.55)) {
-    const want = type === 'beaver' ? 4 : 1;
-    for (let i = 0; i < 260 && f.dams.length < want; i++) {
+  if (type === 'beaver' || ((type === 'river' || type === 'pond') && rng() < 0.6)) {
+    const want = type === 'beaver' ? 5 : 1;
+    for (let i = 0; i < 420 && f.dams.length < want; i++) {
       const p = pt();
       const h = baseHeight(p.x, p.z);
-      if (h > -0.4 || h < -2.6 || !inCell(p.x, p.z)) continue;
+      if (h > -0.4 || h < -3.5 || !inCell(p.x, p.z)) continue;
       let best = null;
       for (let a = 0; a < 8; a++) {
         const ang = (a / 8) * Math.PI;
         const dx = Math.cos(ang), dz = Math.sin(ang);
-        const d1 = landAlong(p.x, p.z, dx, dz, 17), d2 = landAlong(p.x, p.z, -dx, -dz, 17);
+        const d1 = landAlong(p.x, p.z, dx, dz, 24), d2 = landAlong(p.x, p.z, -dx, -dz, 24);
         const sum = d1 + d2;
-        if (Number.isFinite(sum) && sum >= 5 && sum <= 30 && (!best || sum < best.sum)) best = { dx, dz, d1, d2, sum };
+        if (Number.isFinite(sum) && sum >= 8 && sum <= 46 && (!best || sum < best.sum)) best = { dx, dz, d1, d2, sum };
       }
       if (!best) continue;
       // Centre the dam in the channel.
       const mid = (best.d1 - best.d2) / 2;
       const x = p.x + best.dx * mid, z = p.z + best.dz * mid;
       if (f.dams.some((o) => Math.hypot(o.x - x, o.z - z) < 45)) continue;
-      const dam = { kind: 'dam', x, z, ax: best.dx, az: best.dz, len: best.sum + 1, reach: 24, seed: (rng() * 1e9) | 0 };
+      const dam = { kind: 'dam', x, z, ax: best.dx, az: best.dz, len: best.sum + 1, reach: 28, seed: (rng() * 1e9) | 0 };
+      // Three dams in four are still being built: two wings and a gap a
+      // boat can take. Which ones re-rolls every twenty minutes, each on
+      // its own clock, so a closed creek is open another day.
+      dam.open = damOpen(dam.seed);
+      dam.gap = dam.open ? Math.max(8, Math.min(13, dam.len * 0.38)) : 0;
       f.dams.push(dam); f.bumps.push(dam);
       f.landmarks.push({ kind: 'dam', x, z, name: landmarkName('dam', dam.seed) });
       // The lodge: a dome of sticks in the water off one end of the dam.
