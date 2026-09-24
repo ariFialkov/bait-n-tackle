@@ -31,8 +31,11 @@ export function baseHeight(x, z) {
   const wx = x + 34 * fbm(x * 0.009 + 13.7, z * 0.009 + 7.1, 3, S + 11);
   const wz = z + 34 * fbm(x * 0.009 - 8.2, z * 0.009 + 21.4, 3, S + 23);
 
+  const flat = A.flat * wa + B.flat * wb;
   let h = fbm(wx * 0.016, wz * 0.016, 4, S) * 8 * (A.amp * wa + B.amp * wb);   // broad land/water masses
-  h += fbm(x * 0.06, z * 0.06, 3, S + 37) * 1.1 * (A.detail * wa + B.detail * wb); // shoreline detail
+  // Shoreline detail — damped on the flats, where a hand's breadth of noise
+  // over a shallow would otherwise speckle it with invisible dry patches.
+  h += fbm(x * 0.06, z * 0.06, 3, S + 37) * 1.1 * (A.detail * wa + B.detail * wb) * flat;
   h += 1.4 + (A.bias * wa + B.bias * wb);
 
   // Carve winding channels between basins: a river is mostly this.
@@ -45,7 +48,6 @@ export function baseHeight(x, z) {
   if (h > 0.7) h = 0.7 + (h - 0.7) * ridge;
 
   // Marshes and deltas: everything near the waterline pressed into flats.
-  const flat = A.flat * wa + B.flat * wb;
   if (flat < 0.999) h *= lerp(1, flat, ss(3, 0, Math.abs(h)));
 
   // A lagoon has a floor not far down.

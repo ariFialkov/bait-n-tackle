@@ -14,7 +14,7 @@ import { terrainHeight, waterDepth, isNavigable, cellFeatures, currentAt } from 
 import { CELL, regionBlend, regionAt, salinity, waterKind, mixHex } from './regions.js';
 import { buildChunkProps, buildFalls, buildFoam, buildBoulders, buildDam, buildLodge, buildStack, tickEffects } from './props.js';
 
-export { terrainHeight, waterDepth, isNavigable };
+export { terrainHeight, waterDepth, isNavigable, salinity, waterKind, regionAt };
 
 const S = CONFIG.SEED;
 
