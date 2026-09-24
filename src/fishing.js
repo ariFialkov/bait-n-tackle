@@ -517,11 +517,6 @@ export class Fishing {
       this.hud.hint('Too shallow to set a pot here');
       return;
     }
-    // A boat with a grab sets one pot at a time.
-    if (this.boat.grab && this.pots.some((p) => p.anim && p.anim.kind === 'grabOut')) {
-      this.hud.hint('The grab is busy with a pot');
-      return;
-    }
     // The stake is paid now; the bet resolves when the pot is collected.
     this.player.balance -= stake;
     this.rtp.wager(stake);
@@ -532,21 +527,11 @@ export class Fishing {
     pot.side = side;
     pot.ready = CONFIG.POT_SOAK_S;
     pot.phase = Math.random() * Math.PI * 2;
-    if (this.boat.grab) {
-      // The dredger's grab takes it from the deck, swings it over the side
-      // and lets go at the water.
-      pot.anim = { kind: 'grabOut', step: 'grab', t: 0 };
-      pot.mesh.visible = true;
-      const g = this.boat.grab;
-      g.busy = pot; g.grip = pot.mesh; g.gripDrop = 0.45;
-      g.rest();
-    } else {
-      // Waits on the deck for a hand to carry it to the rail and throw it;
-      // nobody coming, it goes over from the rail on its own.
-      pot.anim = { kind: 'ready', t: 0 };
-      pot.mesh.visible = false;
-      pot.mesh.position.copy(this.railPoint(side, this._v));
-    }
+    // Waits on the deck for a hand to carry it to the rail and throw it;
+    // nobody coming, it goes over from the rail on its own.
+    pot.anim = { kind: 'ready', t: 0 };
+    pot.mesh.visible = false;
+    pot.mesh.position.copy(this.railPoint(side, this._v));
     this.potGroup.add(pot.mesh, pot.splash);
     this.pots.push(pot);
     this.hud.hint(`Pot set — $${stake.toFixed(2)} staked, soak ${CONFIG.POT_SOAK_S}s`);
@@ -595,14 +580,7 @@ export class Fishing {
   /** Where a pot goes in: a little off the boat's side, abreast the working deck. */
   potSpot(side, out) {
     const b = this.boat.hullBounds || { halfBeam: 1, length: 5, deckY: 0.5 };
-    const g = this.boat.grab;
-    if (g) {
-      // As far out as the grab reaches with its jaws at the water, abeam its base.
-      const r = g.reachAtY(-this.boat.lift - 0.1);
-      out.set(g.base.x + side * r, 0, g.base.z);
-    } else {
-      out.set(side * (b.halfBeam + 1.3), 0, b.length * 0.12);
-    }
+    out.set(side * (b.halfBeam + 1.3), 0, b.length * 0.12);
     this.boat.hullFrame.localToWorld(out);
     out.y = 0;
     return out;
@@ -644,12 +622,6 @@ export class Fishing {
       const a = pot.anim;
       const hand = pot.handFresh ? pot.handPos : null;
       pot.handFresh = false;
-      if (a && (a.kind === 'grabOut' || a.kind === 'grabIn')) {
-        this.updateGrabPot(pot, i, dt);
-        this.potRope(pot);
-        this.potSplash(pot, dt);
-        continue;
-      }
       if (a && a.kind === 'ready') {
         // On the deck until a hand has it; nobody after a while, it is
         // thrown from the rail by itself.
@@ -691,14 +663,6 @@ export class Fishing {
       this.potRope(pot);
       this.potSplash(pot, dt);
 
-      const g = this.boat.grab;
-      if (g) {
-        // Within the grab's reach of its base, and the grab free.
-        const base = this.boat.hullFrame.localToWorld(this._v.copy(g.base));
-        const d = Math.hypot(pot.x - base.x, pot.z - base.z);
-        if (!pot.anim && soaked && !g.busy && d <= g.reach * 1.15) this.collectPot(i);
-        continue;
-      }
       const d = Math.hypot(pot.x - this.boat.pos.x, pot.z - this.boat.pos.z);
       if (!pot.anim && d <= CONFIG.POT_COLLECT_RADIUS && soaked) {
         this.collectPot(i);
@@ -746,77 +710,12 @@ export class Fishing {
   }
 
   /**
-   * A pot in the dredger's grab. Out: held over the deck, swung over the
-   * side with the jaws lowered to the water, let go. In: the jaws come to
-   * the pot as its cage is hauled up, close on it, and bring it back over
-   * the deck, where the haul is shown.
-   */
-  updateGrabPot(pot, i, dt) {
-    const g = this.boat.grab, a = pot.anim;
-    a.t += dt;
-    if (a.kind === 'grabOut') {
-      if (a.step === 'grab') {
-        if (a.t > 0.5 && g.settled) { a.step = 'swing'; a.t = 0; }
-      } else if (a.step === 'swing') {
-        g.setTargetWorld(this._v.set(pot.x, -0.1, pot.z));
-        if (g.settled && a.t > 0.3) {
-          // Let go: it drops the last little way and the cage sinks.
-          g.grip = null; g.busy = null; g.rest();
-          pot.anim = { kind: 'drop', t: 0, from: pot.mesh.position.clone() };
-        }
-      }
-    } else {
-      // grabIn
-      if (a.step === 'reach') {
-        // Jaws to the water over the pot; the cage rises; the pot is drawn
-        // in under the jaws if it lies a little beyond them.
-        g.setTargetWorld(this._v.set(pot.x, -0.1, pot.z));
-        const k = Math.min(1, a.t / POT_HAUL_S);
-        pot.cage.position.y = -2.65 + 2.3 * smooth(k);
-        pot.cage.rotation.y += dt * 1.4;
-        const jaws = g.jawsWorld(this._v);
-        const dx = jaws.x - pot.x, dz = jaws.z - pot.z, d = Math.hypot(dx, dz);
-        if (g.settled && d > 0.05) {
-          const s = Math.min(d, 1.4 * dt);
-          pot.x += dx / d * s; pot.z += dz / d * s;
-          pot.mesh.position.set(pot.x, pot.mesh.position.y, pot.z);
-        }
-        if (k >= 1 && g.settled && d < 0.3) {
-          a.step = 'lift'; a.t = 0;
-          g.grip = pot.mesh; g.gripDrop = 0.45;
-          pot.cage.position.y = -0.35;
-          pot.splash.position.set(pot.x, 0.05, pot.z);
-          pot.splash.visible = true; pot.splashT = 1;
-          g.rest();
-        }
-      } else if (a.step === 'lift') {
-        if (g.settled && a.t > 0.4) {
-          g.grip = null; g.busy = null;
-          this.pots.splice(i, 1);
-          this.potGroup.remove(pot.mesh, pot.splash);
-          const r = pot.result;
-          this.hud.showPotHaul(r.catches, r.total);
-          if (r.best.value >= CONFIG.BIGCATCH_MIN_VALUE) this.hud.showBigCatch(r.best);
-        }
-      }
-    }
-  }
-
-  /**
    * The pot is reached: its bet resolves now, and the haul is shown once
    * the cage is up and over the rail (the animation is only a picture of
    * a result already settled and banked).
    */
   collectPot(i) {
     const pot = this.pots[i];
-    if (this.boat.grab) {
-      // Stays in the list, in the grab's hands, until it is over the deck.
-      const g = this.boat.grab;
-      g.busy = pot;
-      pot.anim = { kind: 'grabIn', step: 'reach', t: 0 };
-      this.resolvePot(pot);
-      return;
-    }
     this.pots.splice(i, 1);
     // Whichever side of the boat it lies, that is the rail it comes over.
     const local = this.boat.hullFrame.worldToLocal(this._v.set(pot.x, 0, pot.z));
@@ -842,7 +741,7 @@ export class Fishing {
       this.player.bank(c);
     }
     this.rtp.book(total);
-    this.hud.setPots(this.pots.filter((p) => !(p.anim && p.anim.kind === 'grabIn')).length);
+    this.hud.setPots(this.pots.length);
     const best = catches.reduce((a, b) => (b.value > a.value ? b : a));
     pot.result = { catches, total, best };
   }

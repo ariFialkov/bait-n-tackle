@@ -322,8 +322,7 @@ export class CrewDirector {
     const a = b.netAnim;
     const netOut = a && (a.phase === 'ready' || a.phase === 'pickup' || a.phase === 'heave');
     const netIn = a && (a.phase === 'gather' || a.phase === 'haulIn' || a.phase === 'setDown');
-    // (A dredger's pots are the grab's business, never a hand's.)
-    const potOut = f.boat === b && !b.grab ? f.pots.find((p) => p.anim && (p.anim.kind === 'ready' || p.anim.kind === 'carried')) : null;
+    const potOut = f.boat === b ? f.pots.find((p) => p.anim && (p.anim.kind === 'ready' || p.anim.kind === 'carried')) : null;
     const potIn = f.boat === b ? f.hauls[0] : null;
     // Jobs whose gear has moved on are over.
     for (const h of this.hands) {

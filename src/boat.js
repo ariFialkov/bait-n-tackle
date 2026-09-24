@@ -17,7 +17,7 @@ import { driveHull, wrapAngle } from './hullphysics.js';
 import { buildRod, buildHolder, aimRods, updateRods, castRod, HOLDER_LAY } from './rods.js';
 import { DeckMap } from './deckmap.js';
 import { stationsFor, rodHolders } from './stations.js';
-import { DeckCrane, ClawRig } from './crane.js';
+import { DeckCrane } from './crane.js';
 
 // The net goes over the stern in stages (see updateNetAnim): lifted off the
 // deck to the gallows, swung out over the transom, dropped in; then it pays
@@ -30,7 +30,11 @@ const NET_PAYOUT_S = 1.6, NET_GATHER_S = 1.4;
 const NET_WAIT_S = 2.2, NET_PICKUP_S = 0.45, NET_WHIP_S = 0.48, NET_FLY_S = 0.6, NET_HAUL_S = 0.8;
 // The trawler's gallows: how far the A-frame swings down to put the cone in
 // the water, and how fast; the gillnetter's drum: how fast it turns.
-const BOOM_DOWN = 0.42, BOOM_RATE = 0.32, DRUM_RATE = 2.2;
+const BOOM_DOWN = 0.66, BOOM_RATE = 0.36, DRUM_RATE = 2.2;
+// The cone's wire pays out at this rate, until the cone is this far under.
+const CONE_WIRE_RATE = 1.6, CONE_UNDER = 0.4;
+const CONE_SWING_K = 9, CONE_SWING_C = 1.6;          // the hanging cone as a pendulum
+const WIRE_MAT = new THREE.MeshStandardMaterial({ color: 0x3a4046, roughness: 0.6, metalness: 0.4 });
 const smooth = (k) => k * k * (3 - 2 * k);
 
 const loader = new GLTFLoader();
@@ -140,7 +144,8 @@ function sternAtWaterline(root) {
     const p = o.geometry.attributes.position;
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
-      if (v.y > -0.7 && v.y < 0.15 && v.z > z) z = v.z;
+      // The hull proper, up to the bulwark: nothing on the superstructure.
+      if (v.y > -0.9 && v.y < 0.6 && v.z > z) z = v.z;
     }
   });
   return z;
@@ -339,10 +344,22 @@ export class Boat {
     // --- the model's own machinery: the trawler's gallows, the gillnetter's
     // drum, the dredger's grab ---
     const rigs = this.parts.rigs || {};
-    this.boom = rigs.boom && !rigs.slew ? { node: rigs.boom, angle: 0 } : null;
-    if (this.boom) { this.netBundle.visible = false; }
+    this.boom = null;
+    if (rigs.boom && rigs.cone) {
+      // The gallows swing on their hinge; the cone hangs from their apex on
+      // a wire, always upright, and is lowered on that wire into the water.
+      const cone = rigs.cone;
+      const wire = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6, 1, true), WIRE_MAT);
+      wire.visible = false;
+      cone.parent.add(wire);
+      this.boom = {
+        node: rigs.boom, angle: 0, cone, wire,
+        apex: cone.position.clone().sub(rigs.boom.position),   // the hang point, boom-local
+        drop: 0, swing: 0, swingV: 0, lastAngle: 0,
+      };
+      this.netBundle.visible = false;
+    }
     this.drum = rigs.drum ? { node: rigs.drum, angle: 0 } : null;
-    this.grab = rigs.slew && rigs.boom && rigs.claw ? new ClawRig(rigs.slew, rigs.boom, rigs.claw) : null;
 
     // --- the deck crane, on hulls that carry one ---
     if (this.crane) { this.hullFrame.remove(this.crane.group); this.crane = null; }
@@ -360,7 +377,10 @@ export class Boat {
     }
 
     // Wake size and churn are a cosmetic per-hull/per-skin signature.
-    this.wake.setSpec(spec, this.hullBounds);
+    // A hull with gallows over its stern reads longer than its transom: the
+    // wake is laid a little further aft on it so it leaves the hull, not
+    // the middle of the boat.
+    this.wake.setSpec(spec, this.boom ? { ...this.hullBounds, sternZ: this.hullBounds.sternZ + 0.4 } : this.hullBounds);
     // Only the steam hulls carry funnels; everything else gets an empty set.
     this.smoke.setStacks(spec.stacks);
 
@@ -396,12 +416,13 @@ export class Boat {
       // pays out from the cone; stowing winds it in and the boom comes up.
       if (on) {
         if (a?.phase === 'boomUp') a.phase = 'boomDown';
+        else if (a?.phase === 'coneUp') a.phase = 'coneDown';
         else if (a?.phase === 'gather') a.phase = 'payout';
         else if (!this.net.active && !a) this.netAnim = { phase: 'boomDown', t: 0 };
       } else {
         if (a?.phase === 'boomDown') a.phase = 'boomUp';
-        else if (a?.phase === 'payout') a.phase = 'gather';
-        else if (this.net.active) this.netAnim = { phase: 'gather', t: 0, handPos: new THREE.Vector3(), handFresh: false };
+        else if (a?.phase === 'coneDown') a.phase = 'coneUp';
+        else if (a?.phase === 'payout' || this.net.active) this.netAnim = { phase: 'gather', t: 0, handPos: new THREE.Vector3(), handFresh: false };
       }
       return;
     }
@@ -463,14 +484,35 @@ export class Boat {
     const hand = a.handFresh ? a.handPos : null;
     a.handFresh = false;
     if (a.phase === 'boomDown' || a.phase === 'boomUp') {
-      // The gallows swing down until the cone is in the water, or back up.
+      // The gallows swing down over the water, or back up to rest.
       const b = this.boom;
       const want = a.phase === 'boomDown' ? BOOM_DOWN : 0;
       b.angle += Math.sign(want - b.angle) * Math.min(Math.abs(want - b.angle), BOOM_RATE * dt);
       if (Math.abs(b.angle - want) < 1e-3) {
-        if (a.phase === 'boomDown') { this.netHitsWater(); this.netAnim = { phase: 'payout', t: 0 }; }
+        if (a.phase === 'boomDown') this.netAnim = { phase: 'coneDown', t: 0 };
         else this.netAnim = null;
       }
+    } else if (a.phase === 'coneDown' || a.phase === 'coneUp') {
+      // The cone pays down its wire until it is wholly under, and is then
+      // put away — the netting in the water takes over from it; or comes
+      // back up out of the water once the netting is wound in.
+      const b = this.boom;
+      const coneTopY = b.cone.position.y + this.lift;     // world height of the hang point
+      const coneH = 2.75;                                 // the cone's own height (model)
+      if (a.phase === 'coneDown') {
+        b.cone.visible = true;
+        b.drop += CONE_WIRE_RATE * dt;
+        if (coneTopY < -CONE_UNDER) {
+          b.cone.visible = false; b.wire.visible = false;
+          this.netHitsWater();
+          this.netAnim = { phase: 'payout', t: 0 };
+        }
+      } else {
+        b.cone.visible = true;
+        b.drop = Math.max(0, b.drop - CONE_WIRE_RATE * dt);
+        if (b.drop <= 0) this.netAnim = { phase: 'boomUp', t: 0 };
+      }
+      void coneH;
     } else if (a.phase === 'ready') {
       // On the deck, waiting for someone to pick it up. Nobody coming:
       // the gallows lifts it the old way.
@@ -546,7 +588,7 @@ export class Boat {
       this.net.gather = Math.min(1, this.net.gather + dt / NET_GATHER_S);
       if (this.net.gather >= 1) {
         this.net.stow();
-        if (this.boom) { this.netAnim = { phase: 'boomUp', t: 0 }; return; }
+        if (this.boom) { this.netAnim = { phase: 'coneUp', t: 0 }; return; }
         this.netBundleAt(NET_CARRY_S, bundle.position);
         bundle.visible = true;
         // A hand at the rail hauls it in; else the gallows brings it aboard.
@@ -672,8 +714,27 @@ export class Boat {
 
   /** Drive the carved-out machinery from the hull's own motion. */
   updateMachinery(dt) {
-    // The gallows lie at whatever angle the net animation has them.
-    if (this.boom) this.boom.node.rotation.x = this.boom.angle;   // +x lowers an arm that reaches aft
+    // The gallows lie at whatever angle the net animation has them; the
+    // cone hangs upright under their apex, `drop` down its wire, swinging a
+    // little whenever the gallows move.
+    if (this.boom) {
+      const b = this.boom;
+      b.node.rotation.x = b.angle;                  // +x lowers an arm that reaches aft
+      const kick = (b.angle - b.lastAngle) / Math.max(dt, 1e-3);
+      b.lastAngle = b.angle;
+      b.swingV += (-CONE_SWING_K * b.swing - CONE_SWING_C * b.swingV - kick * 0.35) * dt;
+      b.swing += b.swingV * dt;
+      b.node.updateMatrixWorld(true);
+      const apex = this._p1.copy(b.apex);
+      b.node.localToWorld(apex);
+      b.cone.parent.worldToLocal(apex);
+      b.cone.position.set(apex.x, apex.y - b.drop, apex.z + Math.sin(b.swing) * 0.5);
+      b.cone.rotation.set(b.swing, 0, 0);
+      // The wire, from the apex down to the cone's hang point.
+      b.wire.visible = b.cone.visible && b.drop > 0.02;
+      b.wire.position.set(apex.x, apex.y - b.drop / 2, apex.z);
+      b.wire.scale.set(0.02, Math.max(0.01, b.drop), 0.02);
+    }
     // The drum turns while the net pays out (top going aft) or is wound in.
     if (this.drum) {
       const ph = this.netAnim?.phase;
@@ -681,7 +742,6 @@ export class Boat {
       this.drum.angle += dir * DRUM_RATE * dt;
       this.drum.node.rotation.x = this.drum.angle;
     }
-    if (this.grab) this.grab.update(dt);
     for (const w of this.parts.wheels) {
       // Surface speed at this wheel: the hull's way through the water plus
       // whatever the turn adds on its side of the centreline. Put the helm

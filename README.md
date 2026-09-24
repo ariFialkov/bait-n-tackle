@@ -149,7 +149,7 @@ shop is a ladder of 36 boats rather than 9:
 | Speedboat | 1 | 17.5 m/s | — (the fastest, sharpest hull in the game) |
 | Cuddy | 2 | 12.6 m/s | — |
 | Trawler | 3 | 11.0 m/s | Trawl net |
-| Mud-Dredger | 4 | 10.0 m/s | Sonar fish-finder, pots (set by the grab) |
+| Mud-Dredger | 4 | 10.0 m/s | Sonar fish-finder, pots |
 | Gillnetter | 6 | 10.5 m/s | Pots & set nets |
 | Paddleboat | 8 | 9.5 m/s | — (the biggest jump in rods) |
 | Seiner | 10 | 10.3 m/s | Launchable tender |
@@ -331,15 +331,16 @@ it is a boat with the ship's way on it. Called back, the tender comes
 alongside under the hook and the same film runs backwards into the well.
 Where a model has the machinery, the machinery does the work. The
 converter carves it out as driven parts (`rig` rules in the converter,
-`ClawRig` and friends in `crane.js`/`boat.js`): the **trawler's** aft
-gallows swing down until the cone of netting hangs in the water before the
-net pays out from it, and come back up once it is wound in; the
-**gillnetter's** net drum turns one way as the net pays out and the other
-as it is wound in; and the **dredger's** grab on the bow takes a pot from
-the deck, slews it over the side with the boom laid out until the jaws
-reach the water, lets go, and when a soaked pot lies within its reach it
-lowers the jaws to it as the cage is hauled up, closes on it and swings it
-back over the deck. The net also has its own button at the top of the net
+driven from `boat.js`): the **trawler's** aft gallows swing down over the
+water while the cone of netting hangs upright from their apex on a wire,
+swinging a little as they move; the wire then pays out until the cone is
+wholly under, where it is put away and the netting in the water takes over
+from it; stowing winds the netting in, brings the cone back up out of the
+water on its wire, and raises the gallows. The **gillnetter's** net drum
+turns one way as the net pays out and the other as it is wound in. (The
+dredger's grab was tried for its pots and dropped: it made setting a pot
+a production; a deckhand scoops them at the rail like everywhere else.)
+The net also has its own button at the top of the net
 panel (Deploy net / Pull net), the same as tapping the net on the stern,
 and the seiner's crane is painted the skin's hull colour. A hull's wake
 starts where the transom meets the water — the trawler's model runs out to

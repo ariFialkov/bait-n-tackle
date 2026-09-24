@@ -87,8 +87,8 @@ export const BOATS = [
     tagline: 'Unlocks the sonar fish-finder and pots.',
     blurb: 'A broad-beamed working barge built to churn the shallows. Slow ' +
       'and stubborn in a turn, but the sonar dome reads the water ahead and ' +
-      'calls out which bait the locals are taking, and the grab on the bow ' +
-      'sets pots over the side and lifts them back aboard.',
+      'calls out which bait the locals are taking, and carries pots the ' +
+      'deckhand sets over the side and scoops back aboard.',
     price: 10,
     rods: 4,
     maxSpeed: 10.0,
