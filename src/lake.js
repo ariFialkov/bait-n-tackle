@@ -16,7 +16,10 @@ import { currentAt, FlowField } from './currents.js';
 import { CELL, regionBlend, regionAt, salinity, waterKind, mixHex } from './regions.js';
 import { buildChunkProps, buildFalls, buildBoulders, buildBoulderWakes, buildDam, buildLodge, buildStack, tickEffects, updateBrush } from './props.js';
 
-export { terrainHeight, waterDepth, isNavigable, salinity, waterKind, regionAt };
+export { terrainHeight, waterDepth, isNavigable, salinity, waterKind, regionAt, currentAt };
+const _still = { x: 0, z: 0 };
+/** Water that is not going anywhere: no current worth the name. */
+export function isStill(x, z) { currentAt(x, z, _still); return Math.hypot(_still.x, _still.z) < 0.1; }
 
 const S = CONFIG.SEED;
 
@@ -448,9 +451,9 @@ export class Lake {
       const size = CONFIG.CHUNK_SIZE;
       for (const chunk of this.chunks.values()) {
         if (!chunk.brush.length) continue;
-        let near = false;
+        let near = chunk.brushing || false;
         for (const v of vessels) if (Math.abs(v.pos.x - chunk.ox) < size && Math.abs(v.pos.z - chunk.oz) < size) near = true;
-        if (near) updateBrush(chunk.brush, vessels, dt);
+        if (near) chunk.brushing = updateBrush(chunk.brush, vessels, dt);
       }
     }
   }

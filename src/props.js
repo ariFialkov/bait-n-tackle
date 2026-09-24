@@ -221,6 +221,7 @@ const BRUSH_K = 26, BRUSH_D = 6.5;
  * ones still swinging back, are touched.
  */
 export function updateBrush(brush, vessels, dt) {
+  let any = false;
   for (const b of brush) {
     const { items, state, im, kind, place } = b;
     let dirty = false;
@@ -275,8 +276,9 @@ export function updateBrush(brush, vessels, dt) {
       im.setMatrixAt(i, _m);
       dirty = true;
     }
-    if (dirty) im.instanceMatrix.needsUpdate = true;
+    if (dirty) { im.instanceMatrix.needsUpdate = true; any = true; }
   }
+  return any;   // something is still swinging: keep coming back
 }
 
 // --- built features ------------------------------------------------------------------
@@ -398,7 +400,7 @@ export function buildFalls(f, parent) {
     const geo = new THREE.PlaneGeometry(f.w, H, 6, 18);
     const p = geo.attributes.position;
     for (let i = 0; i < p.count; i++) {
-      const t = 0.5 - p.getY(i) / H;                 // 0 at the lip .. 1 at the water
+      const t = clamp(0.5 - p.getY(i) / H, 0, 1);    // 0 at the lip .. 1 at the water
       const out = -0.3 * Math.pow(1 - t, 5) + 1.1 * Math.pow(Math.sin(t * Math.PI / 2), 0.85);
       const belly = 0.12 * Math.sin((p.getX(i) / f.w + 0.5) * Math.PI);
       p.setZ(i, out + belly + offset);
@@ -437,7 +439,7 @@ export function buildFalls(f, parent) {
     for (let i = 0; i < 3; i++) {
       const along = 1.2 + i * 1.6 + rng() * 0.6, across = s * (f.w / 2 + 0.5 + i * 0.7);
       const x = f.x + f.nx * along + px * across, z = f.z + f.nz * along + pz * across;
-      rocks.push({ x, z, y: terrainHeight(x, z) - 0.2, s: 1.1 + rng() * 0.9, r: rng() * 6.28 });
+      rocks.push({ x, z, y: terrainHeight(x, z) - 0.55, s: 1.0 + rng() * 0.8, r: rng() * 6.28 });
     }
     for (let i = 0; i < 2; i++) {
       const along = -0.5 - i * 2.2, across = s * (f.w / 2 + 0.6 + rng() * 1.2);
