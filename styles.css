@@ -218,6 +218,41 @@ html, body {
   75% { transform: translate(-50%, -50%) scale(1.1) rotate(8deg); }
 }
 
+/* Landmark pins: held over their points in the world, faded in as they come into view. */
+#labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.lm {
+  position: absolute; left: 0; top: 0;
+  display: flex; flex-direction: column; align-items: center;
+  /* The pin's tip sits on the point: the whole label hangs above it. */
+  margin-left: -120px; width: 240px; margin-top: -34px;
+  opacity: 0;
+  transition: opacity 0.55s ease;
+  will-change: transform, opacity;
+}
+.lm.show { opacity: 1; }
+.lm-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(8, 40, 56, 0.6);
+  backdrop-filter: blur(5px);
+  border-radius: 99px;
+  padding: 4px 10px 4px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #eaf4f9;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.lm-icon { font-size: 0.66rem; color: #ffd166; }
+.lm.beach .lm-icon { color: #f3e2b0; }
+.lm.falls .lm-icon { color: #9fdcf5; }
+.lm.dam .lm-icon { color: #d9b98a; }
+.lm.rock .lm-icon, .lm.point .lm-icon { color: #d7d7d0; }
+.lm-pin {
+  width: 0; height: 0;
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-top: 8px solid rgba(8, 40, 56, 0.6);
+}
+
 /* Where you are: a clean, central name that fades in and out. */
 #region-name {
   position: absolute;

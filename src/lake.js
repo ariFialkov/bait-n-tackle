@@ -10,9 +10,11 @@ import * as THREE from 'three';
 import { CONFIG, LURES } from './config.js';
 import { fbm, hash2, mulberry32, clamp, lerp } from './noise.js';
 import { chunkDocks } from './docks.js';
-import { terrainHeight, waterDepth, isNavigable, cellFeatures, currentAt } from './terrain.js';
+import { terrainHeight, waterDepth, cellFeatures } from './terrain.js';
+import { isNavigable } from './nav.js';
+import { currentAt, FlowField } from './currents.js';
 import { CELL, regionBlend, regionAt, salinity, waterKind, mixHex } from './regions.js';
-import { buildChunkProps, buildFalls, buildFoam, buildBoulders, buildDam, buildLodge, buildStack, tickEffects } from './props.js';
+import { buildChunkProps, buildFalls, buildBoulders, buildBoulderWakes, buildDam, buildLodge, buildStack, tickEffects, updateBrush } from './props.js';
 
 export { terrainHeight, waterDepth, isNavigable, salinity, waterKind, regionAt };
 
@@ -88,7 +90,9 @@ class Chunk {
     this.mesh.receiveShadow = true;
     parentGroup.add(this.mesh);
 
-    this.props = buildChunkProps(cx, cz, ox, oz, size, parentGroup);
+    const props = buildChunkProps(cx, cz, parentGroup);
+    this.props = props.meshes;
+    this.brush = props.brush;
     this.features = [];          // { dispose(), update?(t) }
     this.landmarks = [];
     this.hotspots = this.buildHotspots(ox, oz, size);
@@ -111,9 +115,12 @@ class Chunk {
         for (const l of f.lodges) if (inside(l)) { const im = buildLodge(l, parent); if (im) this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } }); }
         for (const st of f.stacks) if (inside(st)) this.features.push(buildStack(st, parent));
         const boulders = f.boulders.filter(inside);
-        if (boulders.length) { const im = buildBoulders(boulders, parent); this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } }); }
-        const foam = f.foam.filter(inside);
-        if (foam.length) { const fm = buildFoam(foam, parent); if (fm) this.features.push(fm); }
+        if (boulders.length) {
+          const im = buildBoulders(boulders, parent);
+          this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } });
+          const wakes = buildBoulderWakes(boulders, parent);
+          if (wakes) this.features.push(wakes);
+        }
         for (const lm of f.landmarks) if (inside(lm)) this.landmarks.push(lm);
         for (const hs of f.hotspots) {
           if (!inside(hs)) continue;
@@ -311,6 +318,7 @@ export class Lake {
     this.water = makeWater();
     scene.add(this.water);
     this.fx = new HotspotFX(scene);
+    this.flow = new FlowField(scene);
     this.hotspots = [];
     this.docks = [];
     this.landmarks = [];
@@ -428,12 +436,23 @@ export class Lake {
       .sort((a, b) => a.dist - b.dist);
   }
 
-  update(t, boatX, boatZ) {
+  update(t, boatX, boatZ, dt = 0.016, vessels = null) {
     this.ensureChunks(boatX, boatZ);
     this.water.material.uniforms.uTime.value = t;
     this.fx.update(t);
     tickEffects(t);
+    this.flow.update(dt, boatX, boatZ, t);
     for (const chunk of this.chunks.values()) chunk.update(t);
+    // The soft props bend out of the hulls' way, in the chunks near them.
+    if (vessels && vessels.length) {
+      const size = CONFIG.CHUNK_SIZE;
+      for (const chunk of this.chunks.values()) {
+        if (!chunk.brush.length) continue;
+        let near = false;
+        for (const v of vessels) if (Math.abs(v.pos.x - chunk.ox) < size && Math.abs(v.pos.z - chunk.oz) < size) near = true;
+        if (near) updateBrush(chunk.brush, vessels, dt);
+      }
+    }
   }
 
   // --- what is where ---

@@ -12,6 +12,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
+import { isNavigable } from './nav.js';
+import { aground } from './hullphysics.js';
 import { poolFor } from './fishdata.js';
 import { boatModelURL, rodMounts, hullDrag } from './boats.js';
 import { buildRod, aimRods, updateRods, castRod } from './rods.js';
@@ -33,7 +35,7 @@ const STUCK_S = 1.4;             // wanting to go, going nowhere, for this long
 const AUTO_CAST_EVERY = 3.2;     // seconds between autonomous attempts
 const HOME_RADIUS = 9;           // close enough to the seiner to hand over
 
-function navigable(x, z) { return waterDepth(x, z) >= TENDER_MIN_DEPTH; }
+function navigable(x, z) { return isNavigable(x, z); }
 
 export class Tender {
   constructor(scene, lake, rtp, player, hud) {
@@ -694,6 +696,13 @@ export class Tender {
 
     const was = this.heading;
     driveHull(this, s, dt, move, navigable);
+    // The stream carries the tender as it does the mother ship.
+    const cur = this.lake.currentAt ? this.lake.currentAt(this.pos.x, this.pos.z) : null;
+    if (cur && (cur.x || cur.z)) {
+      const nx = this.pos.x + cur.x * dt, nz = this.pos.z + cur.z * dt;
+      const here = aground(this, this.pos.x, this.pos.z, this.heading, navigable);
+      if (aground(this, nx, nz, this.heading, navigable) <= here) { this.pos.x = nx; this.pos.z = nz; }
+    }
     const rate = dt > 0 ? wrapAngle(this.heading - was) / dt : 0;
     this.yawVel += (rate - this.yawVel) * Math.min(1, 5 * dt);
 

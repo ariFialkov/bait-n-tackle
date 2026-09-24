@@ -158,7 +158,7 @@ and mangroves:
 | Marsh | murky green-brown flats | mud, low and wide, grey drizzle | reeds, cattails, lily pads, logs, sticks |
 | Mangroves | warm green shallows, hazy | mud | mangroves on prop roots |
 | Falls | cold, clear | mountains, snow above the line | waterfalls, snow pines, boulders |
-| Rapids | rough, running | narrow rock channels | boulders in the stream, white water |
+| Rapids | a strait, running hard | narrow rock channels | boulders funnelling the stream, white water tearing off them |
 | Beaver creek | still, brown-green | low country | beaver dams and lodges, lily pads, sticks |
 | Pond | flat calm | small and sheltered | lily pads, cattails |
 | Delta | silty, braided, brackish | sand flats | reeds, driftwood |
@@ -172,12 +172,33 @@ blended over seventy metres at every border so nothing has a seam. Each
 region then **builds its features** into the ground and caches them per
 cell: a waterfall raises a cliff with a sheer face behind its lip, cuts the
 stream's gully across the top of it and digs a plunge pool at its foot (a
-hotspot, as it happens); a beaver dam is a ridge thrown across a creek that
-really does block it, with a lodge in the water off one end; rapids get
-boulders in the stream, white water lying along the flow, and a **current**
-that carries the hull along; the coast gets sea stacks standing out of the
-swell. The props (`props.js`) are instanced per chunk by the biome's own
-weights.
+hotspot, as it happens) — the water pours off in two curved sheets, one
+behind the other, ropes of white racing down glassy blue, into a boil of
+foam and spray, framed by boulders along the lip and at the foot, fed by a
+river of flowing water laid down the gully above; a falls region has
+several, and a cove the odd one. A beaver dam is a jumble of logs on a
+ridge thrown across a creek that really does block it, with a stick lodge
+in the water off one end — creeks carry several, rivers and ponds the odd
+one. Rapids are a strait, the channel narrowed, boulders along both edges
+funnelling the stream and a few standing in it, each with a wake of white
+water tearing off downstream. The coast gets sea stacks standing out of the
+swell. The props (`props.js`) are instanced per chunk from lists decided
+once per chunk (`scatter.js`), and the **solid** ones — rocks, boulders,
+logs, driftwood, mangrove trunks — are obstacles the hull physics respects
+(`nav.js`): a boat stops at a log as it stops at a bank. The **soft** ones
+— reeds, cattails, lily pads — bend out of a passing hull's way on a spring
+and swing back once it has gone.
+
+**Moving water** (`currents.js`). Every carved channel — a river, a creek,
+the braids of a delta, the trench through a lake — carries a current along
+it, seaward more or less (a slow potential wanders the way), and where warm
+water meets cold an **eddy** runs along the boundary through deep water:
+long winding flows that follow the country and can carry a hull for
+kilometres. Through a rapid the same current runs at three metres a
+second. A hull in it is carried — the helm can turn out of it, and can
+fight it, but it is work — and the flow is drawn as streaks riding the
+surface, so it can be seen before it is felt. It moves the boat; it never
+touches a bet.
 
 The one water plane is re-coloured **per vertex** from the regions under it
 whenever it steps, with its own chop, murk and depth: a lagoon is turquoise,
@@ -201,9 +222,11 @@ not — the water changes the fish, never the money. The Fishopedia lists all
 **Names.** Every region is named (Heron Lake, Lac du Cerf, Widow's Creek,
 Farrow Delta, Broken Reach …) and the name fades in, centred and out of the
 way, as you come well onto it, with the kind of water under it. Landmarks
-worth a name get one on a pin in the world, the way a maps app marks them —
-Mount X, X Hill, X Beach, X Rock or Island, X Point, X Dam, X Falls — kept
-the same size on screen and faded out with distance (`labels.js`).
+worth a name get one on a pin, the way a maps app marks them — Mount X,
+X Hill, X Beach, X Rock or Island, X Point, X Dam, X Falls — an HTML pill
+like the rest of the HUD, held over its point in the world by projecting
+it every frame, fading in as the landmark comes into view and out again as
+it leaves (`labels.js`).
 
 ### Boats and the shore
 
@@ -482,7 +505,10 @@ src/
   noise.js     seeded value noise / fbm
   regions.js   the named biome cells, the coast and salinity, the climates
   terrain.js   the ground: per-biome heights, the ocean floor, built features, landmarks
-  props.js     the props strewn by biome, waterfalls, white water, dams, sea stacks
+  scatter.js   what lies where on a chunk, decided once: the prop lists and the obstacles
+  nav.js       where a hull may float: depth plus nothing solid in the way; the random start
+  currents.js  the moving water: channel flow, rapids, eddies, and the streaks that show it
+  props.js     the props drawn by biome, the brush spring, waterfalls, white water, dams, stacks
   climate.js   sky, fog, sun and precipitation eased toward the regions round the boat
   labels.js    the landmark pins in the world
   lake.js      infinite chunked water and country, the per-region water shader, hotspots

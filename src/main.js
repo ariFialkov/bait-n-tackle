@@ -20,7 +20,7 @@ import { CrewDirector } from './deckcrew.js';
 import { SPECIES } from './fishdata.js';
 import { Climate } from './climate.js';
 import { Labels } from './labels.js';
-import { findStart } from './terrain.js';
+import { findStart } from './nav.js';
 import { regionBlend, BIOMES } from './regions.js';
 
 // --- Renderer / scene ---
@@ -67,7 +67,7 @@ boat.placeAt(start.x, start.z, start.heading);
 const docks = new Docks(scene);
 lake.onDocksChanged = (list) => docks.sync(list);
 docks.sync(lake.docks);
-const labels = new Labels(scene);
+const labels = new Labels(document.getElementById('labels'), camera);
 lake.onLandmarksChanged = (list) => labels.sync(list);
 labels.sync(lake.landmarks);
 const climate = new Climate(scene, sun, ambientLight, hemiLight);
@@ -76,7 +76,6 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  labels.setAspect(camera.aspect);
 });
 
 const ambientFish = new AmbientFish(scene, 16);
@@ -333,7 +332,7 @@ function frame() {
   // Two hulls, one patch of water: neither drives through the other.
   if (tender.deployed) separateHulls(boat, tender);
   const eye = helm === tender ? tender.pos : boat.pos;
-  lake.update(t, eye.x, eye.z);
+  lake.update(t, eye.x, eye.z, dt, tender.deployed ? [boat, tender] : [boat]);
   ambientFish.setFocus(eye.x, eye.z);
   ambientFish.update(t, dt);
   if (state === 'play') {
@@ -344,7 +343,7 @@ function frame() {
   }
   crew.update(dt, t, helm === tender);
   climate.update(dt, eye.x, eye.z, lake);
-  labels.update(eye.x, eye.z);
+  labels.update(eye.x, eye.z, state === 'play');
   rig.update(dt, t, (helm === tender ? tender : boat).group.position);
 
   // Keep the sun (and its shadow frustum) centered on the boat.

@@ -22,6 +22,11 @@ function ss(a, b, x) {
   return t * t * (3 - 2 * t);
 }
 
+/** The channel ridge field, 0..1: above ~0.86 the ground is cut into a channel. */
+export function channelField(x, z) {
+  return 1 - Math.abs(fbm(x * 0.006 + 3.1, z * 0.006 - 4.7, 2, S + 51));
+}
+
 /** Terrain height without any built feature: the country as the noise made it. */
 export function baseHeight(x, z) {
   const bl = regionBlend(x, z);
@@ -39,7 +44,7 @@ export function baseHeight(x, z) {
   h += 1.4 + (A.bias * wa + B.bias * wb);
 
   // Carve winding channels between basins: a river is mostly this.
-  const c = 1 - Math.abs(fbm(x * 0.006 + 3.1, z * 0.006 - 4.7, 2, S + 51));
+  const c = channelField(x, z);
   const th = A.channelW * wa + B.channelW * wb;
   if (c > th) h -= (c - th) * 55 * (A.channel * wa + B.channel * wb);
 
@@ -143,10 +148,6 @@ export function waterDepth(x, z) {
   return h < 0 ? -h : 0;
 }
 
-export function isNavigable(x, z) {
-  return waterDepth(x, z) >= CONFIG.MIN_NAV_DEPTH;
-}
-
 /** Uphill direction and slope at a point (base terrain). */
 function gradient(x, z, e = 4) {
   const gx = (baseHeight(x + e, z) - baseHeight(x - e, z)) / (2 * e);
@@ -185,8 +186,9 @@ export function cellFeatures(cx, cz) {
   // Running water has a direction: downhill to the sea, more or less.
   r.flow = (rng() - 0.5) * 1.8;
 
-  if (type === 'falls') {
-    for (let i = 0; i < 70 && f.falls.length < 2; i++) {
+  if (type === 'falls' || type === 'cove') {
+    const want = type === 'falls' ? 6 : 2;
+    for (let i = 0; i < 240 && f.falls.length < want; i++) {
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (h > -1.2 || h < -4.5 || !inCell(p.x, p.z)) continue;
@@ -196,7 +198,7 @@ export function cellFeatures(cx, cz) {
       if (!Number.isFinite(ds)) continue;
       if (baseHeight(p.x + g.nx * (ds + 10), p.z + g.nz * (ds + 10)) < 4.5) continue;   // no cliff to come off
       const lx = p.x + g.nx * (ds + 2.5), lz = p.z + g.nz * (ds + 2.5);
-      if (f.falls.some((o) => Math.hypot(o.x - lx, o.z - lz) < 70)) continue;
+      if (f.falls.some((o) => Math.hypot(o.x - lx, o.z - lz) < 42)) continue;
       const fall = {
         kind: 'falls', x: lx, z: lz, nx: g.nx, nz: g.nz, w: 5 + rng() * 4, reach: BUMP_R,
         // The plunge pool: just off the foot of the falls, where it digs deepest.
@@ -208,8 +210,9 @@ export function cellFeatures(cx, cz) {
     }
   }
 
-  if (type === 'beaver') {
-    for (let i = 0; i < 160 && f.dams.length < 2; i++) {
+  if (type === 'beaver' || ((type === 'river' || type === 'pond') && rng() < 0.55)) {
+    const want = type === 'beaver' ? 4 : 1;
+    for (let i = 0; i < 260 && f.dams.length < want; i++) {
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (h > -0.4 || h < -2.6 || !inCell(p.x, p.z)) continue;
@@ -225,7 +228,7 @@ export function cellFeatures(cx, cz) {
       // Centre the dam in the channel.
       const mid = (best.d1 - best.d2) / 2;
       const x = p.x + best.dx * mid, z = p.z + best.dz * mid;
-      if (f.dams.some((o) => Math.hypot(o.x - x, o.z - z) < 60)) continue;
+      if (f.dams.some((o) => Math.hypot(o.x - x, o.z - z) < 45)) continue;
       const dam = { kind: 'dam', x, z, ax: best.dx, az: best.dz, len: best.sum + 1, reach: 24, seed: (rng() * 1e9) | 0 };
       f.dams.push(dam); f.bumps.push(dam);
       f.landmarks.push({ kind: 'dam', x, z, name: landmarkName('dam', dam.seed) });
@@ -244,15 +247,17 @@ export function cellFeatures(cx, cz) {
   }
 
   if (type === 'rapids') {
-    for (let i = 0; i < 260 && (f.boulders.length < 18 || f.foam.length < 22); i++) {
+    // Boulders along the strait's edges funnel the water, and a few stand
+    // mid-stream for it to break round.
+    for (let i = 0; i < 420 && f.boulders.length < 34; i++) {
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (!inCell(p.x, p.z)) continue;
-      if (h < -0.3 && h > -2.6 && f.boulders.length < 18 && rng() < 0.5) {
-        f.boulders.push({ x: p.x, z: p.z, h, s: 0.7 + rng() * 1.1, r: rng() * Math.PI * 2 });
-      } else if (h < -0.5 && h > -7 && f.foam.length < 22) {
-        f.foam.push({ x: p.x, z: p.z, ang: r.flow + (rng() - 0.5) * 0.6, len: 7 + rng() * 7, w: 1.6 + rng() * 1.0, phase: rng() });
-      }
+      const edge = h < -0.3 && h > -2.2;
+      const mid = h <= -2.2 && h > -9 && rng() < 0.12;
+      if (!edge && !mid) continue;
+      if (f.boulders.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < 3.5)) continue;
+      f.boulders.push({ x: p.x, z: p.z, h, s: (mid ? 1.1 : 0.8) + rng() * 1.1, r: rng() * Math.PI * 2 });
     }
   }
 
@@ -325,37 +330,3 @@ export function cellFeatures(cx, cz) {
   return f;
 }
 
-/**
- * The current at a point: rapids carry a hull along their flow, and only
- * where the water is thin enough to be running. Writes {x, z} m/s into out.
- */
-export function currentAt(x, z, out) {
-  out.x = 0; out.z = 0;
-  const r = regionAt(x, z);
-  if (r.type !== 'rapids') return out;
-  if (r.flow == null) cellFeatures(r.cx, r.cz);
-  const d = waterDepth(x, z);
-  if (d <= 0 || d > 3.2) return out;
-  const k = 1.4 * ss(3.2, 0.8, d);
-  out.x = Math.cos(r.flow) * k; out.z = Math.sin(r.flow) * k;
-  return out;
-}
-
-/**
- * A random freshwater spot with sea room, for starting the game somewhere
- * new each time. `rng` may be seeded for a test.
- */
-export function findStart(rng = Math.random) {
-  for (let i = 0; i < 600; i++) {
-    const x = -1000 + rng() * 1250, z = -1000 + rng() * 2000;
-    if (x > coastX(z) - 460) continue;
-    if (waterDepth(x, z) < 2.5) continue;
-    let ok = true;
-    for (let a = 0; a < 12 && ok; a++) {
-      const ang = (a / 12) * Math.PI * 2;
-      if (waterDepth(x + Math.cos(ang) * 14, z + Math.sin(ang) * 14) < 1.4) ok = false;
-    }
-    if (ok) return { x, z, heading: rng() * Math.PI * 2 };
-  }
-  return { x: 0, z: 0, heading: 0 };
-}
