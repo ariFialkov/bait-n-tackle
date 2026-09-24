@@ -137,13 +137,17 @@ function collectParts(root) {
 function sternAtWaterline(root) {
   let z = -Infinity;
   root.updateMatrixWorld(true);
+  // In the hull's OWN frame: the root may already hang under a boat that
+  // has been placed somewhere and pointed somewhere, and the transom is
+  // where it is on the model regardless.
+  const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const v = new THREE.Vector3();
   root.traverse((o) => {
     if (!o.isMesh || (o.userData && o.userData.part)) return;
     for (let a = o; a && a !== root; a = a.parent) if (a.userData && a.userData.part) return;
     const p = o.geometry.attributes.position;
     for (let i = 0; i < p.count; i++) {
-      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld).applyMatrix4(toRoot);
       // The hull proper, up to the bulwark: nothing on the superstructure.
       if (v.y > -0.9 && v.y < 0.6 && v.z > z) z = v.z;
     }
