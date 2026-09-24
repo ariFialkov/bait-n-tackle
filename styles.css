@@ -830,6 +830,34 @@ html, body {
 .ship-btn em { margin-left: auto; font-style: normal; color: #ffd166; font-weight: 800; }
 .ship-note { font-size: 0.64rem; color: #7da8bc; line-height: 1.4; margin-top: 4px; }
 
+/* The tender's bag of bait */
+.bag { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.bag-row {
+  display: grid; grid-template-columns: 1.2em 1fr 24px 2ch 24px;
+  align-items: center; gap: 5px;
+  padding: 3px 4px; border-radius: 8px;
+  font-size: 0.72rem; color: #b9d3df;
+}
+.bag-row.has { background: rgba(125, 237, 174, 0.12); color: #dfeef5; }
+.bag-emoji { font-size: 0.9rem; text-align: center; }
+.bag-name { display: flex; flex-direction: column; line-height: 1.1; font-weight: 600; }
+.bag-name small { font-size: 0.6rem; color: #7da8bc; font-weight: 500; }
+.bag-btn {
+  width: 24px; height: 24px; border-radius: 7px; border: none;
+  background: rgba(255, 255, 255, 0.12); color: #dfeef5;
+  font: inherit; font-size: 0.9rem; font-weight: 800; line-height: 1;
+  cursor: pointer; padding: 0;
+}
+.bag-btn:active { transform: scale(0.92); background: rgba(255, 255, 255, 0.22); }
+.bag-n { text-align: center; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+.bag-total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.7rem; color: #7da8bc; padding: 2px 4px 6px;
+}
+.bag-total b { color: #ffd166; font-size: 0.85rem; }
+.bag-total.over b { color: #ff7d6b; }
+.bag-send { margin-top: 2px; }
+
 /* ---------- Tender status chip ---------- */
 #tender-chip {
   position: absolute;

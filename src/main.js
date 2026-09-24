@@ -15,6 +15,7 @@ import { Marina } from './marina.js';
 import { Player } from './player.js';
 import { Docks, DOCK_HINT_RANGE, berthFor } from './docks.js';
 import { Tender } from './tender.js';
+import { separateHulls } from './hullphysics.js';
 import { CrewDirector } from './deckcrew.js';
 import { SPECIES } from './fishdata.js';
 
@@ -88,7 +89,17 @@ async function equipBoat(key, fromMarina = false) {
   hud.setBoat(boat.spec);
   rig.setBoatLength(boat.spec.length);
   if (!boat.spec.features.trawl && boat.trawling) fishing.stopTrawl();
-  if (boat.spec.tender) await tender.prepare(boat.spec.tender, boat.spec);
+  if (boat.spec.tender) {
+    await tender.prepare(boat.spec.tender, boat.spec);
+    // Aboard, it stands in the well the model had its own tender in.
+    const well = boat.parts.tender?.box;
+    const st = boat.stations;
+    tender.stowOn(boat, st?.tenderWell || (well
+      ? { x: (well[0] + well[3]) / 2, y: well[1], z: (well[2] + well[5]) / 2 }
+      : { x: 0, y: boat.hullBounds.deckY, z: boat.hullBounds.length * 0.35 }));
+  } else if (tender.stowedModel) {
+    tender.stowedModel.visible = false;
+  }
   if (fromMarina) berthAtMarina();
   crew.setBoat(boat.spec);
   refreshShipPanel();
@@ -112,7 +123,6 @@ function berthAtMarina() {
 function refreshShipPanel() {
   hud.buildShipPanel(boat.spec, {
     balance: player.balance,
-    budgets: CONFIG.TENDER_BUDGETS,
     tender: {
       deployed: tender.deployed,
       auto: tender.state === 'auto',
@@ -174,14 +184,17 @@ hud.onTenderSwitch = () => {
   refreshShipPanel();
 };
 
-hud.onTenderSend = (amount) => {
+hud.onTenderSend = (bag) => {
   if (!tender.deployed || tender.state === 'auto') return;
-  if (player.balance < amount) { hud.hint('Not enough cash for that much bait'); return; }
+  const total = bag.reduce((a, n, i) => a + n * LURES[i].cost, 0);
+  const count = bag.reduce((a, n) => a + n, 0);
+  if (!count) { hud.hint('Pick some bait to send it out with'); return; }
+  if (player.balance < total) { hud.hint('Not enough cash to cover that bag of bait'); return; }
   if (atHelmOfTender()) { helm = boat; fishing.setVessel(boat); rig.setBoatLength(boat.spec.length); hud.setBoat(boat.spec); }
-  // The budget is a spending limit, not a charge: each landed fish draws its
-  // stake from it exactly as a player cast would.
-  tender.sendOut(amount, fishing.lureIndex);
-  hud.hint(`Tender away with $${amount} of ${LURES[fishing.lureIndex].name}`);
+  // The bag is a spending limit, not a charge: each landed fish draws its
+  // bait's stake from it exactly as a player cast would.
+  tender.sendOut(bag);
+  hud.hint(`Tender away with ${count} bait${count > 1 ? 's' : ''} ($${total})`);
   refreshShipPanel();
 };
 hud.bindNewRound(() => {
@@ -274,6 +287,8 @@ function frame() {
   const move = driving ? input.moveVector() : { x: 0, z: 0 };
   boat.update(dt, helm === boat ? move : { x: 0, z: 0 }, t);
   tender.update(dt, t, helm === tender ? move : { x: 0, z: 0 }, boat, helm === tender);
+  // Two hulls, one patch of water: neither drives through the other.
+  if (tender.deployed) separateHulls(boat, tender);
   const eye = helm === tender ? tender.pos : boat.pos;
   lake.update(t, eye.x, eye.z);
   ambientFish.setFocus(eye.x, eye.z);
@@ -307,7 +322,7 @@ frame();
 // Debug/test handle (harmless in production).
 window.BNT = {
   hud, rtp, fishing, boat, tender, crew, player, dex, marina, docks, lake, rig, SPECIES,
-  equipBoat, refreshShipPanel,
+  equipBoat, refreshShipPanel, separateHulls,
   get helm() { return helm; },
 };
 

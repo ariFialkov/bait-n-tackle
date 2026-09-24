@@ -266,10 +266,18 @@ power sets how white and noisy it churns and how hard the transom throws
 spray.
 
 The top two hulls automate rather than improve. The **tender** (Seiner) can be
-taken into channels the seiner cannot enter, or staked with bait and sent out
-fishing on its own; its autonomous casts run through the same catch roll and
-the same paytable, and its stake is charged from your cash exactly as yours
-is. The **crew** (Steamboat) work the rods through the very same `cast()` and
+taken into channels the seiner cannot enter, or sent out fishing on its own
+with a **bag of bait** you make up yourself — so many worms, so many spoons,
+one trophy rig, the total stake shown as you build it. A bait is used up only
+when a fish takes it, and its cost is staked at that moment; the autonomous
+casts run through the same catch roll and the same paytable, and the stake
+is charged from your cash exactly as yours is. The run ends when the bag is
+empty or your cash cannot cover what is left in it. Aboard, the tender
+stands on chocks in the seiner's stern well (the model's own painted-on
+tender is carved off so the real hull can take its place); in the water it
+is a second hull on the same lake — it keeps station off the seiner's
+quarter, steers round her rather than through her, and neither boat can be
+driven through the other (`hullphysics.js separateHulls`). The **crew** (Steamboat) work the rods through the very same `cast()` and
 `pull()` calls your swipes use — extra hands, identical bets.
 
 The **sonar** on the Mud-Dredger reads nearby hotspots and names the bait

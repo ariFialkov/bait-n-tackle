@@ -14,7 +14,7 @@ import { CONFIG, LURES } from './config.js';
 import { waterDepth } from './lake.js';
 import { boatModelURL, rodMounts, hullDrag } from './boats.js';
 import { buildRod, aimRods, updateRods } from './rods.js';
-import { driveHull, wrapAngle, hullYawRate } from './hullphysics.js';
+import { driveHull, wrapAngle, hullYawRate, steerClear } from './hullphysics.js';
 import { WakeTrail } from './wake.js';
 import { applySkin } from './skinner.js';
 import { clamp } from './noise.js';
@@ -58,8 +58,8 @@ export class Tender {
     this.spec = null;
     this.loaded = false;
 
-    // autonomous run
-    this.budget = 0;
+    // autonomous run: a bag of baits, one count per lure in LURES
+    this.bag = LURES.map(() => 0);
     this.spent = 0;
     this.catches = [];
     this.castTimer = 0;
@@ -146,10 +146,17 @@ export class Tender {
     this.hullFrame.add(hull);
     this.lift = def.lift ?? 0;
     this.hullFrame.position.y = this.lift;
+    // The same hull again, standing in the mother ship's stern well while
+    // the tender is aboard (the well is where the model had its own
+    // tender, which comes off — boat.js). Parented by the crew director's
+    // caller, main.js, onto the mother ship.
+    this.stowedModel = hull.clone(true);
+    this.stowedModel.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
     this.hullBounds = {
       halfBeam: (b2.max.x - b2.min.x) / 2,
       sternZ: b2.max.z,
+      minY: b2.min.y,
       deckY: Math.max(0.2, b2.max.y * 0.25),
       length: b2.max.z - b2.min.z,
     };
@@ -189,6 +196,7 @@ export class Tender {
         this.heading = mother.heading;
         this.state = 'manual';
         this.group.visible = true;
+        if (this.stowedModel) this.stowedModel.visible = false;
         this.wake.reset();
         this.wake.setVisible(true);
         return true;
@@ -197,29 +205,63 @@ export class Tender {
     return false;
   }
 
+  /**
+   * Put the stowed copy of the hull in the mother ship's well: `at` is
+   * {x, y, z} in the mother's hull frame, keel-bottom on the chocks.
+   */
+  stowOn(mother, at) {
+    if (!this.stowedModel) return;
+    if (this.stowedModel.parent !== mother.hullFrame) mother.hullFrame.add(this.stowedModel);
+    const keel = -(this.hullBounds?.minY ?? 1);
+    this.stowedModel.position.set(at.x, at.y + keel, at.z);
+    this.stowedModel.visible = !this.deployed;
+  }
+
   stow() {
     this.state = 'stowed';
     this.group.visible = false;
+    if (this.stowedModel) this.stowedModel.visible = true;
     this.wake.setVisible(false);
     this.wake.reset();
     this.lineFx.line.visible = false;
     this.lineFx.bob.visible = false;
-    this.budget = 0;
+    this.bag.fill(0);
     this.spent = 0;
     this.catches = [];
   }
 
-  /** Send the tender off on its own with a bait budget. */
-  sendOut(budget, lureIndex) {
-    this.budget = budget;
+  /**
+   * Send the tender off on its own with a bag of baits: `bag[i]` is how
+   * many of LURES[i] it carries. A bait is used up only when a fish takes
+   * it, and its cost staked then — the same terms as a player's cast.
+   */
+  sendOut(bag) {
+    this.bag = LURES.map((_, i) => Math.max(0, Math.floor(bag[i] || 0)));
     this.spent = 0;
     this.catches = [];
-    this.lureIndex = lureIndex;
     this.castTimer = AUTO_CAST_EVERY;
     this.state = 'auto';
   }
 
-  get remaining() { return Math.max(0, this.budget - this.spent); }
+  /** Stake still in the bag, in cash. */
+  get remaining() { return this.bag.reduce((a, n, i) => a + n * LURES[i].cost, 0); }
+
+  /** Baits still in the bag. */
+  get baitsLeft() { return this.bag.reduce((a, n) => a + n, 0); }
+
+  /** The next bait to tie on: drawn from the bag, the common ones more often. */
+  pickBait() {
+    const usable = [];
+    for (let i = 0; i < this.bag.length; i++) {
+      if (this.bag[i] > 0 && this.player.balance >= LURES[i].cost) usable.push(i);
+    }
+    if (!usable.length) return -1;
+    let total = 0;
+    for (const i of usable) total += this.bag[i];
+    let r = Math.random() * total;
+    for (const i of usable) { r -= this.bag[i]; if (r <= 0) return i; }
+    return usable[usable.length - 1];
+  }
 
   /** Distance home, for the HUD and the return leg. */
   distanceTo(mother) {
@@ -245,9 +287,10 @@ export class Tender {
 
   /** One autonomous fishing attempt — identical economics to a player cast. */
   autoFish() {
-    const lure = LURES[this.lureIndex];
-    if (this.remaining < lure.cost) return;
-    if (this.player.balance < lure.cost) return; // cannot cover the stake
+    const li = this.pickBait();
+    if (li < 0) return;                            // nothing left it can afford
+    this.lureIndex = li;
+    const lure = LURES[li];
 
     // Same roll the player gets: hotspots change frequency, never value.
     const spot = this.lake.hotspotAt(this.pos.x, this.pos.z);
@@ -266,7 +309,8 @@ export class Tender {
     if (Math.random() >= chance) return;          // nothing took — free
 
     // A fish is landed: the stake is placed now, exactly as for the player —
-    // charged against real cash, drawn from the run's budget.
+    // charged against real cash, and that bait is gone from the bag.
+    this.bag[li]--;
     this.spent += lure.cost;
     this.player.balance -= lure.cost;
     this.rtp.wager(lure.cost);
@@ -279,10 +323,9 @@ export class Tender {
     this.catches.push(c);
   }
 
-  /** The run is over when either the bait budget or the cash runs out. */
+  /** The run is over when the bag is empty, or the cash cannot cover what is left. */
   get runDone() {
-    const cost = LURES[this.lureIndex].cost;
-    return this.remaining < cost || this.player.balance < cost;
+    return this.pickBait() < 0;
   }
 
   steerAuto(dt, mother) {
@@ -319,7 +362,7 @@ export class Tender {
       wantZ = Math.sin(this.wander);
     }
     const l = Math.hypot(wantX, wantZ) || 1;
-    return { x: wantX / l, z: wantZ / l };
+    return steerClear(this, mother, { x: wantX / l, z: wantZ / l }, 4);
   }
 
   /** Report on the run. The catch itself was banked as it was landed. */
@@ -332,7 +375,7 @@ export class Tender {
     }
     const spent = this.spent;
     this.catches = [];
-    this.budget = 0;
+    this.bag.fill(0);
     this.spent = 0;
     this.state = 'manual';
     this.hud.showTenderReport({ n, value, spent, best });
@@ -363,9 +406,10 @@ export class Tender {
       this.wander += 2.2 * 0.05;
       wantX = Math.cos(this.wander); wantZ = Math.sin(this.wander);
     }
-    // Ease off close in, so it settles rather than overshoots.
+    // Ease off close in, so it settles rather than overshoots — and never
+    // straight through the mother ship to get there.
     const k = Math.min(1, (d - 4) / 10) / (Math.hypot(wantX, wantZ) || 1);
-    return { x: wantX * k, z: wantZ * k };
+    return steerClear(this, mother, { x: wantX * k, z: wantZ * k }, 4);
   }
 
   update(dt, t, moveVec, mother, helmed = false) {
@@ -380,7 +424,7 @@ export class Tender {
       this.castTimer -= dt;
       if (this.castTimer <= 0) {
         this.castTimer = AUTO_CAST_EVERY;
-        if (this.remaining >= LURES[this.lureIndex].cost) this.autoFish();
+        this.autoFish();
       }
       // Run finished and back alongside: report in.
       if (this.runDone && this.distanceTo(mother) <= HOME_RADIUS) this.deliver();
@@ -397,7 +441,9 @@ export class Tender {
     this.wake.update(dt, t, this);
 
     const bob = this.lake.waveHeight(this.pos.x, this.pos.z, t);
-    const heel = Math.max(-0.26, Math.min(0.26,
+    // Capped by beam, as the big boat's is, so the gunwale stays dry.
+    const heelCap = Math.min(0.2, 0.14 / Math.max(0.5, this.hullBounds?.halfBeam ?? 1));
+    const heel = Math.max(-heelCap, Math.min(heelCap,
       this.yawVel * (this.speed / s.maxSpeed) * 0.42));
     this.group.position.set(this.pos.x, bob + 0.02, this.pos.z);
     this.group.rotation.set(

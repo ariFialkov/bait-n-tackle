@@ -87,6 +87,7 @@ const OUTBOARD_TILT = 0.62;      // radians it lifts clear when idling
 function collectParts(root) {
   const wheels = [];
   const outboards = [];
+  let tender = null;
   root.traverse((o) => {
     const p = o.userData && o.userData.part;
     if (!p) return;
@@ -95,9 +96,14 @@ function collectParts(root) {
       wheels.push({ node: o, radius: Math.max(0.2, p.radius || 1), arm: p.arm || 0, angle: 0 });
     } else if (p.kind === 'outboard') {
       outboards.push({ node: o, steer: 0, tilt: 0 });
+    } else if (p.kind === 'tender') {
+      // The boat modelled in the stern well. The real tender stands there
+      // instead (see Tender.stowedModel), so this comes off the hull.
+      tender = { node: o, box: p.box };
     }
   });
-  return { wheels, outboards };
+  if (tender) tender.node.parent?.remove(tender.node);
+  return { wheels, outboards, tender };
 }
 
 export class Boat {
@@ -194,6 +200,10 @@ export class Boat {
     if (!hull) hull = fallbackHull(spec.length);
     await applySkin(hull, spec);
 
+    // The moving parts, and anything that comes off the model (the seiner's
+    // modelled tender), before the hull is measured.
+    this.parts = collectParts(hull);
+
     // Measure while the hull is still detached, so the box is in the hull's
     // own space. Box3.setFromObject works in WORLD space: measuring after
     // parenting it under a group that carries the boat's heading would report
@@ -220,7 +230,6 @@ export class Boat {
 
     this.hullHolder.clear();
     this.hullHolder.add(hull);
-    this.parts = collectParts(hull);
     this._deckCache.clear();
     this.lift = st?.lift ?? 0;
     this.hullFrame.position.y = this.lift;

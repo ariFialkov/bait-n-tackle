@@ -36,6 +36,96 @@ const WAY_ON = 0.25;
 const HARD_OVER = 0.85;
 
 /**
+ * A hull as a capsule for keeping boats apart: a segment down the
+ * centreline, from bow to stern less the beam, with the half-beam as its
+ * radius. `o` needs { pos, heading, hullBounds }.
+ */
+function capsule(o) {
+  const b = o.hullBounds || { halfBeam: 1, length: 5 };
+  const r = b.halfBeam;
+  const half = Math.max(0, b.length / 2 - r);
+  const ax = -Math.sin(o.heading), az = -Math.cos(o.heading);      // toward the bow
+  return { x: o.pos.x, z: o.pos.z, ax, az, half, r };
+}
+
+/** Closest points of two segments in the plane: returns [t1, t2] in [-half, half]. */
+function closest(c1, c2) {
+  const dx = c2.x - c1.x, dz = c2.z - c1.z;
+  const d1 = c1.ax * c2.ax + c1.az * c2.az;
+  const s1 = c1.ax * dx + c1.az * dz, s2 = c2.ax * dx + c2.az * dz;
+  const den = 1 - d1 * d1;
+  let t1 = den > 1e-4 ? (s1 - d1 * s2) / den : 0;
+  t1 = Math.max(-c1.half, Math.min(c1.half, t1));
+  let t2 = d1 * t1 - s2;
+  t2 = Math.max(-c2.half, Math.min(c2.half, t2));
+  t1 = Math.max(-c1.half, Math.min(c1.half, d1 * t2 + s1));
+  return [t1, t2];
+}
+
+/**
+ * Keep two hulls out of each other. Whoever is lighter gives way more (a
+ * 5m tender against a 19m seiner mostly moves itself), the closing
+ * component of their velocities is killed so they do not grind, and a
+ * little of each other's way is passed on so a nudge reads as a nudge.
+ * Returns the overlap resolved, 0 when they were clear.
+ */
+export function separateHulls(a, b, margin = 0.6) {
+  const ca = capsule(a), cb = capsule(b);
+  const [ta, tb] = closest(ca, cb);
+  const px = ca.x + ca.ax * ta, pz = ca.z + ca.az * ta;
+  const qx = cb.x + cb.ax * tb, qz = cb.z + cb.az * tb;
+  let nx = qx - px, nz = qz - pz;
+  const d = Math.hypot(nx, nz);
+  const want = ca.r + cb.r + margin;
+  if (d >= want) return 0;
+  if (d < 1e-4) { nx = -Math.cos(a.heading); nz = Math.sin(a.heading); } else { nx /= d; nz /= d; }
+  const overlap = want - d;
+  const ma = (a.hullBounds?.length ?? 5) ** 2, mb = (b.hullBounds?.length ?? 5) ** 2;
+  const wa = mb / (ma + mb), wb = ma / (ma + mb);
+  a.pos.x -= nx * overlap * wa; a.pos.z -= nz * overlap * wa;
+  b.pos.x += nx * overlap * wb; b.pos.z += nz * overlap * wb;
+  // Relative velocity along the normal: if closing, stop it (with a touch
+  // of restitution) and share it out by mass.
+  const rv = (b.vel.x - a.vel.x) * nx + (b.vel.z - a.vel.z) * nz;
+  if (rv < 0) {
+    const j = -rv * 1.15;
+    a.vel.x -= nx * j * wa; a.vel.z -= nz * j * wa;
+    b.vel.x += nx * j * wb; b.vel.z += nz * j * wb;
+  }
+  return overlap;
+}
+
+/**
+ * A steering correction to keep `o` clear of `other` while it drives toward
+ * `want` (a unit-ish stick vector): when the course ahead would pass within
+ * `clear` of the other hull, the stick is bent away from it, harder the
+ * closer it gets. Returns the corrected {x, z}.
+ */
+export function steerClear(o, other, want, clear) {
+  const co = capsule(o), ct = capsule(other);
+  // Where the hull will be a few seconds on, and the nearest point on the
+  // other hull to that spot.
+  const look = 3.0;
+  const fx = co.x + o.vel.x * look, fz = co.z + o.vel.z * look;
+  const rel = (fx - ct.x) * ct.ax + (fz - ct.z) * ct.az;
+  const t = Math.max(-ct.half, Math.min(ct.half, rel));
+  const px = ct.x + ct.ax * t, pz = ct.z + ct.az * t;
+  let nx = fx - px, nz = fz - pz;
+  const d = Math.hypot(nx, nz) || 1e-4;
+  nx /= d; nz /= d;
+  const gap = d - ct.r - co.r;
+  if (gap > clear) return want;
+  // Bend the stick away, and when very close push straight out.
+  const k = Math.min(1, 1 - gap / clear);
+  const mag = Math.hypot(want.x, want.z);
+  let x = want.x + nx * k * Math.max(0.6, mag) * 1.4;
+  let z = want.z + nz * k * Math.max(0.6, mag) * 1.4;
+  const m = Math.hypot(x, z);
+  if (m > 1) { x /= m; z /= m; }
+  return { x, z };
+}
+
+/**
  * Ceiling on how fast a hull may swing, in radians per second. `turn` is the
  * agility rating from the catalog; length is what drags it down, so the same
  * rating buys far less on a long hull than on a short one.

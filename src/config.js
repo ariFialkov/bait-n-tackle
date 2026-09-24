@@ -87,7 +87,6 @@ export const CONFIG = {
   CREW_PULL_POWER: 0.55,
 
   // --- Seiner tender ---
-  TENDER_BUDGETS: [50, 250, 1000, 5000],
 
   // --- Pots & set nets (gillnetter and up) ---
   MAX_POTS: 6,

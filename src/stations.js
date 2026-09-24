@@ -166,6 +166,8 @@ export const STATIONS = {
     // The tender's driver: on the bench in the open cockpit, feet on the
     // sole. The cuddy hull is scaled to 5.4/6.2 as a tender.
     tenderSeat: { x: 0.3, y: -0.235, z: 1.31, f: 0, pose: 'seat', seatH: 0.27 },
+    // Where the tender stands when aboard: on chocks in the stern well.
+    tenderWell: { x: 0, y: 0.1, z: 6.8 },
   },
   steamboat: {
     // Promenade at 2.99 (3.15 under the sun deck), sun deck at 4.49 with

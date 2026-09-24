@@ -78,6 +78,7 @@ export class HUD {
     this.onTenderSwitch = null;
     this.onTenderSend = null;
     this.crewOn = false;
+    this.bag = LURES.map(() => 0);     // the bait the tender will be sent out with
     this.buildGearPanel(this.el.lures, LURES,
       (l) => `$${l.cost}`, (i) => this.onLureSelect && this.onLureSelect(i));
     this.buildGearPanel(this.el.nets, NETS,
@@ -207,25 +208,71 @@ export class HUD {
           note.textContent = 'Out fishing on its own — recall is available once it is back.';
           g.appendChild(note);
         } else {
-          const sub = document.createElement('div');
-          sub.className = 'ship-title';
-          sub.style.marginTop = '6px';
-          sub.textContent = 'Send out with bait';
-          g.appendChild(sub);
-          for (const amount of (state.budgets || [])) {
-            button(g, `Stake $${amount}`, null, false,
-              () => this.onTenderSend && this.onTenderSend(amount),
-              (state.balance || 0) < amount);
-          }
+          this.buildBaitBag(g, state.balance || 0);
         }
       }
     }
   }
 
+  /**
+   * The bag of bait the tender goes out with: a count of each lure, with
+   * the total stake shown, and one button to send it. Counts live on the
+   * HUD so a panel rebuild (every click rebuilds it) keeps them.
+   */
+  buildBaitBag(parent, balance) {
+    const sub = document.createElement('div');
+    sub.className = 'ship-title';
+    sub.style.marginTop = '6px';
+    sub.textContent = 'Send out with bait';
+    parent.appendChild(sub);
+    const total = () => this.bag.reduce((a, n, i) => a + n * LURES[i].cost, 0);
+    const count = () => this.bag.reduce((a, n) => a + n, 0);
+    const list = document.createElement('div');
+    list.className = 'bag';
+    parent.appendChild(list);
+    const foot = document.createElement('div');
+    foot.className = 'bag-total';
+    parent.appendChild(foot);
+    const send = document.createElement('button');
+    send.className = 'ship-btn bag-send';
+    parent.appendChild(send);
+    const render = () => {
+      list.innerHTML = '';
+      LURES.forEach((l, i) => {
+        const row = document.createElement('div');
+        row.className = 'bag-row' + (this.bag[i] ? ' has' : '');
+        row.innerHTML = `<span class="bag-emoji">${l.emoji}</span>` +
+          `<span class="bag-name">${l.name}<small>$${l.cost} each</small></span>` +
+          `<button class="bag-btn" data-d="-1" aria-label="fewer">−</button>` +
+          `<span class="bag-n">${this.bag[i]}</span>` +
+          `<button class="bag-btn" data-d="1" aria-label="more">+</button>`;
+        row.querySelectorAll('.bag-btn').forEach((b) => {
+          b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const d = +b.dataset.d;
+            this.bag[i] = Math.max(0, Math.min(99, this.bag[i] + d));
+            render();
+          });
+        });
+        list.appendChild(row);
+      });
+      const t = total(), n = count();
+      foot.innerHTML = `<span>${n} bait${n === 1 ? '' : 's'}</span><b>$${t.toFixed(0)}</b>`;
+      foot.classList.toggle('over', t > balance);
+      send.innerHTML = `<span>${n ? 'Send the tender out' : 'Pick some bait'}</span>` + (n ? `<em>$${t.toFixed(0)}</em>` : '');
+      send.disabled = !n || t > balance;
+    };
+    send.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onTenderSend) this.onTenderSend(this.bag.slice());
+    });
+    render();
+  }
+
   setTenderChip(tender) {
     const on = tender && tender.state === 'auto';
     this.el.tenderChip.classList.toggle('hidden', !on);
-    if (on) this.el.tcBudget.textContent = '$' + tender.remaining.toFixed(0);
+    if (on) this.el.tcBudget.textContent = `${tender.baitsLeft} bait${tender.baitsLeft === 1 ? '' : 's'} · $${tender.remaining.toFixed(0)}`;
   }
 
   showTenderReport({ n, value, spent, best }) {
