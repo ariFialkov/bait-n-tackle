@@ -173,6 +173,10 @@ export const STATIONS = {
     tenderMate: { x: -0.42, y: -0.235, z: 1.8, f: HALF, pose: 'rail', railH: 0.45 },
     // Where the tender stands when aboard: on chocks in the stern well.
     tenderWell: { x: 0, y: 0.1, z: 6.8 },
+    // The deck crane that puts it over the side and back: on the working
+    // deck at the well's forward starboard corner, beside the hand at the
+    // lift post, reaching the well and the water off the starboard side.
+    crane: { x: 2.0, y: 0.0, z: 3.9, reach: 5.6, height: 1.1, side: 1 },
   },
   steamboat: {
     // Promenade at 2.99 (3.15 under the sun deck), sun deck at 4.49 with

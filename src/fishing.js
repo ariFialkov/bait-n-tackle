@@ -24,6 +24,15 @@ import { clamp, lerp } from './noise.js';
 import { HookedFish } from './hookedfish.js';
 import { HAUL_TOAST_MS, TOAST_FADE_MS } from './hud.js';
 
+const SNAP_S = 1.0;            // a parted line whipping back and settling
+const POT_DROP_S = 0.7;        // a pot's arc from the rail to the water
+const POT_SINK_S = 1.2;        // ... and the cage going down out of sight
+const POT_HAUL_S = 1.0;        // the cage coming up to the surface
+const POT_LIFT_S = 0.8;        // ... and swung up over the rail
+const POT_RING = new THREE.RingGeometry(0.35, 0.52, 20);
+POT_RING.rotateX(-Math.PI / 2);
+const smooth = (k) => k * k * (3 - 2 * k);
+
 const BOBBER_GEO = {
   top: new THREE.SphereGeometry(0.16, 12, 9),
   stem: new THREE.CylinderGeometry(0.02, 0.02, 0.18, 5),
@@ -67,6 +76,8 @@ class Line {
     this.start = new THREE.Vector3();
     this.target = new THREE.Vector3();
     this.rodTip = new THREE.Vector3();
+    this.snapFrom = new THREE.Vector3();   // where the float was when the line parted
+    this.snapT = 0;
   }
 
   reset() {
@@ -151,6 +162,7 @@ export class Fishing {
     this.autoTimer = 0;
 
     this.pots = [];
+    this.hauls = [];               // pots on their way up and over the rail
     this.potGroup = new THREE.Group();
     scene.add(this.potGroup);
 
@@ -492,7 +504,14 @@ export class Fishing {
       this.hud.hint(`Need $${stake.toFixed(2)} to bait a pot`);
       return;
     }
-    if (waterDepth(this.boat.pos.x, this.boat.pos.z) < 1.2) {
+    // It goes over the side beside the boat, whichever side has the water.
+    let side = 0;
+    const spot = this._v;
+    for (const s of [1, -1]) {
+      this.potSpot(s, spot);
+      if (waterDepth(spot.x, spot.z) >= 1.2) { side = s; break; }
+    }
+    if (!side) {
       this.hud.hint('Too shallow to set a pot here');
       return;
     }
@@ -500,33 +519,81 @@ export class Fishing {
     this.player.balance -= stake;
     this.rtp.wager(stake);
 
+    const pot = this.buildPot();
+    pot.x = spot.x; pot.z = spot.z;
+    pot.stake = stake;
+    pot.side = side;
+    pot.ready = CONFIG.POT_SOAK_S;
+    pot.phase = Math.random() * Math.PI * 2;
+    // Off the rail and into the water, cage sinking away under the float.
+    pot.anim = { kind: 'drop', t: 0, from: this.railPoint(side, new THREE.Vector3()) };
+    pot.mesh.position.copy(pot.anim.from);
+    this.potGroup.add(pot.mesh, pot.splash);
+    this.pots.push(pot);
+    this.hud.hint(`Pot set — $${stake.toFixed(2)} staked, soak ${CONFIG.POT_SOAK_S}s`);
+    this.hud.setPots(this.pots.length);
+  }
+
+  /** A pot: a baited cage under a float on a rope, plus its own splash ring. */
+  buildPot() {
     const mesh = new THREE.Group();
-    const body = new THREE.Mesh(
+    const cage = new THREE.Group();
+    cage.add(new THREE.Mesh(
       new THREE.CylinderGeometry(0.42, 0.5, 0.5, 8),
-      new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.85 }));
-    const cage = new THREE.Mesh(
+      new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.85 })));
+    cage.add(new THREE.Mesh(
       new THREE.CylinderGeometry(0.43, 0.51, 0.5, 8),
-      new THREE.MeshBasicMaterial({ color: 0x4c4028, wireframe: true, transparent: true, opacity: 0.6 }));
+      new THREE.MeshBasicMaterial({ color: 0x4c4028, wireframe: true, transparent: true, opacity: 0.6 })));
+    cage.position.y = -0.35;
     const float = new THREE.Mesh(
       new THREE.SphereGeometry(0.2, 10, 7),
       new THREE.MeshStandardMaterial({ color: 0xe8b23a, roughness: 0.5 }));
     float.position.y = 0.95;
     const rope = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(
-        [new THREE.Vector3(0, 0.25, 0), new THREE.Vector3(0, 0.85, 0)]),
+        [new THREE.Vector3(0, -0.1, 0), new THREE.Vector3(0, 0.85, 0)]),
       new THREE.LineBasicMaterial({ color: 0x3d3428 }));
-    mesh.add(body, cage, float, rope);
-    mesh.position.set(this.boat.pos.x, -0.35, this.boat.pos.z);
-    this.potGroup.add(mesh);
+    rope.frustumCulled = false;
+    mesh.add(cage, float, rope);
+    const splash = new THREE.Mesh(POT_RING, new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    splash.renderOrder = 4;
+    splash.visible = false;
+    return { mesh, cage, float, rope, splash, splashT: 0, anim: null, result: null };
+  }
 
-    this.pots.push({
-      x: this.boat.pos.x, z: this.boat.pos.z,
-      stake, mesh, float,
-      ready: CONFIG.POT_SOAK_S,
-      phase: Math.random() * Math.PI * 2,
-    });
-    this.hud.hint(`Pot set — $${stake.toFixed(2)} staked, soak ${CONFIG.POT_SOAK_S}s`);
-    this.hud.setPots(this.pots.length);
+  /** Where a pot goes in: a little off the boat's side, abreast the working deck. */
+  potSpot(side, out) {
+    const b = this.boat.hullBounds || { halfBeam: 1, length: 5, deckY: 0.5 };
+    out.set(side * (b.halfBeam + 1.3), 0, b.length * 0.12);
+    this.boat.hullFrame.localToWorld(out);
+    out.y = 0;
+    return out;
+  }
+
+  /** The rail a pot leaves from or comes back over, in world space. */
+  railPoint(side, out) {
+    const b = this.boat.hullBounds || { halfBeam: 1, length: 5, deckY: 0.5 };
+    out.set(side * b.halfBeam * 0.92, b.deckY + 0.45, b.length * 0.12);
+    return this.boat.hullFrame.localToWorld(out);
+  }
+
+  /** Keep a pot's rope drawn from the cage up to the float. */
+  potRope(pot) {
+    const p = pot.rope.geometry.attributes.position;
+    p.setXYZ(0, 0, pot.cage.position.y + 0.25, 0);
+    p.setXYZ(1, 0, pot.float.position.y - 0.12, 0);
+    p.needsUpdate = true;
+  }
+
+  potSplash(pot, dt) {
+    if (pot.splashT <= 0) return;
+    pot.splashT = Math.max(0, pot.splashT - dt * 1.6);
+    const k = 1 - pot.splashT;
+    pot.splash.scale.setScalar(1.1 * (0.4 + k * 1.6));
+    pot.splash.material.opacity = pot.splashT * 0.75;
+    if (pot.splashT <= 0) pot.splash.visible = false;
   }
 
   updatePots(dt, t) {
@@ -538,17 +605,87 @@ export class Fishing {
       pot.float.position.y = 0.95 + Math.sin(t * 2 + pot.phase) * 0.06 + (soaked ? 0.1 : 0);
       pot.float.material.color.setHex(soaked ? 0x7dedae : 0xe8b23a);
 
+      const a = pot.anim;
+      if (a && a.kind === 'drop') {
+        // A lob off the rail: out and over in an arc, tumbling, then the splash.
+        a.t += dt;
+        const k = Math.min(1, a.t / POT_DROP_S);
+        pot.mesh.position.lerpVectors(a.from, this._v.set(pot.x, 0, pot.z), k);
+        pot.mesh.position.y = a.from.y * (1 - k) + Math.sin(k * Math.PI) * 0.8 - 0.05 * k;
+        pot.mesh.rotation.set(0, 0, pot.side * (0.35 * k - 0.45 * Math.sin(k * Math.PI)));
+        if (k >= 1) {
+          pot.mesh.position.set(pot.x, 0, pot.z);
+          pot.mesh.rotation.set(0, 0, 0);
+          pot.splash.position.set(pot.x, 0.05, pot.z);
+          pot.splash.visible = true;
+          pot.splashT = 1;
+          pot.anim = { kind: 'sink', t: 0 };
+        }
+      } else if (a && a.kind === 'sink') {
+        // The cage goes down under the float until the rope is straight.
+        a.t += dt;
+        const k = Math.min(1, a.t / POT_SINK_S);
+        pot.cage.position.y = -0.35 - 2.3 * smooth(k);
+        pot.cage.rotation.y += dt * 0.8;
+        if (k >= 1) pot.anim = null;
+      }
+      this.potRope(pot);
+      this.potSplash(pot, dt);
+
       const d = Math.hypot(pot.x - this.boat.pos.x, pot.z - this.boat.pos.z);
-      if (d <= CONFIG.POT_COLLECT_RADIUS && soaked) {
+      if (!pot.anim && d <= CONFIG.POT_COLLECT_RADIUS && soaked) {
         this.collectPot(i);
       }
     }
+
+    // Pots coming up: the cage hauled to the surface, then swung over the rail.
+    for (let i = this.hauls.length - 1; i >= 0; i--) {
+      const pot = this.hauls[i], a = pot.anim;
+      a.t += dt;
+      if (a.kind === 'haul') {
+        const k = Math.min(1, a.t / POT_HAUL_S);
+        pot.cage.position.y = -2.65 + 2.3 * smooth(k);
+        pot.cage.rotation.y += dt * 1.4;
+        pot.float.position.y = 0.95 + Math.sin(t * 6) * 0.05;
+        if (k >= 1) {
+          pot.anim = { kind: 'lift', t: 0, from: pot.mesh.position.clone() };
+          pot.splash.position.set(pot.x, 0.05, pot.z);
+          pot.splash.visible = true;
+          pot.splashT = 1;
+        }
+      } else {
+        // Up out of the water and in over the rail, on the side it lies.
+        const k = Math.min(1, a.t / POT_LIFT_S);
+        const rail = this.railPoint(pot.side, this._v);
+        pot.mesh.position.lerpVectors(a.from, rail, smooth(k));
+        pot.mesh.position.y = rail.y * k + Math.sin(k * Math.PI) * 0.9;
+        pot.cage.position.y = -0.35 + 0.2 * k;
+        pot.mesh.rotation.z = -pot.side * 0.3 * Math.sin(k * Math.PI);
+        if (k >= 1) {
+          this.hauls.splice(i, 1);
+          this.potGroup.remove(pot.mesh, pot.splash);
+          const r = pot.result;
+          this.hud.showPotHaul(r.catches, r.total);
+          if (r.best.value >= CONFIG.BIGCATCH_MIN_VALUE) this.hud.showBigCatch(r.best);
+          continue;
+        }
+      }
+      this.potRope(pot);
+      this.potSplash(pot, dt);
+    }
   }
 
+  /**
+   * The pot is reached: its bet resolves now, and the haul is shown once
+   * the cage is up and over the rail (the animation is only a picture of
+   * a result already settled and banked).
+   */
   collectPot(i) {
     const pot = this.pots[i];
     this.pots.splice(i, 1);
-    this.potGroup.remove(pot.mesh);
+    // Whichever side of the boat it lies, that is the rail it comes over.
+    const local = this.boat.hullFrame.worldToLocal(this._v.set(pot.x, 0, pot.z));
+    pot.side = local.x >= 0 ? 1 : -1;
 
     const payout = this.rtp.samplePayout(pot.stake);
     const n = 1 + Math.floor(Math.random() * 2);
@@ -564,10 +701,11 @@ export class Fishing {
       this.player.bank(c);
     }
     this.rtp.book(total);
-    this.hud.showPotHaul(catches, total);
     this.hud.setPots(this.pots.length);
     const best = catches.reduce((a, b) => (b.value > a.value ? b : a));
-    if (best.value >= CONFIG.BIGCATCH_MIN_VALUE) this.hud.showBigCatch(best);
+    pot.result = { catches, total, best };
+    pot.anim = { kind: 'haul', t: 0 };
+    this.hauls.push(pot);
   }
 
   // ---------- steamboat crew ----------
@@ -630,6 +768,8 @@ export class Fishing {
       else if (p.t > (p.claimed ? 12 : 4.5)) this.launch(line);
       return;
     }
+
+    if (line.state === 'snapped') { this.updateSnapped(line, dt); return; }
 
     if (line.state === 'flying') {
       const T = 0.65;
@@ -764,10 +904,45 @@ export class Fishing {
     // Only an empty line parts; a hooked one is dragged, not snapped.
     if (!line.hooked && lineOut > CONFIG.LINE_SNAP_DIST) {
       this.hud.hint('The line snapped!');
-      line.end();
+      this.snap(line);
       return;
     }
     line.drawLine();
+  }
+
+  /**
+   * The line parts. Nothing is owed on it (no hook was ever set), so this
+   * is pure picture: the rod springs back, the loose end whips up toward
+   * the tip and falls slack in the water, and the cut-off float rolls over
+   * and goes under. The rod is free again once it has settled.
+   */
+  snap(line) {
+    line.state = 'snapped';
+    line.snapT = 0;
+    line.snapFrom.copy(line.bobber.position);
+    line.biting = false;
+    line.nibbling = 0;
+    if (line.fish) { line.fish.dispose(); line.fish = null; }
+  }
+
+  updateSnapped(line, dt) {
+    line.snapT += dt;
+    const k = Math.min(1, line.snapT / SNAP_S);
+    // The parted line: its free end flies back toward the tip, up in an arc
+    // with the rod's spring, and settles on the water alongside.
+    const e = 1 - Math.pow(1 - k, 3);
+    const end = this._v.lerpVectors(line.snapFrom, line.rodTip, e * 0.85);
+    const arc = Math.sin(Math.min(1, k * 1.6) * Math.PI);
+    end.y = CONFIG.WATER_LEVEL + (line.rodTip.y - CONFIG.WATER_LEVEL) * arc * 0.6 - 0.1 * k;
+    const p = line.line.geometry.attributes.position;
+    p.setXYZ(0, line.rodTip.x, line.rodTip.y, line.rodTip.z);
+    p.setXYZ(1, end.x, end.y, end.z);
+    p.needsUpdate = true;
+    line.line.material.opacity = 0.65 * (1 - Math.max(0, k - 0.7) / 0.3);
+    // The float, cut loose, rolls over and goes under.
+    line.bobber.position.y = CONFIG.WATER_LEVEL + 0.05 - Math.max(0, k - 0.3) * 1.1;
+    line.bobber.rotation.x += dt * 2.4;
+    if (k >= 1) { line.line.material.opacity = 0.65; line.bobber.rotation.set(0, 0, 0); line.end(); }
   }
 
   /**
@@ -804,7 +979,9 @@ export class Fishing {
       if (!l.busy) continue;
       this._aims.push({
         index: l.rodIndex, x: l.pos.x, z: l.pos.z,
-        load: l.hooked ? 1 : (l.biting ? 0.6 : 0.2),
+        // A parted line: the rod springs back the other way, then settles.
+        load: l.state === 'snapped' ? -0.7 * (1 - Math.min(1, l.snapT / SNAP_S))
+          : l.hooked ? 1 : (l.biting ? 0.6 : 0.2),
       });
     }
     this.boat.aimRods(this._aims);

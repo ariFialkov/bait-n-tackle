@@ -73,7 +73,12 @@ export class Tender {
 
     this.stuckT = 0;              // how long the helmsman has been trying to move and failing
     this.backT = 0;               // time left backing out of a corner
+    this.hoist = null;            // on the crane: { kind, step, t, hooked }
+    this.eye = new THREE.Vector3(0, 1.2, 0);
     this._v = new THREE.Vector3();
+    this._t = new THREE.Vector3();
+    this._g = new THREE.Vector3();
+    this._e = new THREE.Vector3();
     this.lineFx = this.buildLineFx();
     this.wake = new WakeTrail(scene);
     this.wake.setVisible(false);
@@ -164,9 +169,13 @@ export class Tender {
       halfBeam: (b2.max.x - b2.min.x) / 2,
       sternZ: b2.max.z,
       minY: b2.min.y,
+      maxY: b2.max.y,
       deckY: Math.max(0.2, b2.max.y * 0.25),
       length: b2.max.z - b2.min.z,
     };
+    // Where the crane's hook takes it: a lifting eye over the cabin top,
+    // in the tender's own frame (the hull sits `lift` up inside the group).
+    this.eye = new THREE.Vector3(0, this.lift + b2.max.y * 0.92, 0.1);
     // A runabout creases the surface; it does not throw a seiner's wall of
     // white. Borrow the mother ship's wake stat so the pair look related.
     this.wake.setSpec({ ...this.spec, wake: (motherSpec?.wake ?? 1) * 0.7 },
@@ -190,7 +199,166 @@ export class Tender {
     this.loaded = true;
   }
 
-  get deployed() { return this.state !== 'stowed'; }
+  /** In the water under its own power (or being sent), not aboard or on the hook. */
+  get deployed() { return this.state === 'manual' || this.state === 'auto'; }
+
+  /** On the crane, going out or coming in. */
+  get hoisting() { return !!this.hoist; }
+
+  // --- the crane -----------------------------------------------------------
+  //
+  // Launch: the hook comes down onto the tender in the well, takes the
+  // weight, lifts it clear of the bulwark, swings it out over the side and
+  // lowers it to the water; released, it is a boat. Recovery is the same
+  // film backwards, after the tender has come alongside under the hook.
+  // The crane itself (crane.js) moves like a machine — one slew, one luff,
+  // one wire, each at its own pace — and each step waits for it to settle.
+
+  /** The mother ship's crane and where the well, the hook-up and the drop are. */
+  craneFrame(mother) {
+    const c = mother.crane, st = mother.stations;
+    if (!c || !st?.tenderWell || !this.hullBounds) return null;
+    const well = st.tenderWell;
+    const keel = -this.hullBounds.minY;
+    // The tender's group, in the mother's hull frame, when it stands on
+    // the chocks, and when it floats alongside (world y ≈ 0.02).
+    const wellGroupY = well.y + keel - this.lift;
+    const floatGroupY = mother.hullFrame.worldToLocal(this._v.set(0, 0.02, 0)).y;
+    const side = c.side ?? 1;
+    const dropX = side * ((mother.hullBounds?.halfBeam ?? 3) + this.hullBounds.halfBeam + 0.8);
+    return { well, side, wellGroupY, floatGroupY, dropX, dropZ: well.z, clear: 1.7 };
+  }
+
+  /** Start the launch; false if there is no water to put it in on the crane's side. */
+  beginLaunch(mother) {
+    if (this.state !== 'stowed' || this.hoist) return false;
+    const f = this.craneFrame(mother);
+    if (!f) return this.launch(mother);          // no crane: the old instant launch
+    const drop = mother.hullFrame.localToWorld(this._v.set(f.dropX, 0, f.dropZ));
+    if (!navigable(drop.x, drop.z)) return false;
+    this.hoist = { kind: 'launch', step: 'hook', t: 0, hooked: false };
+    this.state = 'launching';
+    if (this.stowedModel) this.stowedModel.visible = false;
+    this.group.visible = true;
+    this.wake.setVisible(false);
+    return true;
+  }
+
+  /** Start bringing it back aboard; it comes alongside under the hook first. */
+  beginRecover(mother) {
+    if (!this.deployed || this.hoist) return false;
+    const f = this.craneFrame(mother);
+    if (!f) { this.stow(); return true; }
+    this.hoist = { kind: 'recover', step: 'approach', t: 0, hooked: false };
+    this.state = 'recovering';
+    this.wake.setVisible(false);
+    this.lineFx.line.visible = false;
+    this.lineFx.bob.visible = false;
+    this.bag.fill(0);
+    this.spent = 0;
+    this.catches = [];
+    return true;
+  }
+
+  updateHoist(dt, t, mother) {
+    const h = this.hoist;
+    const f = this.craneFrame(mother);
+    const crane = mother.crane;
+    if (!f || !crane) { this.hoist = null; this.stow(); return; }
+    h.t += dt;
+    const eye = this.eye;
+    const tgt = this._t;
+    const grp = this.group;
+
+    // Where the tender's GROUP is wanted this step, in the mother's frame,
+    // or null once it hangs from the hook.
+    let groupLocal = null;
+    let sway = 0;
+    const eyeAbove = (gx, gy, gz) => tgt.set(gx + eye.x, gy + eye.y, gz + eye.z);
+    if (h.kind === 'launch') {
+      if (h.step === 'hook') {
+        groupLocal = this._g.set(f.well.x, f.wellGroupY, f.well.z);
+        crane.setTarget(eyeAbove(groupLocal.x, groupLocal.y, groupLocal.z));
+        if (crane.settled && h.t > 0.4) { h.step = 'lift'; h.hooked = true; }
+      } else if (h.step === 'lift') {
+        crane.setTarget(eyeAbove(f.well.x, f.wellGroupY + f.clear, f.well.z));
+        if (crane.settled) h.step = 'swing';
+      } else if (h.step === 'swing') {
+        crane.setTarget(eyeAbove(f.dropX, f.wellGroupY + f.clear, f.dropZ));
+        if (crane.settled) h.step = 'lower';
+      } else if (h.step === 'lower') {
+        crane.setTarget(eyeAbove(f.dropX, f.floatGroupY, f.dropZ));
+        if (crane.settled) {
+          // Let go: a boat again, with the mother's way on it.
+          const w = mother.hullFrame.localToWorld(this._v.set(f.dropX, 0, f.dropZ));
+          this.pos.set(w.x, 0, w.z);
+          this.vel.copy(mother.vel);
+          this.heading = mother.heading;
+          this.state = 'manual';
+          this.hoist = null;
+          this.wake.reset();
+          this.wake.setVisible(true);
+          crane.rest();
+          return;
+        }
+      }
+    } else {
+      if (h.step === 'approach') {
+        // Come alongside under the hook, easing in; the hook comes over to meet it.
+        const w = mother.hullFrame.localToWorld(this._v.set(f.dropX, 0, f.dropZ));
+        const dx = w.x - this.pos.x, dz = w.z - this.pos.z;
+        const d = Math.hypot(dx, dz);
+        const step = Math.min(d, (1.2 + d * 1.6) * dt);
+        if (d > 1e-4) { this.pos.x += dx / d * step; this.pos.z += dz / d * step; }
+        this.heading = wrapAngle(this.heading + wrapAngle(mother.heading - this.heading) * Math.min(1, 2.5 * dt));
+        this.vel.copy(mother.vel);
+        this.speed = 0;
+        const bob = this.lake.waveHeight(this.pos.x, this.pos.z, t);
+        grp.position.set(this.pos.x, bob + 0.02, this.pos.z);
+        grp.rotation.set(Math.sin(t * 1.1) * 0.03, this.heading, Math.sin(t * 1.4) * 0.035);
+        crane.setTarget(eyeAbove(f.dropX, f.floatGroupY, f.dropZ));
+        if (d < 0.15 && Math.abs(wrapAngle(mother.heading - this.heading)) < 0.05 && crane.settled) {
+          h.step = 'lift'; h.hooked = true;
+        }
+        this.updateRodsOnly(dt);
+        return;
+      } else if (h.step === 'lift') {
+        crane.setTarget(eyeAbove(f.dropX, f.wellGroupY + f.clear, f.dropZ));
+        if (crane.settled) h.step = 'swing';
+      } else if (h.step === 'swing') {
+        crane.setTarget(eyeAbove(f.well.x, f.wellGroupY + f.clear, f.well.z));
+        if (crane.settled) h.step = 'lower';
+      } else if (h.step === 'lower') {
+        crane.setTarget(eyeAbove(f.well.x, f.wellGroupY, f.well.z));
+        if (crane.settled) {
+          this.hoist = null;
+          this.stow();
+          crane.rest();
+          return;
+        }
+      }
+    }
+
+    if (h.hooked) {
+      // Hanging from the hook: the eye is at the hook, swinging a little.
+      sway = Math.sin(t * 1.7) * 0.02 + Math.sin(t * 2.3) * 0.015;
+      const hook = crane.hookAt(this._v);
+      mother.hullFrame.localToWorld(hook);
+      grp.rotation.set(sway, mother.heading, sway * 0.7);
+      grp.position.copy(hook).sub(this._e.copy(eye).applyEuler(grp.rotation));
+      this.pos.set(grp.position.x, 0, grp.position.z);
+      this.heading = mother.heading;
+    } else if (groupLocal) {
+      // Standing on the chocks while the hook comes down.
+      mother.hullFrame.localToWorld(this._v.copy(groupLocal));
+      grp.position.copy(this._v);
+      grp.rotation.set(mother.group.rotation.x, mother.heading, mother.group.rotation.z);
+      this.pos.set(grp.position.x, 0, grp.position.z);
+    }
+    this.updateRodsOnly(dt);
+  }
+
+  updateRodsOnly(dt) { updateRods(this.rods, dt); }
 
   /** The tender carries no trawl gear; this exists so vessel swaps are safe. */
   setTrawling() { this.trawling = false; }
@@ -232,6 +400,7 @@ export class Tender {
 
   stow() {
     this.state = 'stowed';
+    this.hoist = null;
     this.group.visible = false;
     if (this.stowedModel) this.stowedModel.visible = true;
     this.wake.setVisible(false);
@@ -502,6 +671,7 @@ export class Tender {
   }
 
   update(dt, t, moveVec, mother, helmed = false) {
+    if (this.hoist) { this.updateHoist(dt, t, mother); return; }
     if (!this.deployed) return;
 
     const s = this.spec;

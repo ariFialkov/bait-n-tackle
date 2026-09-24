@@ -17,6 +17,15 @@ import { driveHull, wrapAngle } from './hullphysics.js';
 import { buildRod, buildHolder, aimRods, updateRods, castRod, HOLDER_LAY } from './rods.js';
 import { DeckMap } from './deckmap.js';
 import { stationsFor, rodHolders } from './stations.js';
+import { DeckCrane } from './crane.js';
+
+// The net goes over the stern in stages (see updateNetAnim): lifted off the
+// deck to the gallows, swung out over the transom, dropped in; then it pays
+// out from a bundle into its full funnel. Stowing is the same in reverse.
+const NET_LIFT_S = 0.8, NET_SWING_S = 0.7, NET_DROP_S = 0.5;
+const NET_CARRY_S = NET_LIFT_S + NET_SWING_S + NET_DROP_S;
+const NET_PAYOUT_S = 1.6, NET_GATHER_S = 1.4;
+const smooth = (k) => k * k * (3 - 2 * k);
 
 const loader = new GLTFLoader();
 const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
@@ -152,6 +161,11 @@ export class Boat {
     this._ropeL = new THREE.Vector3();
     this._ropeR = new THREE.Vector3();
     this._backDir = new THREE.Vector3();
+    this._p1 = new THREE.Vector3(); this._p2 = new THREE.Vector3(); this._p3 = new THREE.Vector3();
+    this.netAnim = null;
+    this.netRest = new THREE.Vector3();
+    this.netDef = null;
+    this.crane = null;
 
     this.netHit = new THREE.Mesh(
       new THREE.SphereGeometry(1.2, 8, 8),
@@ -281,8 +295,26 @@ export class Boat {
     const sternZ = this.hullBounds.length * 0.42;
     this.netHit.position.set(0, this.hullBounds.deckY + 0.4, sternZ);
     this.netBundle.position.copy(this.netHit.position);
+    this.netBundle.rotation.set(0, 0, 0);
+    this.netRest = this.netBundle.position.clone();
+    this.netAnim = null;
+    this.net.stow();
+    this.trawling = false;
     this.netBundle.visible = !!spec.features.trawl;
-    if (this.trawling) this.setTrawling(false);
+
+    // --- the deck crane, on hulls that carry one ---
+    if (this.crane) { this.hullFrame.remove(this.crane.group); this.crane = null; }
+    if (st?.crane) {
+      const c = st.crane;
+      this.crane = new DeckCrane({ reach: c.reach, height: c.height, scale: this.crewScale });
+      this.crane.group.position.set(c.x, c.y, c.z);
+      this.crane.side = c.side ?? 1;
+      // Parked: hook raised over the well, or over the deck astern of it.
+      const w = st.tenderWell || { x: 0, y: c.y, z: c.z + c.reach * 0.6 };
+      this.crane.restPoint.set(w.x, w.y + 3.2, w.z);
+      this.crane.rest();
+      this.hullFrame.add(this.crane.group);
+    }
 
     // Wake size and churn are a cosmetic per-hull/per-skin signature.
     this.wake.setSpec(spec, this.hullBounds);
@@ -307,18 +339,76 @@ export class Boat {
     this._backDir.set(Math.sin(this.heading), 0, Math.cos(this.heading));
   }
 
+  /**
+   * Net down or up. The bet starts and stops with the call; what follows is
+   * the gear actually going over the side and coming back, which picks up
+   * from wherever the last movement had got to.
+   */
   setTrawling(on, netDef) {
     this.trawling = on;
-    this.netBundle.visible = !on && !!this.spec.features.trawl;
+    if (netDef) this.netDef = netDef;
+    const a = this.netAnim;
     if (on) {
-      this.towPoints();
-      // A net to suit the hull: a little wider than the boat, and long.
-      const beam = (this.hullBounds?.halfBeam ?? 1) * 2;
-      const width = THREE.MathUtils.clamp(beam * 1.25, 3.4, 7.5);
-      this.net.deploy(this._anchorL, this._anchorR, this._backDir, netDef?.color,
-        { width, length: width * 1.7 });
+      if (a?.phase === 'carryIn') a.phase = 'carryOut', a.t = NET_CARRY_S - a.t;
+      else if (a?.phase === 'gather') a.phase = 'payout';
+      else if (!this.net.active) this.netAnim = { phase: 'carryOut', t: 0 };
     } else {
-      this.net.stow();
+      if (a?.phase === 'carryOut') a.phase = 'carryIn', a.t = NET_CARRY_S - a.t;
+      else if (this.net.active) this.netAnim = { phase: 'gather', t: 0 };
+    }
+  }
+
+  /** The bundle's place along its path over the stern: s in [0, NET_CARRY_S]. */
+  netBundleAt(s, out) {
+    const b = this.hullBounds, r = this.netRest;
+    const P0 = r;
+    const P1 = this._p1.set(0, b.deckY + 1.8, b.length * 0.4);           // up at the gallows
+    const P2 = this._p2.set(0, b.deckY + 1.5, b.length * 0.5 + 0.9);     // out over the transom
+    const P3 = this._p3.set(0, -0.15, b.length * 0.5 + 1.3);             // in the water
+    if (s < NET_LIFT_S) return out.lerpVectors(P0, P1, smooth(s / NET_LIFT_S));
+    s -= NET_LIFT_S;
+    if (s < NET_SWING_S) return out.lerpVectors(P1, P2, smooth(s / NET_SWING_S));
+    s -= NET_SWING_S;
+    const k = Math.min(1, s / NET_DROP_S);
+    return out.lerpVectors(P2, P3, k * k);
+  }
+
+  updateNetAnim(dt) {
+    const a = this.netAnim;
+    const bundle = this.netBundle;
+    if (a.phase === 'carryOut' || a.phase === 'carryIn') {
+      a.t += dt;
+      const s = a.phase === 'carryOut' ? a.t : NET_CARRY_S - a.t;
+      this.netBundleAt(THREE.MathUtils.clamp(s, 0, NET_CARRY_S), bundle.position);
+      bundle.rotation.z = Math.sin(a.t * 4.5) * 0.12 * Math.min(1, s / 0.6);
+      bundle.visible = true;
+      if (a.t >= NET_CARRY_S) {
+        if (a.phase === 'carryOut') {
+          // Splash: the bundle is in the water and the netting takes over.
+          bundle.visible = false;
+          this.towPoints();
+          const beam = (this.hullBounds?.halfBeam ?? 1) * 2;
+          const width = THREE.MathUtils.clamp(beam * 1.25, 3.4, 7.5);
+          this.net.deploy(this._anchorL, this._anchorR, this._backDir, this.netDef?.color,
+            { width, length: width * 1.7 }, 1);
+          this.netAnim = { phase: 'payout', t: 0 };
+        } else {
+          bundle.position.copy(this.netRest);
+          bundle.rotation.z = 0;
+          this.netAnim = null;
+        }
+      }
+    } else if (a.phase === 'payout') {
+      this.net.gather = Math.max(0, this.net.gather - dt / NET_PAYOUT_S);
+      if (this.net.gather <= 0) this.netAnim = null;
+    } else if (a.phase === 'gather') {
+      this.net.gather = Math.min(1, this.net.gather + dt / NET_GATHER_S);
+      if (this.net.gather >= 1) {
+        this.net.stow();
+        this.netBundleAt(NET_CARRY_S, bundle.position);
+        bundle.visible = true;
+        this.netAnim = { phase: 'carryIn', t: 0 };
+      }
     }
   }
 
@@ -498,9 +588,11 @@ export class Boat {
 
     updateRods(this.rods, dt);
     this.updateMachinery(dt);
+    if (this.crane) this.crane.update(dt);
     this.wake.update(dt, t, this);
     this.smoke.update(dt, t, this);
-    if (this.trawling) {
+    if (this.netAnim) this.updateNetAnim(dt);
+    if (this.net.active) {
       this.towPoints();
       this.net.update(dt, t, this._anchorL, this._anchorR, this._ropeL, this._ropeR,
         this._backDir, this.speed);

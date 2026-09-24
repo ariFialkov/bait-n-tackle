@@ -316,6 +316,27 @@ under way the captain keeps the helm and the mate throws; stopped, either
 takes the nearest rod. The **crew** (Steamboat) work the rods through the very same `cast()` and
 `pull()` calls your swipes use — extra hands, identical bets.
 
+The gear moves the way gear does, and none of it changes a bet — every
+animation below is the picture of something already decided. The tender
+goes over the side on a **deck crane** (`crane.js`): a hydraulic pedestal
+crane at the well's forward corner, beside the hand at its levers, that is
+driven only by where its hook should be and works out its own slew, luff
+and wire, each at a machine's pace. To launch, the hook comes down onto the
+tender on its chocks, takes the weight, lifts it clear of the bulwark,
+swings it out over the starboard side and lowers it to the water; let go,
+it is a boat with the ship's way on it. Called back, the tender comes
+alongside under the hook and the same film runs backwards into the well.
+The **trawl net** goes over the stern in stages: the bundle lifts off the
+deck to the gallows, swings out over the transom, drops in, and pays out
+from a bundle into its full funnel as the winch lets the ropes run; stowing
+winds it back to a bundle and the same path brings it aboard. A **pot** is
+lobbed off the rail in a tumbling arc, splashes, and its cage sinks away
+under the float until the rope is straight; reached, the cage is hauled up
+to the surface and swung in over the rail, and only then is the haul shown.
+A **line that parts** whips back: the rod springs the other way, the loose
+end flies up toward the tip and settles slack on the water, and the
+cut-off float rolls over and goes under.
+
 The **sonar** on the Mud-Dredger reads nearby hotspots and names the bait
 each one favours. That only changes how *often* a fish shows up for that
 bait — the payout is still drawn from the same paytable against the same
@@ -342,6 +363,7 @@ src/
   skins.js     the 54 purchasable skins: names, paint, style, prices, spread
   skinner.js   repaints a hull's neutral texture for the skin it is wearing
   tender.js    the Seiner's launchable / autonomous tender
+  crane.js     the deck crane that puts it over the side and back
   fishdata.js  the 60 species: values, weights, tiers + visual style data
   fishmodels.js procedural per-species fish prefabs (bodies, fins, skins)
   fishicons.js 2D species icons rendered from the 3D prefabs

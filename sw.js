@@ -1,6 +1,6 @@
 // Bait N' Tackle service worker — precache the whole game for offline play.
 
-const CACHE = 'bait-n-tackle-v25';
+const CACHE = 'bait-n-tackle-v26';
 const ASSETS = [
   './',
   './index.html',
@@ -39,6 +39,7 @@ const ASSETS = [
   './src/stations.js',
   './src/hookedfish.js',
   './src/net.js',
+  './src/crane.js',
   './src/fish.js',
   './src/fishing.js',
   './src/cameraRig.js',

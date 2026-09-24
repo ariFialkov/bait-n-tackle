@@ -430,6 +430,8 @@ export class CrewDirector {
     if (m && td.hullFrame) {
       if (!this._mateParented) { td.hullFrame.add(m.ch.actor); this._mateParented = true; }
       const ch = m.ch;
+      // Nobody rides a boat on the crane: the mate is out of it while it hangs.
+      ch.actor.visible = !td.hoisting;
       const mp = m.post;
       const deckM = () => mp.y;
       if (tenderOut && f.boat === td) {

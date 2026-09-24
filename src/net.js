@@ -78,6 +78,7 @@ export class TrawlNet {
     this.active = false;
     this.width = 3.4;
     this.length = 5.4;
+    this.gather = 0;           // 1 = wound in to a bundle at the transom, 0 = all out
 
     const count = NX * NZ;
     this.pos = [];
@@ -165,16 +166,22 @@ export class TrawlNet {
     return 1 - (1 - COD_END) * Math.pow(k, 1.4);
   }
 
-  /** Lay the net out behind the boat when trawling starts. */
-  deploy(anchorL, anchorR, backDir, color, size) {
+  /**
+   * Lay the net out behind the boat when trawling starts. With `gather` at
+   * 1 it starts as a bundle at the transom and pays out as the owner eases
+   * `gather` down to 0; at 0 it is laid out at full length at once.
+   */
+  deploy(anchorL, anchorR, backDir, color, size, gather = 0) {
     if (size && (size.width !== this.width || size.length !== this.length)) {
       this.setSize(size.width, size.length);
     }
     if (color !== undefined) this.skin.material.color.set(color);
+    this.gather = gather;
     this.wingPoints(anchorL, anchorR, backDir, 0);
     const mid = this._v.lerpVectors(this._a, this._b, 0.5);
     const span = this._b.distanceTo(this._v) * 2;
     const side = this._s.subVectors(this._b, this._a).normalize();
+    const s = this.slack;
     for (let r = 0; r < NZ; r++) {
       const w = span * this.rowScale(r);
       for (let c = 0; c < NX; c++) {
@@ -182,7 +189,7 @@ export class TrawlNet {
         const u = c / (NX - 1) - 0.5;
         this.pos[i].copy(mid)
           .addScaledVector(side, u * w)
-          .addScaledVector(backDir, (r / (NZ - 1)) * this.length);
+          .addScaledVector(backDir, (r / (NZ - 1)) * this.length * s);
         this.pos[i].y = BUOY_Y * (0.5 + 0.8 * (r / (NZ - 1)));
         this.prev[i].copy(this.pos[i]);
       }
@@ -190,6 +197,9 @@ export class TrawlNet {
     this.group.visible = true;
     this.active = true;
   }
+
+  /** How much of its full size the netting is let out to: 1 open, ~0.12 bundled. */
+  get slack() { return 1 - 0.88 * this.gather; }
 
   stow() {
     this.group.visible = false;
@@ -259,9 +269,9 @@ export class TrawlNet {
     const side = this._s.subVectors(anchorR, anchorL);
     const span = side.length() || 1;
     side.divideScalar(span);
-    const open = SPREAD_REST + (1 - SPREAD_REST) * Math.min(1, speed / 1.5);
+    const open = (SPREAD_REST + (1 - SPREAD_REST) * Math.min(1, speed / 1.5)) * this.slack;
     const half = span / 2 + (this.width / 2 - span / 2) * open;
-    const back = this.length * WARP_BACK;
+    const back = this.length * WARP_BACK * this.slack;
     this._b.copy(mid).addScaledVector(side, half).addScaledVector(backDir, back);
     this._a.copy(mid).addScaledVector(side, -half).addScaledVector(backDir, back);
     this._a.y = this._b.y = BUOY_Y * 0.5;
@@ -298,6 +308,7 @@ export class TrawlNet {
     const mid = this._v.lerpVectors(pinA, pinB, 0.5);
     const span = pinA.distanceTo(pinB);
     const sx = backDir.z, sz = -backDir.x;            // across the boat, to starboard
+    const slack = this.slack;                         // bundled at the transom, or let out
 
     // Verlet integration with water drag, buoyancy and a little swirl —
     // plus a soft pull toward where the water's own drag would stream the
@@ -313,16 +324,18 @@ export class TrawlNet {
       q.copy(p);
       const k = r / (NZ - 1);
       const u = (c / (NX - 1) - 0.5) * span * this.rowScale(r);
-      const tx = mid.x + backDir.x * k * this.length + sx * u;
-      const tz = mid.z + backDir.z * k * this.length + sz * u;
+      const tx = mid.x + backDir.x * k * this.length * slack + sx * u;
+      const tz = mid.z + backDir.z * k * this.length * slack + sz * u;
       p.x += vx + Math.sin(t * 1.3 + i * 1.7) * 0.05 * step + (tx - p.x) * STREAM * step;
       p.y += vy + (BUOY_Y * (1 + 0.8 * k) - p.y) * BUOY_PULL * step;
       p.z += vz + Math.cos(t * 1.1 + i * 2.3) * 0.05 * step + (tz - p.z) * STREAM * step;
     }
 
-    // Satisfy distance constraints, the wings held fast.
+    // Satisfy distance constraints, the wings held fast. Every rope is as
+    // long as the winch has let out.
     for (let it = 0; it < ITERATIONS; it++) {
-      for (const [a, b, rest] of this.links) {
+      for (const [a, b, rest0] of this.links) {
+        const rest = rest0 * slack;
         const pa = this.pos[a], pb = this.pos[b];
         const dx = pb.x - pa.x, dy = pb.y - pa.y, dz = pb.z - pa.z;
         const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
@@ -350,7 +363,8 @@ export class TrawlNet {
     this.geometry.computeVertexNormals();
 
     // Ropes: the interpolated grid, one cylinder per rope between knots.
-    const rr = this.width * ROPE_R;
+    // Wound in, the same ropes bunch thicker so the bundle reads as a bundle.
+    const rr = this.width * ROPE_R * (1 + 1.5 * this.gather);
     let k = 0;
     const cols = this.cols, rows = this.rows;
     for (let r = 0; r < rows; r++) {

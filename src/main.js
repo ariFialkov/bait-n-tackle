@@ -81,7 +81,7 @@ const atHelmOfTender = () => helm === tender;
 async function equipBoat(key, fromMarina = false) {
   if (player.boatId !== key && player.has(key)) player.equip(key);
   // Any tender belongs to the old hull — bring it home first.
-  if (tender.deployed) { tender.stow(); }
+  if (tender.deployed || tender.hoisting) { tender.stow(); }
   helm = boat;
   fishing.setVessel(boat);
   await boat.setBoat(key);
@@ -160,14 +160,16 @@ hud.onTenderLaunch = () => {
     hud.hint(`A ${boat.spec.name} carries no tender — upgrade at a marina`);
     return;
   }
+  if (tender.hoisting) { hud.hint('The crane is busy'); return; }
   if (tender.deployed) {
     if (tender.state === 'auto') { hud.hint('The tender is still out fishing'); return; }
     if (tender.distanceTo(boat) > 14) { hud.hint('Bring the tender alongside first'); return; }
     if (atHelmOfTender()) { helm = boat; fishing.setVessel(boat); }
-    tender.stow();
-    hud.hint('Tender craned back aboard');
-  } else if (tender.launch(boat)) {
-    hud.hint('Tender in the water');
+    fishing.endAll();
+    tender.beginRecover(boat);
+    hud.hint('Craning the tender aboard');
+  } else if (tender.beginLaunch(boat)) {
+    hud.hint('Craning the tender over the side');
   } else {
     hud.hint('No room alongside to launch');
   }
