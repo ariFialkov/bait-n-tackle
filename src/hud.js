@@ -1,7 +1,7 @@
 // DOM HUD: balance/round chips, lure selector, hints, catch cards, bite
 // indicator, plus the menu overlay.
 
-import { LURES, NETS } from './config.js';
+import { LURES, NETS, POTS } from './config.js';
 import { TIER_NAMES } from './fishdata.js';
 import { fishIconURL } from './fishicons.js';
 
@@ -42,6 +42,7 @@ export class HUD {
       sonarRows: $('sonar-rows'),
       potBtn: $('pot-btn'),
       potCount: $('pot-count'),
+      pots: $('pot-panel'),
       autoReel: $('autoreel-btn'),
       shipToggle: $('ship-toggle'),
       ship: $('ship-panel'),
@@ -58,12 +59,28 @@ export class HUD {
     this.bigcatchTimer = null;
     this.valueTween = null;
     this.onPot = null;
+    this.onPotSelect = null;
     this.rods = 1;
     this._sonarKey = '';
+    // The 🦀 button opens the pot panel: Drop pot at the top, then the
+    // three pots to choose from (each its own stake and bait).
     this.el.potBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.el.pots.classList.toggle('collapsed');
+      this.el.lures.classList.add('collapsed');
+      this.el.nets.classList.add('collapsed');
+      this.el.ship.classList.add('collapsed');
+    });
+    this.el.potAction = document.createElement('button');
+    this.el.potAction.className = 'gear-action';
+    this.el.potAction.innerHTML = '<span>Drop pot</span>';
+    this.el.potAction.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this.onPot) this.onPot();
     });
+    this.el.pots.appendChild(this.el.potAction);
+    this.buildGearPanel(this.el.pots, POTS,
+      (p) => `$${p.stake}`, (i) => this.onPotSelect && this.onPotSelect(i));
     this.onAutoReel = null;
     this.el.autoReel.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -78,6 +95,7 @@ export class HUD {
       this.el.ship.classList.toggle('collapsed');
       this.el.lures.classList.add('collapsed');
       this.el.nets.classList.add('collapsed');
+      this.el.pots.classList.add('collapsed');
       if (opening && this.onShipOpen) this.onShipOpen();
     });
     // Ship-systems callbacks, wired by main.js
@@ -110,14 +128,16 @@ export class HUD {
       this.hideBigCatch();
     });
 
-    // Opening one gear panel closes the other.
+    // Opening one gear panel closes the others.
     this.el.lureToggle.addEventListener('click', () => {
       this.el.lures.classList.toggle('collapsed');
       this.el.nets.classList.add('collapsed');
+      this.el.pots.classList.add('collapsed');
     });
     this.el.netToggle.addEventListener('click', () => {
       this.el.nets.classList.toggle('collapsed');
       this.el.lures.classList.add('collapsed');
+      this.el.pots.classList.add('collapsed');
     });
   }
 
@@ -127,7 +147,8 @@ export class HUD {
       const btn = document.createElement('button');
       btn.className = 'lure' + (i === 0 ? ' selected' : '');
       btn.innerHTML = `<span class="lure-emoji">${item.emoji}</span>` +
-        `<span class="lure-name">${item.name}</span>` +
+        `<span class="lure-name">${item.name}` +
+          (item.bait ? `<span class="lure-sub">${item.bait}</span>` : '') + `</span>` +
         `<span class="lure-cost">${costLabel(item)}</span>`;
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -163,6 +184,7 @@ export class HUD {
     this.el.potBtn.classList.toggle('hidden', !spec.features.pots);
     this.el.sonar.classList.toggle('hidden', !spec.features.sonar);
     if (!spec.features.trawl) this.el.nets.classList.add('collapsed');
+    if (!spec.features.pots) this.el.pots.classList.add('collapsed');
   }
 
   setRodCount(n) { this.rods = n; }
@@ -483,6 +505,7 @@ export class HUD {
     this.el.hint.classList.remove('show');
     this.el.lures.classList.add('collapsed');
     this.el.nets.classList.add('collapsed');
+    this.el.pots.classList.add('collapsed');
     this.el.hud.classList.add('hidden');
     this.el.tenderReport.classList.add('hidden');
     this.el.ship.classList.add('collapsed');

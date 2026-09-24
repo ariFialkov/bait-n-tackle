@@ -127,7 +127,7 @@ html, body {
 }
 #lure-toggle { top: calc(50% - 60px); }
 #net-toggle { top: calc(50% + 8px); }
-#lure-panel, #net-panel {
+#lure-panel, #net-panel, #pot-panel {
   position: absolute;
   right: calc(max(10px, env(safe-area-inset-right)) + 62px);
   top: 50%;
@@ -138,7 +138,7 @@ html, body {
   pointer-events: auto;
   transition: transform 0.25s ease, opacity 0.25s ease;
 }
-#lure-panel.collapsed, #net-panel.collapsed {
+#lure-panel.collapsed, #net-panel.collapsed, #pot-panel.collapsed {
   transform: translateY(-50%) translateX(35%);
   opacity: 0;
   pointer-events: none;
@@ -176,6 +176,8 @@ html, body {
 .gear-action.on { border-color: #b0c46a; background: rgba(70, 92, 28, 0.9); }
 .lure-emoji { font-size: 1.15rem; }
 .lure-name { flex: 1; font-weight: 600; }
+/* The bait a pot is set with, under its name. */
+.lure-sub { display: block; font-size: 0.68rem; font-weight: 500; color: #9fc3d3; }
 .lure-cost { color: #ffd166; font-weight: 700; }
 
 /* ---------- Joystick ---------- */
@@ -641,7 +643,7 @@ html, body {
 }
 #autoreel-btn.on .ar-tag { background: #7dedae; color: #06342a; }
 
-/* ---------- Pot button ---------- */
+/* ---------- Pot button (opens the pot panel: Drop pot + the three pots) ---------- */
 #pot-btn {
   position: absolute;
   right: max(10px, env(safe-area-inset-right));

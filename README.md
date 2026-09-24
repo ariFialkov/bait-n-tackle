@@ -51,8 +51,8 @@ from a subdirectory as-is.
 | Hook       | drag while the bobber dunks (❗)        | swipe while the bobber dunks |
 | Auto reel  | reel button, right edge                | reel button, right edge      |
 | Trawl      | click the net on the boat’s stern      | tap the net                  |
-| Drop a pot | 🦀 button, right edge                  | 🦀 button, right edge        |
-| Pick gear  | 🎣 / 🕸️ buttons, right edge            | same                         |
+| Drop a pot | 🦀 button, right edge → Drop pot       | same                         |
+| Pick gear  | 🎣 / 🕸️ / 🦀 buttons, right edge        | same                         |
 
 With more than one rod, a swipe resolves by urgency: set the hook on a
 biting line, else keep cranking a hooked one, else cast from whichever
@@ -118,7 +118,12 @@ your skill:
   own microbet, resolved against that stretch's cost alone. Location never
   affects trawl results.
 - **Pots** — the stake is paid when a pot is dropped and the bet resolves
-  when it is collected, against that stake alone.
+  when it is collected, against that stake alone. Three pots set the stake
+  ($3 Crab Pot on fish scraps, $15 Lobster Trap on a whole herring, $75
+  Deep Cage on a mackerel); the bait, like a net's rating, only widens which
+  species can be in the cage when it comes up — the bigger bait brings up
+  bigger fish because the bigger stake is paying for them, never the other
+  way round. A pot already out keeps the bet it went in with.
 
 Every win is **paid straight into your balance** the moment the fish comes
 over the rail. There is no hold to fill, nothing to haul ashore and no step
@@ -354,7 +359,10 @@ transom off the whip of the throw, and it pays out from a bundle into its
 full funnel as the winch lets the ropes run; stowing winds it back to a
 bundle and the same hand hauls it in over the transom and sets it down.
 A pot is carried to the rail and thrown in a tumbling arc, splashes, and
-its cage sinks away under the float until the rope is straight; reached,
+its cage sinks away under the float until the rope is straight — where it
+comes down is decided only as it leaves the hands, beside the boat where
+it is by then and carried a little forward by its way, so a pot set from a
+moving boat does not fly back to where the button was pressed; reached,
 the hand goes to the rail, the cage is hauled up to the surface and lifted
 into their arms, and only then is the haul shown. With nobody free to
 come (a skiff has no deckhand), the gear goes over on its own after a

@@ -90,9 +90,9 @@ export const CONFIG = {
 
   // --- Pots & set nets (gillnetter and up) ---
   MAX_POTS: 6,
-  POT_STAKE_MULT: 55,        // stake = net's $/m * this
   POT_SOAK_S: 45,            // how long a pot must sit before it is worth pulling
   POT_COLLECT_RADIUS: 6,
+  POT_MIN_DEPTH: 1.2,        // water a pot needs under it to be set
 
   // --- Camera ---
   CAM_ELEV_DEG: 60,          // elevation above horizontal => 30 deg off top-down
@@ -107,6 +107,17 @@ export const NETS = [
   { id: 'gill',  name: 'Gill Net',   costPerM: 0.30, maxTier: 2, emoji: '🥅', color: 0x4c7b6e },
   { id: 'seine', name: 'Seine Net',  costPerM: 1.50, maxTier: 3, emoji: '🪢', color: 0x54689a },
   { id: 'deep',  name: 'Deep Trawl', costPerM: 6.00, maxTier: 4, emoji: '⚓', color: 0x7a5a92 },
+];
+
+// Pots: `stake` is the whole bet, paid when the pot goes over the side and
+// resolved when it is pulled. The bait sets which species can be in the
+// cage when it comes up (maxTier, never above TRAWL_TIER_CAP) and the size
+// of the cage — never the payout, which the paytable draws from the stake
+// alone like every other bet.
+export const POTS = [
+  { id: 'crab',     name: 'Crab Pot',      bait: 'fish scraps',  stake: 3,  maxTier: 2, emoji: '🦀', color: 0x8a6a3a, size: 1.0 },
+  { id: 'lobster',  name: 'Lobster Trap',  bait: 'whole herring', stake: 15, maxTier: 3, emoji: '🦞', color: 0x5a6f4a, size: 1.15 },
+  { id: 'deep',     name: 'Deep Cage',     bait: 'a mackerel',   stake: 75, maxTier: 4, emoji: '🐙', color: 0x4a5a78, size: 1.3 },
 ];
 
 export const LURES = [

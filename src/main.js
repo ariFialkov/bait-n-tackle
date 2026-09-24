@@ -143,7 +143,8 @@ const marina = new Marina(player, (key) => { equipBoat(key, true); });
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);
 hud.onNetToggle = () => { if (state === 'play' && !marina.open) fishing.toggleTrawl(); };
-hud.onPot = () => fishing.dropPot();
+hud.onPot = () => { if (state === 'play' && !marina.open) fishing.dropPot(); };
+hud.onPotSelect = (i) => fishing.setPot(i);
 hud.onAutoReel = () => {
   const on = fishing.setAutoReel(!fishing.autoReel);
   hud.setAutoReel(on);

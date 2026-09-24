@@ -18,7 +18,7 @@
 // fish comes over the rail, so realised RTP is exactly the paytable's.
 
 import * as THREE from 'three';
-import { CONFIG, LURES, NETS } from './config.js';
+import { CONFIG, LURES, NETS, POTS } from './config.js';
 import { waterDepth } from './lake.js';
 import { clamp, lerp } from './noise.js';
 import { HookedFish } from './hookedfish.js';
@@ -163,6 +163,7 @@ export class Fishing {
     this.autoReel = !!player.autoReel;
     this.autoTimer = 0;
 
+    this.potIndex = 0;
     this.pots = [];
     this.hauls = [];               // pots on their way up and over the rail
     this.potGroup = new THREE.Group();
@@ -177,6 +178,7 @@ export class Fishing {
   // ---------- gear ----------
   get lure() { return LURES[this.lureIndex]; }
   get trawlNet() { return NETS[this.netIndex]; }
+  get potGear() { return POTS[this.potIndex]; }
   get spec() { return this.boat.spec; }
 
   setLure(i) {
@@ -192,6 +194,14 @@ export class Fishing {
     }
     this.netIndex = clamp(i, 0, NETS.length - 1);
     this.hud.hint(`${this.trawlNet.name} — $${this.trawlNet.costPerM.toFixed(2)}/m`);
+    return true;
+  }
+
+  /** Pick the pot for the next drop; pots already out keep the bet they went in with. */
+  setPot(i) {
+    this.potIndex = clamp(i, 0, POTS.length - 1);
+    const g = this.potGear;
+    this.hud.hint(`${g.name} — $${g.stake.toFixed(2)} a pot, baited with ${g.bait}`);
     return true;
   }
 
@@ -501,18 +511,16 @@ export class Fishing {
       this.hud.hint(`All ${CONFIG.MAX_POTS} pots are already out`);
       return;
     }
-    const stake = this.trawlNet.costPerM * CONFIG.POT_STAKE_MULT;
+    const gear = this.potGear;
+    const stake = gear.stake;
     if (this.player.balance < stake) {
-      this.hud.hint(`Need $${stake.toFixed(2)} to bait a pot`);
+      this.hud.hint(`Need $${stake.toFixed(2)} to bait a ${gear.name.toLowerCase()}`);
       return;
     }
     // It goes over the side beside the boat, whichever side has the water.
-    let side = 0;
-    const spot = this._v;
-    for (const s of [1, -1]) {
-      this.potSpot(s, spot);
-      if (waterDepth(spot.x, spot.z) >= 1.2) { side = s; break; }
-    }
+    // This only picks the rail: where it lands is worked out when it is
+    // actually thrown (landPot), since the boat may well have moved on by then.
+    const side = this.potSide();
     if (!side) {
       this.hud.hint('Too shallow to set a pot here');
       return;
@@ -521,8 +529,8 @@ export class Fishing {
     this.player.balance -= stake;
     this.rtp.wager(stake);
 
-    const pot = this.buildPot();
-    pot.x = spot.x; pot.z = spot.z;
+    const pot = this.buildPot(gear);
+    pot.gear = gear;
     pot.stake = stake;
     pot.side = side;
     pot.ready = CONFIG.POT_SOAK_S;
@@ -532,21 +540,59 @@ export class Fishing {
     pot.anim = { kind: 'ready', t: 0 };
     pot.mesh.visible = false;
     pot.mesh.position.copy(this.railPoint(side, this._v));
+    pot.x = pot.mesh.position.x; pot.z = pot.mesh.position.z;   // provisional, until it is thrown
     this.potGroup.add(pot.mesh, pot.splash);
     this.pots.push(pot);
-    this.hud.hint(`Pot set — $${stake.toFixed(2)} staked, soak ${CONFIG.POT_SOAK_S}s`);
+    this.hud.hint(`${gear.name} set — $${stake.toFixed(2)} staked, soak ${CONFIG.POT_SOAK_S}s`);
     this.hud.setPots(this.pots.length);
   }
 
+  /** The side with water enough for a pot beside the boat right now, else 0. */
+  potSide(prefer = 1) {
+    const spot = this._v;
+    for (const s of [prefer, -prefer]) {
+      this.potSpot(s, spot);
+      if (waterDepth(spot.x, spot.z) >= CONFIG.POT_MIN_DEPTH) return s;
+    }
+    return 0;
+  }
+
+  /**
+   * Fix where a pot lands, at the moment it leaves the hands: beside the boat
+   * where it is *now*, carried a little forward by the boat's way, so a pot
+   * thrown from a moving boat never flies back to where the boat was when
+   * the button was pressed. The rail it goes from is settled — the hand is
+   * standing there — so if that side has gone shallow since, the pot still
+   * lands off it, as far in as the water allows.
+   */
+  landPot(pot) {
+    const out = this._v;
+    const carry = Math.min(POT_DROP_S * 0.6, 4 / (this.boat.vel.length() + 1e-6));
+    this.potSpot(pot.side, out);
+    out.x += this.boat.vel.x * carry; out.z += this.boat.vel.z * carry;
+    if (waterDepth(out.x, out.z) < CONFIG.POT_MIN_DEPTH) this.potSpot(pot.side, out);
+    if (waterDepth(out.x, out.z) < CONFIG.POT_MIN_DEPTH) {
+      // Bring it in toward the hull until the water is there.
+      const b = this.boat.hullBounds || { halfBeam: 1, length: 5 };
+      for (let k = 1; k <= 4; k++) {
+        out.set(pot.side * (b.halfBeam + 1.3 - 0.3 * k), 0, b.length * 0.12);
+        this.boat.hullFrame.localToWorld(out); out.y = 0;
+        if (waterDepth(out.x, out.z) >= CONFIG.POT_MIN_DEPTH) break;
+      }
+    }
+    pot.x = out.x; pot.z = out.z;
+  }
+
   /** A pot: a baited cage under a float on a rope, plus its own splash ring. */
-  buildPot() {
+  buildPot(gear = POTS[0]) {
     const mesh = new THREE.Group();
     const cage = new THREE.Group();
+    const s = gear.size || 1;
     cage.add(new THREE.Mesh(
-      new THREE.CylinderGeometry(0.42, 0.5, 0.5, 8),
-      new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.85 })));
+      new THREE.CylinderGeometry(0.42 * s, 0.5 * s, 0.5 * s, 8),
+      new THREE.MeshStandardMaterial({ color: gear.color, roughness: 0.85 })));
     cage.add(new THREE.Mesh(
-      new THREE.CylinderGeometry(0.43, 0.51, 0.5, 8),
+      new THREE.CylinderGeometry(0.43 * s, 0.51 * s, 0.5 * s, 8),
       new THREE.MeshBasicMaterial({ color: 0x4c4028, wireframe: true, transparent: true, opacity: 0.6 })));
     cage.position.y = -0.35;
     const float = new THREE.Mesh(
@@ -627,14 +673,18 @@ export class Fishing {
         // thrown from the rail by itself.
         if (!a.queued) a.t += dt;
         a.queued = false;
-        if (hand) { pot.anim = { kind: 'carried', t: 0, thrown: false, byHand: true }; pot.mesh.visible = true; }
-        else if (a.t > POT_WAIT_S) { pot.anim = { kind: 'carried', t: 0, thrown: true, byHand: false }; pot.mesh.visible = true; }
+        // It appears where it is picked up — the rail it was put by at the
+        // press may be well astern by now if the boat is under way.
+        if (hand) { pot.anim = { kind: 'carried', t: 0, thrown: false, byHand: true }; pot.mesh.position.copy(hand); pot.mesh.visible = true; }
+        else if (a.t > POT_WAIT_S) { pot.anim = { kind: 'carried', t: 0, thrown: true, byHand: false }; pot.mesh.position.copy(this.railPoint(pot.side, this._v)); pot.mesh.visible = true; }
       } else if (a && a.kind === 'carried') {
         // In the hands at the rail (or on the rail): thrown off the whip
         // of the heave, which the crew director starts.
         pot.mesh.position.copy(hand || (a.byHand ? pot.handPos : this.railPoint(pot.side, this._v)));
         if (a.thrown) a.t += dt;
         if (a.t >= (a.byHand ? POT_WHIP_S : 0)) {
+          // Leaving the hands: only now is it decided where it comes down.
+          this.landPot(pot);
           pot.anim = { kind: 'drop', t: 0, from: pot.mesh.position.clone() };
         }
       } else if (a && a.kind === 'drop') {
@@ -734,8 +784,10 @@ export class Fishing {
     const catches = [];
     let total = 0;
     for (let k = 0; k < n; k++) {
-      const c = this.rtp.describeCatch(
-        payout * (cuts[k] / cutSum), 0, Math.min(this.trawlNet.maxTier + 1, CONFIG.TRAWL_TIER_CAP));
+      // The bait picks the species that can be in the cage — the value each
+      // one is worth was drawn above from the stake and nothing else.
+      const maxTier = Math.min((pot.gear || POTS[0]).maxTier, CONFIG.TRAWL_TIER_CAP);
+      const c = this.rtp.describeCatch(payout * (cuts[k] / cutSum), 0, maxTier);
       catches.push(c);
       total += c.value;
       this.player.bank(c);
