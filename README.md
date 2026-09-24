@@ -83,8 +83,10 @@ It changes how many bets you place, never what one pays.
   every rope between two knots a thin lit cylinder in off-white manila with
   a twisted-strand texture (the headline, selvedges and warps heavier), with
   cork floats along the headline. Each
-  haul's fish appear flopping in the cod end — the fish the bet already
-  produced, shown after the fact, exactly as a hooked fish is on the line.
+  haul's fish leap and fall back through the surface over the cod end, at
+  the same larger-than-life scale as a hooked fish on the line, for exactly
+  as long as the haul notice is up, then fade out with it — the fish the
+  bet already produced, shown after the fact.
 - **Casting** is the high-stakes bet. Pick one of 8 lures
   ($1 Garden Worm → $200 Trophy Rig) and swipe. Pricier lures target
   proportionally bigger prize fish, and casting is the only way to land

@@ -58,6 +58,8 @@ function ropeTexture() {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+const RING_GEO = new THREE.RingGeometry(0.35, 0.52, 20);
+RING_GEO.rotateX(-Math.PI / 2);
 
 const protos = new Map();
 function prototypeFor(species) {
@@ -195,29 +197,51 @@ export class TrawlNet {
     this.clearFish();
   }
 
-  /** Show a fish the haul produced, flopping in the cod end. */
-  addCatch(species, sizeMult) {
+  /**
+   * Show a fish the haul produced, thrashing in and out of the water over
+   * the cod end at the same larger-than-life scale a hooked fish has on the
+   * line. It stays for `showS` seconds — as long as the haul notice is up —
+   * then fades out over `fadeS`, with the notice.
+   */
+  addCatch(species, sizeMult, showS = 3.2, fadeS = 0.4) {
     if (!this.active) return;
     const proto = prototypeFor(species);
     const mesh = proto.group.clone(true);
     const base = Math.max(0.05, visualLength(species));
-    const len = Math.min(base * sizeMult * CONFIG.HOOKED_FISH_SCALE, CONFIG.HOOKED_FISH_MAX_M) * 0.7;
+    const len = Math.min(base * sizeMult * CONFIG.HOOKED_FISH_SCALE, CONFIG.HOOKED_FISH_MAX_M);
     mesh.scale.setScalar(len / base);
+    // Its own materials, so it can fade on its own.
+    const mats = [];
+    mesh.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = o.material.clone();
+      o.material.transparent = true;
+      mats.push(o.material);
+    });
     this.scene.add(mesh);
+    const splash = new THREE.Mesh(RING_GEO, new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    splash.renderOrder = 4;
+    splash.visible = false;
+    this.scene.add(splash);
     this.fish.push({
-      mesh, tail: mesh.children[proto.tailIndex] || null, len,
-      // Somewhere in the back half of the bag, off the ropes.
-      u: 0.25 + Math.random() * 0.5,
-      v: 0.6 + Math.random() * 0.32,
+      mesh, mats, splash, splashT: 0, wasUp: false,
+      tail: mesh.children[proto.tailIndex] || null, len,
+      // Somewhere over the back half of the bag.
+      u: 0.2 + Math.random() * 0.6,
+      v: 0.55 + Math.random() * 0.4,
       phase: Math.random() * Math.PI * 2,
-      spin: Math.random() * Math.PI * 2,
-      energy: 1,
+      spin: (Math.random() - 0.5) * 1.2,
+      age: 0, showS, fadeS,
     });
     while (this.fish.length > MAX_FISH) this.dropFish(this.fish.shift());
   }
 
   dropFish(f) {
-    this.scene.remove(f.mesh);
+    this.scene.remove(f.mesh, f.splash);
+    for (const m of f.mats) m.dispose();
+    f.splash.material.dispose();
   }
 
   clearFish() {
@@ -376,24 +400,53 @@ export class TrawlNet {
     this.mesh.setMatrixAt(i, this._m);
   }
 
-  /** The catch in the bag: rolling and flapping, tiring slowly. */
+  /**
+   * The catch in the bag: each fish leaps and falls back through the
+   * surface over the netting, nose following its arc, rolling and flapping
+   * as a hooked fish does when it is swung up — then fades with the notice.
+   */
   updateFish(dt, t, backDir) {
     if (!this.fish.length) return;
     const along = Math.atan2(-backDir.x, -backDir.z);   // nose toward the boat
-    for (const f of this.fish) {
-      f.energy = Math.max(0.35, f.energy - dt * 0.03);
-      const e = f.energy;
+    const surface = CONFIG.WATER_LEVEL;
+    for (let i = this.fish.length - 1; i >= 0; i--) {
+      const f = this.fish[i];
+      f.age += dt;
+      if (f.age >= f.showS + f.fadeS) { this.dropFish(f); this.fish.splice(i, 1); continue; }
+      const alpha = f.age > f.showS ? 1 - (f.age - f.showS) / f.fadeS : 1;
+      for (const m of f.mats) m.opacity = alpha;
+
       this.at(f.u, f.v, this._v);
       const m = f.mesh;
+      // A leap every ~2s: up clear of the water and back under the netting.
+      const w = 3.1, ph = t * w + f.phase;
+      const hop = 0.3 + f.len * 0.28;
+      const y = surface - 0.1 + Math.sin(ph) * hop;
       m.position.set(
-        this._v.x + Math.sin(t * 5 + f.phase) * 0.06 * e,
-        this._v.y - 0.12 - f.len * 0.12,
-        this._v.z + Math.cos(t * 4 + f.phase) * 0.06 * e);
+        this._v.x + Math.sin(t * 1.7 + f.phase) * 0.15,
+        y,
+        this._v.z + Math.cos(t * 1.4 + f.phase) * 0.15);
       m.rotation.set(
-        Math.sin(t * 6.5 + f.phase) * 0.35 * e,
-        along + f.spin + Math.sin(t * 2.1 + f.phase) * 0.7 * e,
-        Math.sin(t * 8 + f.phase * 1.3) * 0.9 * e);
-      if (f.tail) f.tail.rotation.y = Math.sin(t * (14 + 8 * e) + f.phase) * 0.8 * e;
+        -Math.cos(ph) * 0.8,                                     // nose up going up, down coming down
+        along + f.spin + Math.sin(t * 2.1 + f.phase) * 0.5,
+        Math.sin(t * 9 + f.phase * 1.3) * 0.7);
+      if (f.tail) f.tail.rotation.y = Math.sin(t * 20 + f.phase) * 0.8;
+
+      // Splash where it goes back in.
+      const up = y > surface;
+      if (f.wasUp && !up) {
+        f.splashT = 1;
+        f.splash.position.set(m.position.x, surface + 0.05, m.position.z);
+        f.splash.visible = true;
+      }
+      f.wasUp = up;
+      if (f.splashT > 0) {
+        f.splashT = Math.max(0, f.splashT - dt * 1.6);
+        const k = 1 - f.splashT;
+        f.splash.scale.setScalar((0.6 + f.len * 0.7) * (0.4 + k * 1.6));
+        f.splash.material.opacity = f.splashT * 0.75 * alpha;
+        if (f.splashT <= 0) f.splash.visible = false;
+      }
     }
   }
 }

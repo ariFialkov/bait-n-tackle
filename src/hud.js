@@ -7,6 +7,11 @@ import { fishIconURL } from './fishicons.js';
 
 const $ = (id) => document.getElementById(id);
 
+// How long a haul notice stays up, then how long it takes to fade. The net
+// shows the haul's fish for exactly as long (net.js), so the two go together.
+export const HAUL_TOAST_MS = 3200;
+export const TOAST_FADE_MS = 400;
+
 // The ➤ glyph points RIGHT at rest; a bearing of 0 means straight up the
 // screen, so every arrow is turned back a quarter before its bearing.
 const arrowRot = (bearing) => `rotate(${bearing - Math.PI / 2}rad)`;
@@ -360,7 +365,7 @@ export class HUD {
     requestAnimationFrame(() => div.classList.add('in'));
     setTimeout(() => {
       div.classList.remove('in');
-      setTimeout(() => div.remove(), 400);
+      setTimeout(() => div.remove(), TOAST_FADE_MS);
     }, ms);
   }
 
@@ -390,7 +395,7 @@ export class HUD {
       `<img class="catch-icon" src="${fishIconURL(best.species)}" alt="">` +
       `<div class="catch-body"><div class="catch-name">${title} ×${catches.length}</div>` +
       `<div class="catch-sub">${names}</div></div>` +
-      `<div class="catch-value">$${total.toFixed(2)}</div>`, cls, 3200);
+      `<div class="catch-value">$${total.toFixed(2)}</div>`, cls, HAUL_TOAST_MS);
   }
 
   /** Pack-opening style reveal for high-value catches. */

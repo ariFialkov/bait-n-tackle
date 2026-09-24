@@ -22,6 +22,7 @@ import { CONFIG, LURES, NETS } from './config.js';
 import { waterDepth } from './lake.js';
 import { clamp, lerp } from './noise.js';
 import { HookedFish } from './hookedfish.js';
+import { HAUL_TOAST_MS, TOAST_FADE_MS } from './hud.js';
 
 const BOBBER_GEO = {
   top: new THREE.SphereGeometry(0.16, 12, 9),
@@ -467,8 +468,8 @@ export class Fishing {
       catches.push(c);
       total += c.value;
       this.player.bank(c);
-      // Already paid for: show it in the bag.
-      this.boat.net?.addCatch(c.species, c.sizeMult);
+      // Already paid for: show it in the bag for as long as the notice is up.
+      this.boat.net?.addCatch(c.species, c.sizeMult, HAUL_TOAST_MS / 1000, TOAST_FADE_MS / 1000);
     }
     this.rtp.book(total);
     this.hud.showTrawlHaul(catches, total);
