@@ -134,13 +134,14 @@ function collectParts(root) {
  * whatever hangs over the stern — the trawler's cone of netting — and the
  * wake has to start where the transom meets the water, not under that.
  */
-function sternAtWaterline(root) {
+function sternAtWaterline(root, frame) {
   let z = -Infinity;
-  root.updateMatrixWorld(true);
-  // In the hull's OWN frame: the root may already hang under a boat that
-  // has been placed somewhere and pointed somewhere, and the transom is
-  // where it is on the model regardless.
-  const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  frame.updateMatrixWorld(true);
+  // In the boat's frame, not the world's: the hull may already hang under
+  // a boat that has been placed somewhere and pointed somewhere, and the
+  // transom is where it is on the model regardless. (Only the placement
+  // comes off — the model's own scale and lift stay in, as measured.)
+  const toRoot = new THREE.Matrix4().copy(frame.matrixWorld).invert();
   const v = new THREE.Vector3();
   root.traverse((o) => {
     if (!o.isMesh || (o.userData && o.userData.part)) return;
@@ -291,7 +292,7 @@ export class Boat {
     // The deck the trawl gear sits on: where the net hand stands, if the
     // hull has one, else the working deck.
     const netY = st?.posts?.find((p) => p.kind === 'net')?.y ?? deckY;
-    const transom = sternAtWaterline(hull);
+    const transom = sternAtWaterline(hull, this.group);
     this.hullBounds = {
       halfBeam: (box.max.x - box.min.x) / 2,
       // Where the transom meets the water, for the wake: the box runs out to

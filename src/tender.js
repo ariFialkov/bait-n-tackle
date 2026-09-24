@@ -36,6 +36,8 @@ const AUTO_CAST_EVERY = 3.2;     // seconds between autonomous attempts
 const HOME_RADIUS = 9;           // close enough to the seiner to hand over
 
 function navigable(x, z) { return isNavigable(x, z); }
+// What the helmsman's eye reads: a rock or a log is as good as no water.
+function seaRoom(x, z) { return isNavigable(x, z) ? waterDepth(x, z) : 0; }
 
 export class Tender {
   constructor(scene, lake, rtp, player, hud) {
@@ -479,7 +481,7 @@ export class Tender {
   /** The least water along a line from here, out to `reach` metres. */
   depthAlong(dx, dz, reach) {
     let least = Infinity;
-    for (let d = 2; d <= reach; d += 2) least = Math.min(least, waterDepth(this.pos.x + dx * d, this.pos.z + dz * d));
+    for (let d = 2; d <= reach; d += 2) least = Math.min(least, seaRoom(this.pos.x + dx * d, this.pos.z + dz * d));
     return least;
   }
 
@@ -514,7 +516,7 @@ export class Tender {
     let px = 0, pz = 0;
     for (let k = 0; k < 8; k++) {
       const a = k * Math.PI / 4;
-      const d = waterDepth(this.pos.x + Math.cos(a) * 5, this.pos.z + Math.sin(a) * 5);
+      const d = seaRoom(this.pos.x + Math.cos(a) * 5, this.pos.z + Math.sin(a) * 5);
       if (d < SAFE_DEPTH) { const w = (SAFE_DEPTH - Math.max(0, d)) / SAFE_DEPTH; px -= Math.cos(a) * w; pz -= Math.sin(a) * w; }
     }
     let x = Math.cos(bestA) * mag + px * 0.6, z = Math.sin(bestA) * mag + pz * 0.6;
@@ -536,10 +538,10 @@ export class Tender {
 
   /** Is there room for the tender at a spot, with water to spare round it? */
   roomAt(x, z) {
-    if (waterDepth(x, z) < SAFE_DEPTH) return false;
+    if (seaRoom(x, z) < SAFE_DEPTH) return false;
     for (let k = 0; k < 6; k++) {
       const a = k * Math.PI / 3;
-      if (waterDepth(x + Math.cos(a) * 4, z + Math.sin(a) * 4) < TENDER_MIN_DEPTH) return false;
+      if (seaRoom(x + Math.cos(a) * 4, z + Math.sin(a) * 4) < TENDER_MIN_DEPTH) return false;
     }
     return true;
   }

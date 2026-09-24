@@ -32,8 +32,8 @@ export function isNavigable(x, z) {
  * there to be found. `rng` may be seeded for a test.
  */
 export function findStart(rng = Math.random) {
-  for (let i = 0; i < 600; i++) {
-    const x = -450 + rng() * 800, z = -1000 + rng() * 2000;
+  for (let i = 0; i < 3000; i++) {
+    const x = -450 + rng() * 800, z = -1200 + rng() * 2400;
     if (x > coastX(z) - 460) continue;
     if (waterDepth(x, z) < 2.5) continue;
     // Still water: nobody should drift off while they are reading the menu.
