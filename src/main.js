@@ -84,6 +84,9 @@ async function equipBoat(key, fromMarina = false) {
   if (tender.deployed || tender.hoisting) { tender.stow(); }
   helm = boat;
   fishing.setVessel(boat);
+  // The net comes in with the old hull, so the HUD's badge and button agree
+  // with the new one.
+  if (boat.trawling) fishing.stopTrawl();
   await boat.setBoat(key);
   fishing.syncRods();
   hud.setBoat(boat.spec);
@@ -139,6 +142,7 @@ const marina = new Marina(player, (key) => { equipBoat(key, true); });
 
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);
+hud.onNetToggle = () => { if (state === 'play' && !marina.open) fishing.toggleTrawl(); };
 hud.onPot = () => fishing.dropPot();
 hud.onAutoReel = () => {
   const on = fishing.setAutoReel(!fishing.autoReel);

@@ -17,7 +17,7 @@ import { driveHull, wrapAngle } from './hullphysics.js';
 import { buildRod, buildHolder, aimRods, updateRods, castRod, HOLDER_LAY } from './rods.js';
 import { DeckMap } from './deckmap.js';
 import { stationsFor, rodHolders } from './stations.js';
-import { DeckCrane } from './crane.js';
+import { DeckCrane, ClawRig } from './crane.js';
 
 // The net goes over the stern in stages (see updateNetAnim): lifted off the
 // deck to the gallows, swung out over the transom, dropped in; then it pays
@@ -28,6 +28,9 @@ const NET_PAYOUT_S = 1.6, NET_GATHER_S = 1.4;
 // With a hand to throw it: waits this long for one to come, is lifted into
 // the hands, held through the wind-up, and flies off the whip of the throw.
 const NET_WAIT_S = 2.2, NET_PICKUP_S = 0.45, NET_WHIP_S = 0.48, NET_FLY_S = 0.6, NET_HAUL_S = 0.8;
+// The trawler's gallows: how far the A-frame swings down to put the cone in
+// the water, and how fast; the gillnetter's drum: how fast it turns.
+const BOOM_DOWN = 0.42, BOOM_RATE = 0.32, DRUM_RATE = 2.2;
 const smooth = (k) => k * k * (3 - 2 * k);
 
 const loader = new GLTFLoader();
@@ -99,12 +102,15 @@ const OUTBOARD_TILT = 0.62;      // radians it lifts clear when idling
 function collectParts(root) {
   const wheels = [];
   const outboards = [];
+  const rigs = {};
   let tender = null;
   root.traverse((o) => {
     const p = o.userData && o.userData.part;
     if (!p) return;
     o.rotation.order = 'YXZ';
-    if (p.kind === 'wheel') {
+    if (p.kind === 'rig') {
+      rigs[p.name] = o;
+    } else if (p.kind === 'wheel') {
       wheels.push({ node: o, radius: Math.max(0.2, p.radius || 1), arm: p.arm || 0, angle: 0 });
     } else if (p.kind === 'outboard') {
       outboards.push({ node: o, steer: 0, tilt: 0 });
@@ -115,7 +121,29 @@ function collectParts(root) {
     }
   });
   if (tender) tender.node.parent?.remove(tender.node);
-  return { wheels, outboards, tender };
+  return { wheels, outboards, tender, rigs };
+}
+
+/**
+ * Where the hull itself ends astern: the furthest-aft vertex at the
+ * waterline, ignoring the moving parts. The model's box runs out to
+ * whatever hangs over the stern — the trawler's cone of netting — and the
+ * wake has to start where the transom meets the water, not under that.
+ */
+function sternAtWaterline(root) {
+  let z = -Infinity;
+  root.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  root.traverse((o) => {
+    if (!o.isMesh || (o.userData && o.userData.part)) return;
+    for (let a = o; a && a !== root; a = a.parent) if (a.userData && a.userData.part) return;
+    const p = o.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      if (v.y > -0.7 && v.y < 0.15 && v.z > z) z = v.z;
+    }
+  });
+  return z;
 }
 
 export class Boat {
@@ -254,9 +282,12 @@ export class Boat {
     // The deck the trawl gear sits on: where the net hand stands, if the
     // hull has one, else the working deck.
     const netY = st?.posts?.find((p) => p.kind === 'net')?.y ?? deckY;
+    const transom = sternAtWaterline(hull);
     this.hullBounds = {
       halfBeam: (box.max.x - box.min.x) / 2,
-      sternZ: box.max.z,          // where the transom actually is, for the wake
+      // Where the transom meets the water, for the wake: the box runs out to
+      // whatever hangs over the stern.
+      sternZ: Number.isFinite(transom) ? transom : box.max.z,
       deckY: netY,
       minY: box.min.y,
       maxY: box.max.y,
@@ -305,11 +336,20 @@ export class Boat {
     this.trawling = false;
     this.netBundle.visible = !!spec.features.trawl;
 
+    // --- the model's own machinery: the trawler's gallows, the gillnetter's
+    // drum, the dredger's grab ---
+    const rigs = this.parts.rigs || {};
+    this.boom = rigs.boom && !rigs.slew ? { node: rigs.boom, angle: 0 } : null;
+    if (this.boom) { this.netBundle.visible = false; }
+    this.drum = rigs.drum ? { node: rigs.drum, angle: 0 } : null;
+    this.grab = rigs.slew && rigs.boom && rigs.claw ? new ClawRig(rigs.slew, rigs.boom, rigs.claw) : null;
+
     // --- the deck crane, on hulls that carry one ---
     if (this.crane) { this.hullFrame.remove(this.crane.group); this.crane = null; }
     if (st?.crane) {
       const c = st.crane;
       this.crane = new DeckCrane({ reach: c.reach, height: c.height, scale: this.crewScale });
+      this.crane.setPaint(spec.paint?.[1]);
       this.crane.group.position.set(c.x, c.y, c.z);
       this.crane.side = c.side ?? 1;
       // Parked: hook raised over the well, or over the deck astern of it.
@@ -351,6 +391,20 @@ export class Boat {
     this.trawling = on;
     if (netDef) this.netDef = netDef;
     const a = this.netAnim;
+    if (this.boom) {
+      // A hull with gallows: the boom goes down into the water and the net
+      // pays out from the cone; stowing winds it in and the boom comes up.
+      if (on) {
+        if (a?.phase === 'boomUp') a.phase = 'boomDown';
+        else if (a?.phase === 'gather') a.phase = 'payout';
+        else if (!this.net.active && !a) this.netAnim = { phase: 'boomDown', t: 0 };
+      } else {
+        if (a?.phase === 'boomDown') a.phase = 'boomUp';
+        else if (a?.phase === 'payout') a.phase = 'gather';
+        else if (this.net.active) this.netAnim = { phase: 'gather', t: 0, handPos: new THREE.Vector3(), handFresh: false };
+      }
+      return;
+    }
     if (on) {
       if (a?.phase === 'carryIn') a.phase = 'carryOut', a.t = NET_CARRY_S - a.t;
       else if (a?.phase === 'gather') a.phase = 'payout';
@@ -362,8 +416,7 @@ export class Boat {
         this.netAnim = { phase: 'setDown', t: 0, from: this.netBundle.position.clone(), handPos: new THREE.Vector3(), handFresh: false };
       } else if (a?.phase === 'heave') a.abort = true;
       else if (a?.phase === 'carryOut') a.phase = 'carryIn', a.t = NET_CARRY_S - a.t;
-      else if (a?.phase === 'payout') a.phase = 'gather';
-      else if (this.net.active) this.netAnim = { phase: 'gather', t: 0, handPos: new THREE.Vector3(), handFresh: false };
+      else if (a?.phase === 'payout' || this.net.active) this.netAnim = { phase: 'gather', t: 0, handPos: new THREE.Vector3(), handFresh: false };
     }
   }
 
@@ -409,7 +462,16 @@ export class Boat {
     // A hand on it this frame? The crew director says so each frame it is.
     const hand = a.handFresh ? a.handPos : null;
     a.handFresh = false;
-    if (a.phase === 'ready') {
+    if (a.phase === 'boomDown' || a.phase === 'boomUp') {
+      // The gallows swing down until the cone is in the water, or back up.
+      const b = this.boom;
+      const want = a.phase === 'boomDown' ? BOOM_DOWN : 0;
+      b.angle += Math.sign(want - b.angle) * Math.min(Math.abs(want - b.angle), BOOM_RATE * dt);
+      if (Math.abs(b.angle - want) < 1e-3) {
+        if (a.phase === 'boomDown') { this.netHitsWater(); this.netAnim = { phase: 'payout', t: 0 }; }
+        else this.netAnim = null;
+      }
+    } else if (a.phase === 'ready') {
       // On the deck, waiting for someone to pick it up. Nobody coming:
       // the gallows lifts it the old way.
       a.t += dt;
@@ -484,6 +546,7 @@ export class Boat {
       this.net.gather = Math.min(1, this.net.gather + dt / NET_GATHER_S);
       if (this.net.gather >= 1) {
         this.net.stow();
+        if (this.boom) { this.netAnim = { phase: 'boomUp', t: 0 }; return; }
         this.netBundleAt(NET_CARRY_S, bundle.position);
         bundle.visible = true;
         // A hand at the rail hauls it in; else the gallows brings it aboard.
@@ -609,6 +672,16 @@ export class Boat {
 
   /** Drive the carved-out machinery from the hull's own motion. */
   updateMachinery(dt) {
+    // The gallows lie at whatever angle the net animation has them.
+    if (this.boom) this.boom.node.rotation.x = this.boom.angle;   // +x lowers an arm that reaches aft
+    // The drum turns while the net pays out (top going aft) or is wound in.
+    if (this.drum) {
+      const ph = this.netAnim?.phase;
+      const dir = ph === 'payout' ? 1 : ph === 'gather' ? -1 : 0;
+      this.drum.angle += dir * DRUM_RATE * dt;
+      this.drum.node.rotation.x = this.drum.angle;
+    }
+    if (this.grab) this.grab.update(dt);
     for (const w of this.parts.wheels) {
       // Surface speed at this wheel: the hull's way through the water plus
       // whatever the turn adds on its side of the centreline. Put the helm

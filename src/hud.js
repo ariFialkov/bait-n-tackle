@@ -90,6 +90,17 @@ export class HUD {
     this.bag = LURES.map(() => 0);     // the bait the tender will be sent out with
     this.buildGearPanel(this.el.lures, LURES,
       (l) => `$${l.cost}`, (i) => this.onLureSelect && this.onLureSelect(i));
+    // Net down / net up, at the top of the net panel: the same as tapping
+    // the net itself on the stern.
+    this.onNetToggle = null;
+    this.el.netAction = document.createElement('button');
+    this.el.netAction.className = 'gear-action';
+    this.el.netAction.innerHTML = '<span>Deploy net</span>';
+    this.el.netAction.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onNetToggle) this.onNetToggle();
+    });
+    this.el.nets.appendChild(this.el.netAction);
     this.buildGearPanel(this.el.nets, NETS,
       (n) => `$${n.costPerM.toFixed(2)}/m`, (i) => this.onNetSelect && this.onNetSelect(i));
 
@@ -355,6 +366,8 @@ export class HUD {
   setTrawling(on, net) {
     this.el.trawlBadge.classList.toggle('show', on);
     if (on && net) this.el.trawlBadge.textContent = `${net.emoji} ${net.name.toUpperCase()}`;
+    this.el.netAction.innerHTML = `<span>${on ? 'Pull net' : 'Deploy net'}</span>`;
+    this.el.netAction.classList.toggle('on', !!on);
   }
 
   toast(html, cls = '', ms = 3400) {

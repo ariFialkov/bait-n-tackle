@@ -157,6 +157,23 @@ html, body {
   min-width: 150px;
 }
 .lure.selected { border-color: #ffd166; background: rgba(20, 66, 88, 0.9); }
+/* The action at the top of the net panel: net down, net up. */
+.gear-action {
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #6db7d4;
+  border-radius: 12px;
+  background: rgba(16, 70, 92, 0.9);
+  color: #fff;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  min-width: 150px;
+  margin-bottom: 4px;
+}
+.gear-action.on { border-color: #b0c46a; background: rgba(70, 92, 28, 0.9); }
 .lure-emoji { font-size: 1.15rem; }
 .lure-name { flex: 1; font-weight: 600; }
 .lure-cost { color: #ffd166; font-weight: 700; }

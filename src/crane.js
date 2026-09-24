@@ -30,6 +30,8 @@ export class DeckCrane {
     this.reach = reach;
     this.height = height;
     this.group = new THREE.Group();
+    // The painted parts take the ship's own hull colour (setPaint).
+    this.paintMat = MAT.paint.clone();
 
     const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.26 * scale, 0.34 * scale, height, 12), MAT.steel);
     pedestal.position.y = height / 2;
@@ -38,7 +40,7 @@ export class DeckCrane {
     this.slew = new THREE.Group();
     this.slew.position.y = height;
     this.group.add(this.slew);
-    const house = new THREE.Mesh(new THREE.BoxGeometry(0.68 * scale, 0.56 * scale, 0.9 * scale), MAT.paint);
+    const house = new THREE.Mesh(new THREE.BoxGeometry(0.68 * scale, 0.56 * scale, 0.9 * scale), this.paintMat);
     house.position.set(0, 0.28 * scale, -0.12 * scale);
     this.slew.add(house);
     const cab = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.3 * scale, 0.36 * scale), MAT.steel);
@@ -50,7 +52,7 @@ export class DeckCrane {
     this.luff = new THREE.Group();
     this.luff.position.copy(this.pivot);
     this.slew.add(this.luff);
-    const jib = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.13 * scale, reach, 6), MAT.paint);
+    const jib = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.13 * scale, reach, 6), this.paintMat);
     jib.rotation.x = Math.PI / 2;
     jib.position.z = reach / 2;
     this.luff.add(jib);
@@ -89,6 +91,9 @@ export class DeckCrane {
     this._v = new THREE.Vector3();
     this.update(0);
   }
+
+  /** Paint the house and jib: the skin's hull colour, so the crane belongs to the ship. */
+  setPaint(hex) { if (hex) this.paintMat.color.set(hex); }
 
   /** Where the hook should go, in the crane's parent frame. */
   setTarget(p) { this.target.copy(p); }
@@ -150,5 +155,99 @@ export class DeckCrane {
     this.solve();
     return Math.abs(wrapAngle(this.slewT - this.slewA)) < 0.02 &&
       Math.abs(this.luffT - this.luffA) < 0.015 && Math.abs(this.wireT - this.wireL) < 0.06;
+  }
+}
+
+/**
+ * The dredger's grab, driven from the model's own parts: a pedestal that
+ * slews, a boom that luffs off it, and the claw hanging from the boom's tip
+ * (kept hanging as the boom moves). No wire: where the claw's jaws reach is
+ * set by how far out the boom is laid, so the grab is aimed by giving it a
+ * point and letting it choose the reach that puts the jaws at the water.
+ */
+export class ClawRig {
+  /** `slew`, `boom`, `claw`: the carved nodes, each standing at its pivot in the hull frame. */
+  constructor(slew, boom, claw) {
+    this.slew = slew; this.boom = boom; this.claw = claw;
+    this.base = slew.position.clone();
+    const pb = boom.position.clone(), pc = claw.position.clone();
+    // Nest them: boom off the pedestal, claw off the boom tip. All three
+    // stand at their pivots in the model's frame, which is the hull frame.
+    boom.parent.remove(boom); slew.add(boom); boom.position.copy(pb).sub(this.base);
+    claw.parent.remove(claw); boom.add(claw); claw.position.copy(pc).sub(pb);
+    this.pivot = pb;                                     // boom pivot, hull frame
+    this.reach = pb.distanceTo(pc);                      // boom length
+    this.elev0 = Math.atan2(pc.y - pb.y, -(pc.z - pb.z)); // rest elevation, boom toward -z
+    this.hang = 3.65;                                    // claw top to jaws, model units
+    this.slewA = 0; this.luffA = 0;                      // current, as offsets from rest
+    this.slewT = 0; this.luffT = 0;
+    this._v = new THREE.Vector3();
+    this._t = new THREE.Vector3();
+    this.grip = null;                                    // an Object3D carried in the jaws
+    this.busy = null;                                    // whatever job has the grab
+  }
+
+  /** Aim the jaws at a point in the hull frame: bearing from it, reach for its height. */
+  setTarget(p) {
+    const dx = p.x - this.base.x, dz = p.z - this.base.z;
+    this.slewT = Math.atan2(-dx, -dz);
+    // The boom elevation that puts the jaws at p.y, clamped to what it can do.
+    const tipY = p.y + this.hang;
+    const s = THREE.MathUtils.clamp((tipY - this.pivot.y) / this.reach, -0.15, 0.95);
+    const wantElev = Math.asin(s);
+    // ... but never further out than the point itself (it would overshoot).
+    const r = Math.hypot(dx, dz);
+    const minElev = Math.acos(THREE.MathUtils.clamp(r / this.reach, 0.05, 1));
+    this.luffT = Math.max(wantElev, minElev) - this.elev0;
+  }
+
+  rest() { this.slewT = 0; this.luffT = 0; }
+
+  /** How far out (from the base) the jaws land when reaching for water at hull-frame `y`. */
+  reachAtY(y) {
+    const s = THREE.MathUtils.clamp((y + this.hang - this.pivot.y) / this.reach, -0.15, 0.95);
+    return this.reach * Math.cos(Math.asin(s));
+  }
+
+  update(dt) {
+    const step = (cur, want, rate, wrap) => {
+      let d = want - cur;
+      if (wrap) d = wrapAngle(d);
+      const m = Math.min(Math.abs(d), rate * dt, Math.abs(d) * Math.min(1, 3 * dt) + rate * dt * 0.15);
+      return cur + Math.sign(d) * m;
+    };
+    this.slewA = step(this.slewA, this.slewT, 0.7, true);
+    this.luffA = step(this.luffA, this.luffT, 0.4, false);
+    this.slew.rotation.y = this.slewA;
+    this.boom.rotation.x = this.luffA;                  // +x raises a boom that points to -z
+    this.claw.rotation.x = -this.luffA;                 // ... and the claw keeps hanging
+    if (this.grip) {
+      // Carried in the jaws: a world-space object hanging under them.
+      this.jawsWorld(this._v);
+      this.grip.position.copy(this._v);
+      this.grip.position.y -= this.gripDrop || 0;
+    }
+  }
+
+  /** The jaws, in the hull frame (the slew node's parent). */
+  jawsAt(out) {
+    this.jawsWorld(out);
+    return this.slew.parent.worldToLocal(out);
+  }
+
+  /** The jaws, in world space. */
+  jawsWorld(out) {
+    out.set(0, -this.hang, 0);
+    this.claw.updateWorldMatrix(true, false);
+    return this.claw.localToWorld(out);
+  }
+
+  /** Aim at a world point. */
+  setTargetWorld(p) {
+    this.setTarget(this.slew.parent.worldToLocal(this._t.copy(p)));
+  }
+
+  get settled() {
+    return Math.abs(wrapAngle(this.slewT - this.slewA)) < 0.02 && Math.abs(this.luffT - this.luffA) < 0.015;
   }
 }

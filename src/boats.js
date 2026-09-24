@@ -84,25 +84,27 @@ export const BOATS = [
   {
     id: 'mud-dredger',
     name: 'Mud-Dredger',
-    tagline: 'Unlocks the sonar fish-finder.',
+    tagline: 'Unlocks the sonar fish-finder and pots.',
     blurb: 'A broad-beamed working barge built to churn the shallows. Slow ' +
       'and stubborn in a turn, but the sonar dome reads the water ahead and ' +
-      'calls out which bait the locals are taking.',
+      'calls out which bait the locals are taking, and the grab on the bow ' +
+      'sets pots over the side and lifts them back aboard.',
     price: 10,
     rods: 4,
     maxSpeed: 10.0,
     accel: 7.0,
     turn: 2.3,
     length: 10.0,
-    features: { trawl: true, sonar: true },
+    features: { trawl: true, sonar: true, pots: true },
   },
   {
     id: 'gillnetter',
     name: 'Gillnetter',
-    tagline: 'Unlocks pots and set nets.',
+    tagline: 'The big net drum.',
     blurb: 'Big net drums, a powerful screw, and a hull that somehow moves ' +
       'better than the dredger despite the size. Carries pots you can drop ' +
-      'anywhere on the river and collect later, loaded or empty.',
+      'anywhere on the river and collect later, loaded or empty, and the ' +
+      'drum on the after deck pays the net out and winds it in.',
     price: 15,
     rods: 6,
     maxSpeed: 10.5,
