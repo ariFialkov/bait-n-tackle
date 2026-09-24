@@ -189,6 +189,7 @@ export class Boat {
     this.steerSmooth = 0;        // ... smoothed, for the outboard leg
     this.throttle = 0;           // smoothed, for trim and for the outboard
     this.trawling = false;
+    this.anchored = false;       // nobody at the helm: the ship holds station in a current
     this.parts = { wheels: [], outboards: [] };
     this.group.rotation.order = 'YXZ';   // yaw, then pitch, then roll
     this._ray = new THREE.Raycaster();
@@ -777,7 +778,7 @@ export class Boat {
     driveHull(this, s, dt, inputVec, isNavigable);
     // Rapids carry the hull along with them (a picture of moving water — it
     // changes where you are, never what a bet pays).
-    const cur = this.lake.currentAt ? this.lake.currentAt(this.pos.x, this.pos.z) : null;
+    const cur = !this.anchored && this.lake.currentAt ? this.lake.currentAt(this.pos.x, this.pos.z) : null;
     if (cur && (cur.x || cur.z)) {
       // The same rule as the helm: the whole footprint, never more of it aground.
       const nx = this.pos.x + cur.x * dt, nz = this.pos.z + cur.z * dt;

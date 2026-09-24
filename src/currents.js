@@ -42,7 +42,11 @@ export function currentAt(x, z, out) {
   // --- the channel flow ---
   const c = channelField(x, z);
   let vx = 0, vz = 0;
-  const inChannel = ss(th - 0.03, th + 0.05, c);
+  // The stream runs down the channel's core: a rapid's whole strait, the
+  // middle of a river, and only the deepest line of a lake's trench.
+  const running = r.type === 'river' || r.type === 'beaver' || r.type === 'delta';
+  const inChannel = r.type === 'rapids' ? ss(th - 0.03, th + 0.05, c)
+    : running ? ss(0.945, 0.975, c) : ss(0.975, 0.99, c);
   if (inChannel > 0) {
     const e = 3;
     const gx = channelField(x + e, z) - channelField(x - e, z);
@@ -53,7 +57,7 @@ export function currentAt(x, z, out) {
       const px = potential(x + e, z) - potential(x - e, z);
       const pz = potential(x, z + e) - potential(x, z - e);
       if (tx * px + tz * pz > 0) { tx = -tx; tz = -tz; }   // downhill of the potential
-      const speed = r.type === 'rapids' ? 3.2 : (r.type === 'river' || r.type === 'beaver' || r.type === 'delta') ? 1.5 : 1.0;
+      const speed = r.type === 'rapids' ? 3.2 : running ? 1.5 : 0.8;
       // Shallows drag it, and a rapid runs hardest where the strait is thin.
       const depthK = ss(0.25, 1.2, d) * (r.type === 'rapids' ? (0.6 + 0.4 * ss(9, 2.5, d)) : 1);
       const k = speed * inChannel * depthK;
@@ -63,7 +67,7 @@ export function currentAt(x, z, out) {
 
   // --- the eddy: where warm turns to cold, through deep water ---
   const t = temperature(x, z);
-  const band = ss(0.22, 0.05, Math.abs(t)) * ss(3.5, 6, d);
+  const band = ss(0.055, 0.015, Math.abs(t)) * ss(3.5, 6, d);
   if (band > 0) {
     const e = 6;
     const gx = temperature(x + e, z) - temperature(x - e, z);

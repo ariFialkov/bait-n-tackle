@@ -189,16 +189,18 @@ logs, driftwood, mangrove trunks — are obstacles the hull physics respects
 — reeds, cattails, lily pads — bend out of a passing hull's way on a spring
 and swing back once it has gone.
 
-**Moving water** (`currents.js`). Every carved channel — a river, a creek,
-the braids of a delta, the trench through a lake — carries a current along
-it, seaward more or less (a slow potential wanders the way), and where warm
-water meets cold an **eddy** runs along the boundary through deep water:
-long winding flows that follow the country and can carry a hull for
-kilometres. Through a rapid the same current runs at three metres a
-second. A hull in it is carried — the helm can turn out of it, and can
+**Moving water** (`currents.js`). Down the core of every carved channel —
+the middle of a river or a creek, the braids of a delta, the deepest line
+of the trench through a lake — a current runs, seaward more or less (a slow
+potential wanders the way), and where warm water meets cold an **eddy** runs
+along the contour through deep water: long winding flows that follow the
+country and can carry a hull for kilometres, with still water either side
+of them. Through a rapid the whole strait runs, at three metres a second.
+A hull in a current is carried — the helm can turn out of it, and can
 fight it, but it is work — and the flow is drawn as streaks riding the
-surface, so it can be seen before it is felt. It moves the boat; it never
-touches a bet.
+surface, so it can be seen before it is felt. A mother ship with nobody at
+her helm holds station, so she is where you left her when the tender comes
+back. It moves the boat; it never touches a bet.
 
 The one water plane is re-coloured **per vertex** from the regions under it
 whenever it steps, with its own chop, murk and depth: a lagoon is turquoise,

@@ -327,6 +327,9 @@ function frame() {
 
   const driving = state === 'play' && !marina.open;
   const move = driving ? input.moveVector() : { x: 0, z: 0 };
+  // A mother ship with nobody at her helm holds station: she does not drift
+  // off downstream while you are away in the tender.
+  boat.anchored = helm !== boat;
   boat.update(dt, helm === boat ? move : { x: 0, z: 0 }, t);
   tender.update(dt, t, helm === tender ? move : { x: 0, z: 0 }, boat, helm === tender);
   // Two hulls, one patch of water: neither drives through the other.
