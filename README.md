@@ -78,8 +78,11 @@ It changes how many bets you place, never what one pays.
   Deep Trawl — and each net's rating caps the biggest tier it can land.
   Legend-tier fish never end up in a net. The net itself (`net.js`) is a
   cloth-physics funnel sized to the hull, towed on two warps and held open
-  at the mouth as otter boards would, drawn as a square rope mesh with cork
-  floats along the headline; it lags and swings wide through a turn. Each
+  at the mouth as otter boards would — free cloth otherwise, so it lags,
+  sways and swings wide through a turn. It is drawn as a square rope mesh,
+  every rope between two knots a thin lit cylinder in off-white manila with
+  a twisted-strand texture (the headline, selvedges and warps heavier), with
+  cork floats along the headline. Each
   haul's fish appear flopping in the cod end — the fish the bet already
   produced, shown after the fact, exactly as a hooked fish is on the line.
 - **Casting** is the high-stakes bet. Pick one of 8 lures

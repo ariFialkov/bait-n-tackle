@@ -17,14 +17,47 @@ import { buildFishMesh, visualLength } from './fishmodels.js';
 const NX = 9;              // particles across the mouth
 const NZ = 7;              // particles down the length
 const SUB = 2;             // rope lines per particle gap
-const ITERATIONS = 4;
+const ITERATIONS = 3;
 const DAMP = 0.955;        // water drag on particle velocity
 const BUOY_Y = -0.16;      // depth the headline wants to ride at
+const BUOY_PULL = 2.2;     // how firmly a row seeks its depth, per second
 const COD_END = 0.42;      // width of the last row as a share of the mouth
 const SPREAD_REST = 0.75;  // how far open the mouth stays with no way on
-const STREAM = 1.8;        // pull toward the streamed funnel, per second
+// A faint pull toward the streamed funnel: just enough that the body does
+// not wander under the boat when the tow slows, far too weak to stiffen it.
+// The netting is otherwise free cloth — it lags, sways and swings wide.
+const STREAM = 0.35;
 const WARP_BACK = 0.22;    // how far astern of the transom the wings tow, in net lengths
 const MAX_FISH = 10;       // most fish shown in the bag at once
+const ROPE = 0xe6dcc6;     // off-white manila
+const ROPE_R = 0.006;      // rope radius as a share of the net's width
+
+/** A little twisted-strand texture for the ropes: diagonal shading that wraps. */
+function ropeTexture() {
+  const S = 32;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, S, S);
+  ctx.strokeStyle = 'rgba(70, 55, 35, 0.45)';
+  ctx.lineWidth = 5;
+  for (let k = -S; k <= S * 2; k += S / 2) {
+    ctx.beginPath(); ctx.moveTo(k, -4); ctx.lineTo(k + S + 8, S + 4); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 2;
+  for (let k = -S; k <= S * 2; k += S / 2) {
+    ctx.beginPath(); ctx.moveTo(k + 8, -4); ctx.lineTo(k + S + 16, S + 4); ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 6);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
 
 const protos = new Map();
 function prototypeFor(species) {
@@ -64,17 +97,22 @@ export class TrawlNet {
     this.skin.frustumCulled = false;
 
     // ...and the netting itself: a square rope mesh, interpolated between
-    // the particles so the squares read as rope squares, not cloth triangles.
+    // the particles so the squares read as rope squares, not cloth
+    // triangles. Every rope between two knots is a thin lit cylinder with a
+    // twisted-strand texture, so it reads as off-white manila rather than a
+    // pixel line; the two warps and the headline are the same rope, thicker.
     this.cols = (NX - 1) * SUB + 1;
     this.rows = (NZ - 1) * SUB + 1;
-    const segs = this.rows * (this.cols - 1) + this.cols * (this.rows - 1);
-    this.ropeGeo = new THREE.BufferGeometry();
-    this.ropeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(segs * 2 * 3), 3));
-    this.mesh = new THREE.LineSegments(this.ropeGeo, new THREE.LineBasicMaterial({
-      color: 0x3f4a26, transparent: true, opacity: 0.9,
-    }));
-    this.mesh.renderOrder = 3;
+    this.segs = this.rows * (this.cols - 1) + this.cols * (this.rows - 1);
+    this.ropeMat = new THREE.MeshStandardMaterial({
+      color: ROPE, roughness: 0.95, metalness: 0, map: ropeTexture(),
+    });
+    this.mesh = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(1, 1, 1, 6, 1, true), this.ropeMat, this.segs + 2);
     this.mesh.frustumCulled = false;
+    this.mesh.castShadow = false;
+    this._q = new THREE.Quaternion();
+    this._sc = new THREE.Vector3();
 
     // Cork floats along the headline.
     this.floatCount = NX;
@@ -87,15 +125,8 @@ export class TrawlNet {
     // as soon as the world origin leaves the view.
     this.floats.frustumCulled = false;
 
-    // Warps from the boat's A-frame to the wing tips.
-    this.warpGeo = new THREE.BufferGeometry().setFromPoints(
-      [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]);
-    this.warps = new THREE.LineSegments(this.warpGeo,
-      new THREE.LineBasicMaterial({ color: 0x3d3428 }));
-    this.warps.frustumCulled = false;
-
     this.group = new THREE.Group();
-    this.group.add(this.skin, this.mesh, this.floats, this.warps);
+    this.group.add(this.skin, this.mesh, this.floats);
     this.group.visible = false;
     scene.add(this.group);
 
@@ -118,18 +149,10 @@ export class TrawlNet {
     const dz = length / (NZ - 1);
     for (let r = 0; r < NZ; r++) {
       const dx = (width * this.rowScale(r)) / (NX - 1);
-      const dxNext = r + 1 < NZ ? (width * this.rowScale(r + 1)) / (NX - 1) : dx;
-      // Each square's diagonals too, so the body holds its funnel and does
-      // not fold flat into a tube when it is towed.
-      const diag = Math.hypot((dx + dxNext) / 2, dz);
       for (let c = 0; c < NX; c++) {
         const i = r * NX + c;
         if (c + 1 < NX) this.links.push([i, i + 1, dx]);
         if (r + 1 < NZ) this.links.push([i, i + NX, dz]);
-        if (c + 1 < NX && r + 1 < NZ) {
-          this.links.push([i, i + NX + 1, diag]);
-          this.links.push([i + 1, i + NX, diag]);
-        }
       }
     }
   }
@@ -145,10 +168,7 @@ export class TrawlNet {
     if (size && (size.width !== this.width || size.length !== this.length)) {
       this.setSize(size.width, size.length);
     }
-    if (color !== undefined) {
-      this.skin.material.color.set(color);
-      this.mesh.material.color.set(color).offsetHSL(0, 0.02, -0.16);
-    }
+    if (color !== undefined) this.skin.material.color.set(color);
     this.wingPoints(anchorL, anchorR, backDir, 0);
     const mid = this._v.lerpVectors(this._a, this._b, 0.5);
     const span = this._b.distanceTo(this._v) * 2;
@@ -272,9 +292,7 @@ export class TrawlNet {
       const tx = mid.x + backDir.x * k * this.length + sx * u;
       const tz = mid.z + backDir.z * k * this.length + sz * u;
       p.x += vx + Math.sin(t * 1.3 + i * 1.7) * 0.05 * step + (tx - p.x) * STREAM * step;
-      // Each row rides at its own depth, firmly: a row that could tilt
-      // would let the whole body twist up into a rope.
-      p.y += vy + (BUOY_Y * (1 + 0.8 * k) - p.y) * 6 * step;
+      p.y += vy + (BUOY_Y * (1 + 0.8 * k) - p.y) * BUOY_PULL * step;
       p.z += vz + Math.cos(t * 1.1 + i * 2.3) * 0.05 * step + (tz - p.z) * STREAM * step;
     }
 
@@ -307,24 +325,32 @@ export class TrawlNet {
     attr.needsUpdate = true;
     this.geometry.computeVertexNormals();
 
-    // Ropes: the interpolated grid, one segment per rope between knots.
-    const rp = this.ropeGeo.attributes.position;
+    // Ropes: the interpolated grid, one cylinder per rope between knots.
+    const rr = this.width * ROPE_R;
     let k = 0;
-    const put = (p) => { rp.setXYZ(k++, p.x, p.y, p.z); };
     const cols = this.cols, rows = this.rows;
     for (let r = 0; r < rows; r++) {
+      const thick = r === 0 ? rr * 2 : rr;          // the headline is heavier
       for (let c = 0; c + 1 < cols; c++) {
-        put(this.at(c / (cols - 1), r / (rows - 1), this._a));
-        put(this.at((c + 1) / (cols - 1), r / (rows - 1), this._b));
+        this.at(c / (cols - 1), r / (rows - 1), this._a);
+        this.at((c + 1) / (cols - 1), r / (rows - 1), this._b);
+        this.rope(k++, this._a, this._b, thick);
       }
     }
     for (let c = 0; c < cols; c++) {
+      const thick = c === 0 || c === cols - 1 ? rr * 1.6 : rr;   // and the selvedges
       for (let r = 0; r + 1 < rows; r++) {
-        put(this.at(c / (cols - 1), r / (rows - 1), this._a));
-        put(this.at(c / (cols - 1), (r + 1) / (rows - 1), this._b));
+        this.at(c / (cols - 1), r / (rows - 1), this._a);
+        this.at(c / (cols - 1), (r + 1) / (rows - 1), this._b);
+        this.rope(k++, this._a, this._b, thick);
       }
     }
-    rp.needsUpdate = true;
+    // Warps from the A-frame to the wing tips.
+    this._a.copy(this.pos[0]); this._a.y += 0.05;
+    this.rope(k++, ropeL, this._a, rr * 2.2);
+    this._b.copy(this.pos[NX - 1]); this._b.y += 0.05;
+    this.rope(k++, ropeR, this._b, rr * 2.2);
+    this.mesh.instanceMatrix.needsUpdate = true;
 
     // Floats bob along the headline.
     for (let c = 0; c < NX; c++) {
@@ -335,16 +361,19 @@ export class TrawlNet {
     }
     this.floats.instanceMatrix.needsUpdate = true;
 
-    // Warps.
-    const wp = this.warpGeo.attributes.position;
-    const tl = this.pos[0], tr = this.pos[NX - 1];
-    wp.setXYZ(0, ropeL.x, ropeL.y, ropeL.z);
-    wp.setXYZ(1, tl.x, tl.y + 0.05, tl.z);
-    wp.setXYZ(2, ropeR.x, ropeR.y, ropeR.z);
-    wp.setXYZ(3, tr.x, tr.y + 0.05, tr.z);
-    wp.needsUpdate = true;
-
     this.updateFish(dt, t, backDir);
+  }
+
+  /** Lay rope instance `i` from `a` to `b`, `r` thick. */
+  rope(i, a, b, r) {
+    const d = this._s.subVectors(b, a);
+    const len = d.length() || 1e-4;
+    d.divideScalar(len);
+    this._q.setFromUnitVectors(UP, d);
+    this._v.lerpVectors(a, b, 0.5);
+    this._sc.set(r, len, r);
+    this._m.compose(this._v, this._q, this._sc);
+    this.mesh.setMatrixAt(i, this._m);
   }
 
   /** The catch in the bag: rolling and flapping, tiring slowly. */
