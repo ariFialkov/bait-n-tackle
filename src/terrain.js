@@ -249,14 +249,14 @@ export function cellFeatures(cx, cz) {
   if (type === 'rapids') {
     // Boulders along the strait's edges funnel the water, and a few stand
     // mid-stream for it to break round.
-    for (let i = 0; i < 420 && f.boulders.length < 34; i++) {
+    for (let i = 0; i < 520 && f.boulders.length < 40; i++) {
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (!inCell(p.x, p.z)) continue;
       const edge = h < -0.3 && h > -2.2;
-      const mid = h <= -2.2 && h > -9 && rng() < 0.12;
+      const mid = h <= -2.2 && h > -12 && rng() < 0.3;
       if (!edge && !mid) continue;
-      if (f.boulders.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < 3.5)) continue;
+      if (f.boulders.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < 4)) continue;
       f.boulders.push({ x: p.x, z: p.z, h, s: (mid ? 1.1 : 0.8) + rng() * 1.1, r: rng() * Math.PI * 2 });
     }
   }

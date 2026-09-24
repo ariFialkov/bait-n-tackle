@@ -92,7 +92,7 @@ export const BIOMES = {
   },
   rapids: {
     label: 'Rapids', names: ['Rapids', 'Rapids', 'Run', 'Narrows'], fr: 0,
-    terrain: { bias: 1.0, amp: 1.0, detail: 1.1, channel: 2.8, channelW: 0.9, ridge: 1.2, flat: 1, shelf: 0, bars: 0 },
+    terrain: { bias: 1.0, amp: 1.0, detail: 1.1, channel: 3.6, channelW: 0.93, ridge: 1.2, flat: 1, shelf: 0, bars: 0 },
     water: { shallow: 0x66c2d4, deep: 0x1f6f86, chop: 0.2, murk: 0.05 },
     land: { shore: 0xc9bfa0, grass: 0x5f9e4e, forest: 0x3c7442, rock: 0x8a8f87, snow: 11 },
     climate: { sky: 0xbfe3f2, fog: 0xbfe3f2, near: 90, far: 220, sun: 0xfff4e0, sunI: 2.4, amb: 0.75, precip: 0, snow: 0 },

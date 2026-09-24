@@ -14,6 +14,7 @@ import { CONFIG } from './config.js';
 import { terrainHeight, baseHeight } from './terrain.js';
 import { chunkItems } from './scatter.js';
 import { currentAt } from './currents.js';
+import { regionAt } from './regions.js';
 
 // --- geometry -------------------------------------------------------------------
 
@@ -530,9 +531,10 @@ export function buildBoulderWakes(list, parent) {
     let sp = Math.hypot(v.x, v.z);
     let ux, uz;
     if (sp < 0.15) {
-      // Still water round it: read the flow a little downstream instead.
-      currentAt(b.x + 4, b.z, v); sp = Math.hypot(v.x, v.z);
-      if (sp < 0.15) continue;
+      // Still water right at it (it stands at the edge): the stream goes
+      // the way the region's water goes.
+      const r = regionAt(b.x, b.z);
+      v.x = Math.cos(r.flow || 0); v.z = Math.sin(r.flow || 0); sp = 1;
     }
     ux = v.x / sp; uz = v.z / sp;
     const r = b.s * 0.85, len = 6 + b.s * 3 + sp * 1.5;
