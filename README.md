@@ -283,7 +283,11 @@ their cockpit soles and working decks below the waterline, so the whole
 hull frame (model, rods, people, gear) rides high enough that the lowest
 deck stays clear of the water even heeled hard over in a turn, trimmed by
 the throttle and down in a wave trough. The heel itself is capped by beam
-(`boat.js`), so a wide hull rolls only a few degrees.
+(`boat.js`), so a wide hull rolls only a few degrees. The hull rides the
+water under it: the wave is read at the bow, the stern and both sides, so it
+heaves on the average — a short ripple averages out under a long hull, the
+sea's long swell lifts the whole boat — and pitches and rolls with the slope
+between them.
 
 Anything under water floats a hull: the navigable depth is a hand's
 breadth, so the submerged banks across a channel mouth are a place to
@@ -294,7 +298,9 @@ move or a swing of the heading is allowed only if it leaves no more of those
 points aground than before — so a seiner's bow can no longer ride up the
 beach while its middle floats. Into a bank the hull scrapes along it rather
 than sticking: the part of the move heading into the shore is stripped and
-the rest slides, and a hull that has somehow been put on the bank (a shove
+the rest slides, and where the shore's normal is only a guess (a shelving
+flat, whose navigable line wanders at the metre scale) the hull feels round
+it, swinging its move a little either way until something gives, and a hull that has somehow been put on the bank (a shove
 from another hull) always has a way off, and only off.
 
 The moving parts move. The converter carves them out of each model and the

@@ -791,8 +791,23 @@ export class Boat {
       this.yawVel / Math.max(0.2, s.yawRate)));
     this.steerSmooth += (helm - this.steerSmooth) * Math.min(1, 5 * dt);
 
-    const bobY = this.lake.waveHeight(this.pos.x, this.pos.z, t);
-    const scaleBob = Math.min(1, 6 / s.length);   // big hulls ride flatter
+    // The hull rides the water under it: the wave is read at the bow, the
+    // stern and both sides, so it heaves on the average (a short ripple
+    // averages out under a long hull, a long swell lifts the whole boat)
+    // and pitches and rolls with the slope between them.
+    const half = (this.hullBounds?.length ?? s.length) / 2;
+    const beam = this.hullBounds?.halfBeam ?? s.length * 0.16;
+    const fx = -Math.sin(this.heading), fz = -Math.cos(this.heading);   // forward
+    const rx = Math.cos(this.heading), rz = -Math.sin(this.heading);    // starboard
+    const lake = this.lake;
+    const hBow = lake.waveHeight(this.pos.x + fx * half, this.pos.z + fz * half, t);
+    const hStern = lake.waveHeight(this.pos.x - fx * half, this.pos.z - fz * half, t);
+    const hStbd = lake.waveHeight(this.pos.x + rx * beam, this.pos.z + rz * beam, t);
+    const hPort = lake.waveHeight(this.pos.x - rx * beam, this.pos.z - rz * beam, t);
+    const bobY = (hBow + hStern + hStbd + hPort) / 4;
+    const wavePitch = Math.max(-0.12, Math.min(0.12, Math.atan2(hBow - hStern, half * 2)));
+    const waveRoll = Math.max(-0.12, Math.min(0.12, Math.atan2(hStbd - hPort, beam * 2)));
+    const scaleBob = Math.min(1, 6 / s.length);   // big hulls ride flatter over the chop
     // Heel into the turn and lift the bow under power — both scaled by how
     // fast the hull is actually moving, so a boat at rest just sits there.
     // Both are capped so the deck edge never goes under: the heel by beam
@@ -801,11 +816,11 @@ export class Boat {
     const heelCap = Math.min(0.2, 0.14 / Math.max(0.5, this.hullBounds?.halfBeam ?? 1));
     const heel = Math.max(-heelCap, Math.min(heelCap, this.yawVel * drive * 0.42));
     const trim = this.throttle * drive * 0.05 * scaleBob;
-    this.group.position.set(this.pos.x, bobY * scaleBob + 0.02, this.pos.z);
+    this.group.position.set(this.pos.x, bobY + 0.02, this.pos.z);
     this.group.rotation.set(
-      Math.sin(t * 0.9) * 0.02 * scaleBob + trim,
+      Math.sin(t * 0.9) * 0.02 * scaleBob + trim + wavePitch,
       this.heading,
-      Math.sin(t * 1.3) * 0.025 * scaleBob + heel * Math.min(1, 9 / s.length),
+      Math.sin(t * 1.3) * 0.025 * scaleBob + heel * Math.min(1, 9 / s.length) + waveRoll,
     );
 
     updateRods(this.rods, dt);

@@ -254,7 +254,20 @@ export function driveHull(o, spec, dt, input, navigable) {
     const n = shoreNormal(o, o.pos.x + mx, o.pos.z + mz, o.heading, navigable, _n);
     const into = -(mx * n[0] + mz * n[1]);
     if (into > 0) { mx += n[0] * into; mz += n[1] * into; }
-    if ((mx !== 0 || mz !== 0) && aground(o, o.pos.x + mx, o.pos.z + mz, o.heading, navigable) <= here) {
+    let slid = (mx !== 0 || mz !== 0) && aground(o, o.pos.x + mx, o.pos.z + mz, o.heading, navigable) <= here;
+    if (!slid) {
+      // The shore's normal is only an estimate, and on a shelving flat the
+      // navigable line wanders at the metre scale: feel round it. Try the
+      // move swung a little either way, nearest the wanted way first, and
+      // take the first that leaves no more of the hull aground.
+      const wx = o.vel.x * dt, wz = o.vel.z * dt;
+      for (const deg of [25, -25, 50, -50, 70, -70, 88, -88]) {
+        const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+        const tx = (wx * c - wz * s) * c, tz = (wx * s + wz * c) * c;   // shortened as it swings away
+        if (aground(o, o.pos.x + tx, o.pos.z + tz, o.heading, navigable) <= here) { mx = tx; mz = tz; slid = true; break; }
+      }
+    }
+    if (slid) {
       o.pos.x += mx; o.pos.z += mz;
       const vin = -(o.vel.x * n[0] + o.vel.z * n[1]);
       if (vin > 0) { o.vel.x += n[0] * vin * 1.15; o.vel.z += n[1] * vin * 1.15; }
