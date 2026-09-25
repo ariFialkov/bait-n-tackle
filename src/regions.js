@@ -271,13 +271,32 @@ export function regionName(type, seed, cx = 0, cz = 0) {
   return `${adj}${word} ${kind}`;
 }
 
-/**
- * A name for a landmark of a kind — 'peak' | 'hill' | 'beach' | 'rock' |
- * 'dam' | 'falls' | 'point' — in the basin of cell (cx, cz), so Mount Juniper
- * stands over Juniper Lake. The odd one takes its own word instead, so a
- * basin with three beaches is not three Juniper Beaches.
- */
-export function landmarkName(kind, seed, cx = 0, cz = 0) {
+/** The cells of a basin, as [cx, cz] pairs. Built once a basin. */
+const basinCellLists = new Map();
+export function basinCellList(bx, bz) {
+  const k = cellKey(bx, bz);
+  let list = basinCellLists.get(k);
+  if (list) return list;
+  list = [];
+  const c0x = bx * BASIN - 2, c0z = bz * BASIN - 2;
+  for (let cz = c0z; cz < c0z + BASIN + 4; cz++) for (let cx = c0x; cx < c0x + BASIN + 4; cx++) {
+    const b = basinOf(cx, cz);
+    if (b.bx === bx && b.bz === bz) list.push([cx, cz]);
+  }
+  basinCellLists.set(k, list);
+  return list;
+}
+
+// terrain.js hands over the landmarks of a list of cells, so a landmark's
+// name can see the others in its basin without regions.js importing the
+// terrain (which imports this).
+let landmarkLister = null;
+export function setLandmarkLister(fn) { landmarkLister = fn; }
+
+const PEAK_RANKS = ['Peak', 'Summit', 'Tor', 'Crag', 'Knoll', 'Bluff'];
+
+/** A landmark's name before ranking: the basin's word (or, for the odd one, its own) and its kind. */
+function landmarkBase(kind, seed, cx, cz) {
   const rng = mulberry32(seed);
   const basin = basinOf(cx, cz);
   const own = rng() < 0.3;
@@ -293,6 +312,28 @@ export function landmarkName(kind, seed, cx = 0, cz = 0) {
     case 'point': return rng() < 0.5 ? `${first} Point` : `${first} Head`;
     default: return first;
   }
+}
+
+/**
+ * A name for a landmark of a kind — 'peak' | 'hill' | 'beach' | 'rock' |
+ * 'dam' | 'falls' | 'point' — in the basin of cell (cx, cz), so Mount Juniper
+ * stands over Juniper Lake. Landmarks of one basin that would share a name
+ * are ranked apart (Juniper Falls, Upper Juniper Falls, Lower Juniper
+ * Falls; Mount Juniper, Juniper Peak, Juniper Summit), north to south.
+ */
+export function landmarkName(kind, seed, cx = 0, cz = 0) {
+  const base = landmarkBase(kind, seed, cx, cz);
+  if (!landmarkLister) return base;
+  const basin = basinOf(cx, cz);
+  const all = landmarkLister(basinCellList(basin.bx, basin.bz));
+  const same = [];
+  for (const lm of all) if (landmarkBase(lm.kind, lm.seed, lm.cx, lm.cz) === base) same.push(lm);
+  if (same.length < 2) return base;
+  same.sort((a, b) => a.z - b.z || a.x - b.x);
+  const rank = same.findIndex((lm) => lm.kind === kind && lm.seed === seed && lm.cx === cx && lm.cz === cz);
+  if (rank <= 0) return base;
+  if (kind === 'peak') return `${base.replace(/^Mount /, '')} ${PEAK_RANKS[(rank - 1) % PEAK_RANKS.length]}`;
+  return `${RANKS[(rank - 1) % RANKS.length]} ${base}`;
 }
 
 // --- the fields -------------------------------------------------------------

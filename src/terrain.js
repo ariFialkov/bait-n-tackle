@@ -13,7 +13,19 @@
 
 import { CONFIG } from './config.js';
 import { fbm, mulberry32, hash2, clamp, lerp } from './noise.js';
-import { CELL, COAST_X, cellRegion, regionBlend, regionAt, coastX, landmarkName } from './regions.js';
+import { CELL, COAST_X, cellRegion, regionBlend, regionAt, coastX, landmarkName, setLandmarkLister } from './regions.js';
+
+/**
+ * A landmark, named lazily: the name looks at the other landmarks of its
+ * basin (to rank the like-named apart), and those cells must be built first.
+ */
+function landmark(kind, x, z, seed, cx, cz) {
+  return {
+    kind, x, z, seed, cx, cz, _name: null,
+    get name() { if (this._name === null) this._name = landmarkName(this.kind, this.seed, this.cx, this.cz); return this._name; },
+  };
+}
+setLandmarkLister((cells) => { const out = []; for (const [cx, cz] of cells) out.push(...cellFeatures(cx, cz).landmarks); return out; });
 
 const S = CONFIG.SEED;
 
@@ -241,7 +253,7 @@ export function cellFeatures(cx, cz) {
       };
       fall.rocks = fallsRocks(fall);
       f.falls.push(fall); f.bumps.push(fall);
-      f.landmarks.push({ kind: 'falls', x: lx + g.nx * 4, z: lz + g.nz * 4, name: landmarkName('falls', fall.seed, cx, cz) });
+      f.landmarks.push(landmark('falls', lx + g.nx * 4, lz + g.nz * 4, fall.seed, cx, cz));
       f.hotspots.push({ x: fall.pool.x, z: fall.pool.z, strength: 1.3, phase: rng() * Math.PI * 2, lureIdx: Math.floor(rng() * 8) });
     }
   }
@@ -272,7 +284,7 @@ export function cellFeatures(cx, cz) {
       dam.open = damOpen(dam.seed);
       dam.gap = dam.open ? Math.max(8, Math.min(13, dam.len * 0.38)) : 0;
       f.dams.push(dam); f.bumps.push(dam);
-      f.landmarks.push({ kind: 'dam', x, z, name: landmarkName('dam', dam.seed, cx, cz) });
+      f.landmarks.push(landmark('dam', x, z, dam.seed, cx, cz));
       // The lodge: a dome of sticks in the water off one end of the dam.
       for (let j = 0; j < 16; j++) {
         const side = rng() < 0.5 ? 1 : -1;
@@ -338,7 +350,7 @@ export function cellFeatures(cx, cz) {
   for (const g of grid) if ((!top || g.h > top.h) && inCell(g.x, g.z)) top = g;
   if (top && top.h >= 5 && rng() < 0.8) {
     const kind = top.h >= 9 ? 'peak' : 'hill';
-    f.landmarks.push({ kind, x: top.x, z: top.z, name: landmarkName(kind, (rng() * 1e9) | 0, cx, cz) });
+    f.landmarks.push(landmark(kind, top.x, top.z, (rng() * 1e9) | 0, cx, cz));
   }
   if (rng() < 0.65) {
     let beach = null, bestN = 0;
@@ -350,13 +362,13 @@ export function cellFeatures(cx, cz) {
       for (const o of grid) if (o !== g && Math.abs(o.x - g.x) <= step * 1.5 && Math.abs(o.z - g.z) <= step * 1.5 && o.h > 0.05 && o.h < 0.9) n++;
       if (n > bestN) { bestN = n; beach = g; }
     }
-    if (beach && bestN >= 3) f.landmarks.push({ kind: 'beach', x: beach.x, z: beach.z, name: landmarkName('beach', (rng() * 1e9) | 0, cx, cz) });
+    if (beach && bestN >= 3) f.landmarks.push(landmark('beach', beach.x, beach.z, (rng() * 1e9) | 0, cx, cz));
   }
   if (rng() < 0.6) {
     for (const g of grid) {
       if (g.h < 0.4 || g.h > 4 || !inCell(g.x, g.z)) continue;
       if (ring(g.x, g.z, 14, (h) => h < -0.3) === 8) {
-        f.landmarks.push({ kind: 'rock', x: g.x, z: g.z, name: landmarkName('rock', (rng() * 1e9) | 0, cx, cz) });
+        f.landmarks.push(landmark('rock', g.x, g.z, (rng() * 1e9) | 0, cx, cz));
         break;
       }
     }
@@ -366,7 +378,7 @@ export function cellFeatures(cx, cz) {
       if (g.h < 0.5 || g.h > 6 || !inCell(g.x, g.z)) continue;
       const wet = ring(g.x, g.z, 18, (h) => h < -0.3);
       if (wet >= 5 && wet <= 7) {
-        f.landmarks.push({ kind: 'point', x: g.x, z: g.z, name: landmarkName('point', (rng() * 1e9) | 0, cx, cz) });
+        f.landmarks.push(landmark('point', g.x, g.z, (rng() * 1e9) | 0, cx, cz));
         break;
       }
     }

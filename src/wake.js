@@ -608,6 +608,12 @@ export class WakeTrail {
 const ROCK_STEP = 0.6;
 const ROCK_COLS = COLS;
 
+/** A tiny seeded generator, so a rock's wake is the same shape every visit. */
+function lcg(seed) {
+  let x = (seed >>> 0) || 1;
+  return () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 4294967296; };
+}
+
 /** One material for every rock wake in the world; time is set once a frame. */
 const ROCK_MAT = new THREE.ShaderMaterial({
   vertexShader: VERT,
@@ -660,12 +666,22 @@ export class RockWakes {
         rate: (6 + sp * 5) * (0.6 + r * 0.5),
         acc: Math.random(),
       });
-      // Lay the trail down the streamline.
-      const len = 9 + r * 5 + sp * 2.6;
-      const width = r * 2.3, maxSpread = 1.2 + r * 2.2;
+      // Lay the trail down the streamline. Nothing about its shape is a
+      // straight line: each rock rolls its own spread, how the ribbon
+      // flares toward the end, a meander of the centreline and a wobble
+      // of the foam lines, so the wakes read as water finding its own way
+      // down the bed rather than a V ruled off the rock.
+      const rr = lcg((b.x * 73856093) ^ (b.z * 19349663) ^ Math.floor(b.r * 1000));
+      const len = 9 + r * 5 + sp * 2.6 + rr() * 6;
+      const width = r * 2.3;
+      const spread = 1.2 + r * 1.4 + rr() * 2.4;          // extra half-width by the end
+      const flareK = 1.1 + rr() * 1.3;                     // how late the widening comes
+      const endFlare = rr() * 2.6;                         // the fan at the tail
+      const meanderA = 0.4 + rr() * 1.3, meanderF = 0.22 + rr() * 0.3, meanderP = rr() * 6.283;
+      const wobF = 0.45 + rr() * 0.4, wobP = rr() * 6.283, wobA = 0.12 + rr() * 0.14;
       const foamK = Math.min(1.15, 0.45 + speedK * 0.7);
       const waveKv = (Math.PI * 2) / (2.2 + sp * 0.9);
-      const rockSeed = Math.random() * 6.283;
+      const rockSeed = rr() * 6.283;
       let x = b.x + ux * r * 0.8, z = b.z + uz * r * 0.8, dx = ux, dz = uz, s = sp;
       let d = 0;
       const samples = [];
@@ -690,16 +706,25 @@ export class RockWakes {
       if (samples.length < 3) continue;
       const total = samples[samples.length - 1].d;
       const base = pos.length / 3;
+      const L = Math.max(total, len);
       for (let k = 0; k < samples.length; k++) {
         const sm = samples[k];
-        const half = Math.min(width * 0.55 + sm.d * KELVIN_TAN, width * 0.55 + maxSpread);
+        const u = Math.min(1, sm.d / L);
+        // Smooth, late widening, then a fan at the tail as the foam dies.
+        const tail = u < 0.6 ? 0 : (u - 0.6) / 0.4;
+        const half = width * 0.55 + spread * Math.pow(u, flareK) + endFlare * tail * tail;
         const nx = -sm.dz, nz = sm.dx;
-        const a = sm.end ? 1 : Math.min(1, sm.d / Math.max(total, len));
+        // The centreline wanders, more the further down it runs.
+        const off = Math.sin(sm.d * meanderF + meanderP) * meanderA * u;
+        const cxp = sm.x + nx * off, czp = sm.z + nz * off;
+        const a = sm.end ? 1 : u;
         for (let j = 0; j < ROCK_COLS; j++) {
           const sd = -1 + (2 * j) / (ROCK_COLS - 1);
-          pos.push(sm.x + nx * sd * half, 0, sm.z + nz * sd * half);
+          // The foam lines inside the ribbon wobble along its length.
+          const w = half * (1 + wobA * Math.sin(sm.d * wobF + wobP + j * 1.7));
+          pos.push(cxp + nx * sd * w, 0, czp + nz * sd * w);
           side.push(sd); age.push(a); foam.push(foamK); dist.push(sm.d);
-          waveK.push(waveKv); seed.push(rockSeed); lat.push(sd * half);
+          waveK.push(waveKv); seed.push(rockSeed); lat.push(sd * w);
           drift.push(sm.dx * sm.s, sm.dz * sm.s);
         }
       }

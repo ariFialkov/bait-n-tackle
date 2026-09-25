@@ -263,7 +263,9 @@ you happen to start. The name fades in, centred and out of the
 way, as you come well onto it, with the kind of water under it. Landmarks
 worth a name get one on a pin, the way a maps app marks them — Mount X,
 X Hill, X Beach, X Rock or Island, X Point, X Dam, X Falls, mostly with the
-basin's word (Mount Juniper stands over Juniper Lake) — an HTML pill
+basin's word (Mount Juniper stands over Juniper Lake), and the like-named
+landmarks of a basin ranked apart the same way (Juniper Falls, Upper
+Juniper Falls; Mount Juniper, Juniper Peak) — an HTML pill
 like the rest of the HUD, held over its point in the world by projecting
 it every frame, fading in as the landmark comes into view and out again as
 it leaves (`labels.js`).
@@ -447,8 +449,12 @@ and the same dissolving foam, and the same spray tearing off its upstream
 face and flying over it. The one difference is that the rock stands still
 and the water moves, so every sample carries the current's velocity and the
 texture, the crests and the dissolving islands are all carried off with it.
-The ribbon follows the current's bends, so the wakes curve and twist through
-the rocks and run into one another where the strait narrows.
+The ribbon follows the current's bends, and nothing about its shape is
+ruled: each rock rolls its own spread, a smooth late widening that fans out
+at the tail as the foam dies, a meander of the centreline and a wobble of
+the foam lines, so the wakes read as water finding its own way down the
+bed, curving and twisting through the rocks and running into one another
+where the strait narrows.
 
 The top two hulls automate rather than improve. The **tender** (Seiner) can be
 taken into channels the seiner cannot enter, or sent out fishing on its own
