@@ -91,6 +91,43 @@ export function currentAt(x, z, out) {
 const N = 520;          // streaks on the surface
 const RANGE = 130;      // metres round the boat they live in
 
+// The streaks read the current off a 4 m lattice, each point worked out
+// once and kept (some forty noise reads a point), and blend between the
+// four round them. Five hundred streaks asking the field itself every
+// frame were a fifth of the whole update. The hulls still ask the field.
+const LAT = 4;
+const latCache = new Map();
+let latPool = new Float32Array(2 * 8192), latN = 0;
+let latMisses = 0;             // fresh lattice points worked out this frame (capped: see update)
+const LAT_MISS_MAX = 40;
+const _lv = { x: 0, z: 0 };
+function latIndex(ix, iz) {
+  const k = (ix + 100000) * 400003 + (iz + 100000);
+  let i = latCache.get(k);
+  if (i === undefined) {
+    if (++latMisses > LAT_MISS_MAX) return -1;
+    if (latCache.size > 60000) { latCache.clear(); latN = 0; }
+    if (latN * 2 + 2 > latPool.length) { const p = new Float32Array(latPool.length * 2); p.set(latPool); latPool = p; }
+    currentAt(ix * LAT, iz * LAT, _lv);
+    i = latN++;
+    latPool[i * 2] = _lv.x; latPool[i * 2 + 1] = _lv.z;
+    latCache.set(k, i);
+  }
+  return i;
+}
+function currentLattice(x, z, out) {
+  const fx = x / LAT, fz = z / LAT;
+  const ix = Math.floor(fx), iz = Math.floor(fz);
+  const tx = fx - ix, tz = fz - iz;
+  const a = latIndex(ix, iz) * 2, b = latIndex(ix + 1, iz) * 2, c = latIndex(ix, iz + 1) * 2, d = latIndex(ix + 1, iz + 1) * 2;
+  // Over this frame's allowance of fresh points: no current here for now.
+  if (a < 0 || b < 0 || c < 0 || d < 0) { out.x = out.z = 0; return out; }
+  const P = latPool;
+  out.x = (P[a] * (1 - tx) + P[b] * tx) * (1 - tz) + (P[c] * (1 - tx) + P[d] * tx) * tz;
+  out.z = (P[a + 1] * (1 - tx) + P[b + 1] * tx) * (1 - tz) + (P[c + 1] * (1 - tx) + P[d + 1] * tx) * tz;
+  return out;
+}
+
 /** Streaks that ride the current, so the flow can be seen. */
 export class FlowField {
   constructor(scene) {
@@ -120,7 +157,7 @@ export class FlowField {
     for (let k = 0; k < 6; k++) {
       const x = this.focus.x + (Math.random() - 0.5) * 2 * RANGE;
       const z = this.focus.z + (Math.random() - 0.5) * 2 * RANGE;
-      currentAt(x, z, this.v);
+      currentLattice(x, z, this.v);
       if (Math.hypot(this.v.x, this.v.z) > 0.15) {
         this.px[i] = x; this.pz[i] = z; this.life[i] = 4 + Math.random() * 6;
         return true;
@@ -133,6 +170,7 @@ export class FlowField {
   update(dt, focusX, focusZ, t) {
     this.focus.x = focusX; this.focus.z = focusZ;
     this.tick++;
+    latMisses = 0;   // a frame works out only so many fresh lattice points; the rest wait
     const y = CONFIG.WATER_LEVEL + 0.09;
     for (let i = 0; i < N; i++) {
       // Half the streaks step each frame: the field costs a few noise reads.
@@ -143,7 +181,7 @@ export class FlowField {
         this.life[i] += dt2;
         if (this.life[i] < 0 || !this.respawn(i)) { this.hide(i); continue; }
       }
-      const v = currentAt(this.px[i], this.pz[i], this.v);
+      const v = currentLattice(this.px[i], this.pz[i], this.v);
       const sp = Math.hypot(v.x, v.z);
       this.life[i] -= dt2;
       if (sp < 0.08 || this.life[i] <= 0 || Math.abs(this.px[i] - focusX) > RANGE || Math.abs(this.pz[i] - focusZ) > RANGE) {

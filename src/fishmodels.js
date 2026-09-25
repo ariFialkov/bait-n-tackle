@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { SPECIES } from './fishdata.js';
 import { mulberry32, clamp, lerp } from './noise.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const N_ST = 16;   // stations along the body
 const N_R = 12;    // ring segments
@@ -615,6 +616,32 @@ export function buildFishMesh(species) {
   tail.position.z = len * (a.special === 'ray' ? 0.38 : 0.485);
   g.add(tail);
 
+  // The fins and the eyes are one mesh each (built once per species): a
+  // fish is four draw calls, not ten, and sixteen of them swim round the
+  // boat at all times.
+  const { fins, eyes } = trimGeometry(species, a, len);
+  if (fins) g.add(new THREE.Mesh(fins, finMat));
+  if (eyes) g.add(new THREE.Mesh(eyes, eyeMat));
+
+  return { group: g, tail, len };
+}
+
+const trimCache = new Map();   // species id -> { fins, eyes }
+
+/** Has this species been built before (so another of it costs nothing)? */
+export function speciesReady(species) { return cache.has(species.id) && trimCache.has(species.id); }
+function trimGeometry(species, a, len) {
+  let t = trimCache.get(species.id);
+  if (t) return t;
+  const finParts = [], eyeParts = [];
+  const part = (list, geo, x, y, z, rx = 0, ry = 0, rz = 0, s = 1) => {
+    _tm.compose(_tp.set(x, y, z), _tq.setFromEuler(_te.set(rx, ry, rz)), _ts.setScalar(s));
+    // Position and normal only, unindexed, so every piece merges with every other.
+    const q = geo.index ? geo.toNonIndexed() : geo.clone();
+    for (const name of Object.keys(q.attributes)) if (name !== 'position' && name !== 'normal') q.deleteAttribute(name);
+    if (!q.attributes.normal) q.computeVertexNormals();
+    list.push(q.applyMatrix4(_tm));
+  };
   if (a.special !== 'ray') {
     const { depthAt, spineAt } = profiles(a);
     const maxDepth = a.depth * len;
@@ -624,66 +651,43 @@ export function buildFishMesh(species) {
 
     if (a.dorsal) {
       const d = a.dorsal;
-      const fin = new THREE.Mesh(
-        dorsalGeometry(d.type, d.len * len, d.h * maxDepth), finMat);
-      fin.position.set(0, topAt(d.pos + d.len * 0.3) * 0.97, zAt(d.pos));
-      g.add(fin);
+      part(finParts, dorsalGeometry(d.type, d.len * len, d.h * maxDepth), 0, topAt(d.pos + d.len * 0.3) * 0.97, zAt(d.pos));
     }
     if (a.anal) {
       const an = a.anal;
-      const fin = new THREE.Mesh(
-        dorsalGeometry(an.type || 'tri', an.len * len, an.h * maxDepth), finMat);
-      fin.rotation.z = Math.PI; // flip under the belly
-      fin.position.set(0, botAt(an.pos + an.len * 0.3) * 0.97, zAt(an.pos));
-      g.add(fin);
+      // Flipped under the belly.
+      part(finParts, dorsalGeometry(an.type || 'tri', an.len * len, an.h * maxDepth), 0, botAt(an.pos + an.len * 0.3) * 0.97, zAt(an.pos), 0, 0, Math.PI);
     }
-    if (a.adipose) {
-      const fin = new THREE.Mesh(dorsalGeometry('tri', len * 0.05, maxDepth * 0.18), finMat);
-      fin.position.set(0, topAt(0.8), zAt(0.8));
-      g.add(fin);
-    }
+    if (a.adipose) part(finParts, dorsalGeometry('tri', len * 0.05, maxDepth * 0.18), 0, topAt(0.8), zAt(0.8));
     // Pectoral fins
     for (const s of [1, -1]) {
-      const fin = new THREE.Mesh(dorsalGeometry('tri', len * 0.12, maxDepth * 0.4), finMat);
-      fin.position.set(s * a.width * maxDepth * 0.42, spineAt(0.25) * len - maxDepth * 0.12, zAt(0.24));
-      fin.rotation.set(0, 0, s * 1.25);
-      g.add(fin);
+      part(finParts, dorsalGeometry('tri', len * 0.12, maxDepth * 0.4), s * a.width * maxDepth * 0.42, spineAt(0.25) * len - maxDepth * 0.12, zAt(0.24), 0, 0, s * 1.25);
     }
     // Barbels
     if (a.barbels) {
-      const bMat = finMat;
       for (let i = 0; i < a.barbels; i++) {
         const s = i % 2 ? 1 : -1;
         const row = Math.floor(i / 2);
-        const b = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.004 * len, 0.012 * len, len * 0.16, 4), bMat);
-        b.position.set(s * maxDepth * 0.2, spineAt(0.06) * len - maxDepth * 0.1 * row,
-          zAt(a.snout === 'point' ? 0.18 : 0.05));
-        b.rotation.set(0.9, 0, s * (0.7 + row * 0.4));
-        g.add(b);
+        part(finParts, new THREE.CylinderGeometry(0.004 * len, 0.012 * len, len * 0.16, 4),
+          s * maxDepth * 0.2, spineAt(0.06) * len - maxDepth * 0.1 * row, zAt(a.snout === 'point' ? 0.18 : 0.05),
+          0.9, 0, s * (0.7 + row * 0.4));
       }
     }
     // Eyes
     const eyeR = clamp(maxDepth * 0.085, 0.008, 0.05);
     for (const s of [1, -1]) {
-      const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.scale.setScalar(eyeR);
       const eyeT = a.snout === 'gar' || a.snout === 'paddle' || a.snout === 'bill' ? 0.32 : a.snout === 'hammer' ? 0.05 : 0.13;
-      eye.position.set(
-        s * a.width * maxDepth * (a.snout === 'hammer' ? 1.5 : 0.38),
-        spineAt(0.14) * len + maxDepth * 0.16,
-        zAt(eyeT));
-      g.add(eye);
+      part(eyeParts, eyeGeo, s * a.width * maxDepth * (a.snout === 'hammer' ? 1.5 : 0.38), spineAt(0.14) * len + maxDepth * 0.16, zAt(eyeT), 0, 0, 0, eyeR);
     }
   } else {
     // Ray eyes on top of the disc.
-    for (const s of [1, -1]) {
-      const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.scale.setScalar(len * 0.02);
-      eye.position.set(s * len * 0.09, len * 0.055, -len * 0.16);
-      g.add(eye);
-    }
+    for (const s of [1, -1]) part(eyeParts, eyeGeo, s * len * 0.09, len * 0.055, -len * 0.16, 0, 0, 0, len * 0.02);
   }
-
-  return { group: g, tail, len };
+  t = {
+    fins: finParts.length ? mergeGeometries(finParts, false) : null,
+    eyes: eyeParts.length ? mergeGeometries(eyeParts, false) : null,
+  };
+  trimCache.set(species.id, t);
+  return t;
 }
+const _tm = new THREE.Matrix4(), _tp = new THREE.Vector3(), _tq = new THREE.Quaternion(), _te = new THREE.Euler(), _ts = new THREE.Vector3();

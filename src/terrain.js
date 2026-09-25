@@ -219,10 +219,45 @@ function landAlong(x, z, dx, dz, max) {
 export function cellFeatures(cx, cz) {
   const k = fkey(cx, cz);
   let f = feats.get(k);
-  if (f) return f;
-  f = { bumps: [], falls: [], dams: [], lodges: [], boulders: [], foam: [], stacks: [], landmarks: [], hotspots: [] };
-  feats.set(k, f);            // registered first: nothing below may recurse into it
+  if (!f) f = startCell(k, cx, cz);
+  // Wanted now: whatever is left of its build is done on the spot, so a
+  // reader never sees half a cell.
+  if (f._gen) { const g = f._gen; f._gen = null; while (!g.next().done) { /* to the end */ } }
+  return f;
+}
 
+function startCell(k, cx, cz) {
+  const f = { bumps: [], falls: [], dams: [], lodges: [], boulders: [], foam: [], stacks: [], landmarks: [], hotspots: [], _gen: null };
+  feats.set(k, f);            // registered first: nothing below may recurse into it
+  f._gen = buildCell(f, cx, cz);
+  return f;
+}
+
+/** Is this cell built (or not yet begun)? For the warm-up to pick the next. */
+export function cellReady(cx, cz) {
+  const f = feats.get(fkey(cx, cz));
+  return !!f && !f._gen;
+}
+
+/**
+ * Advance a cell's build for about `budgetMs` (a beaver cell costs 20 ms
+ * whole, a pond up to 40): the lake warms the cells round the boat this
+ * way, a slice a frame, long before the ground, the water or the map ask
+ * for them. True once the cell is done.
+ */
+export function warmCell(cx, cz, budgetMs) {
+  const k = fkey(cx, cz);
+  let f = feats.get(k);
+  if (!f) f = startCell(k, cx, cz);
+  if (!f._gen) return true;
+  const t0 = performance.now();
+  while (true) {
+    if (f._gen.next().done) { f._gen = null; return true; }
+    if (performance.now() - t0 > budgetMs) return false;
+  }
+}
+
+function* buildCell(f, cx, cz) {
   const r = cellRegion(cx, cz);
   const rng = mulberry32((hash2(cx, cz, S + 917) * 4294967295) >>> 0);
   const ox = cx * CELL, oz = cz * CELL;
@@ -236,6 +271,7 @@ export function cellFeatures(cx, cz) {
   if (type === 'falls' || type === 'cove') {
     const want = type === 'falls' ? 6 : 2;
     for (let i = 0; i < 240 && f.falls.length < want; i++) {
+      if (i % 6 === 5) yield;
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (h > -1.2 || h < -4.5 || !inCell(p.x, p.z)) continue;
@@ -261,9 +297,11 @@ export function cellFeatures(cx, cz) {
   if (type === 'beaver' || ((type === 'river' || type === 'pond') && rng() < 0.6)) {
     const want = type === 'beaver' ? 5 : 1;
     for (let i = 0; i < 420 && f.dams.length < want; i++) {
+      if (i % 4 === 3) yield;
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (h > -0.4 || h < -3.5 || !inCell(p.x, p.z)) continue;
+      yield;   // the sixteen soundings across the channel are the dear part
       let best = null;
       for (let a = 0; a < 8; a++) {
         const ang = (a / 8) * Math.PI;
@@ -305,6 +343,7 @@ export function cellFeatures(cx, cz) {
     // never two mid-stream rocks so close that a hull cannot get between
     // them, so there is always a line through.
     for (let i = 0; i < 900 && f.boulders.length < 64; i++) {
+      if (i % 40 === 39) yield;
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (!inCell(p.x, p.z)) continue;
@@ -330,6 +369,7 @@ export function cellFeatures(cx, cz) {
   }
 
   // --- landmarks: the high ground, the beaches, the rocks, the headlands ---
+  yield;
   const N = 12, step = CELL / N;
   const grid = [];
   for (let i = 0; i < N; i++) {
@@ -337,6 +377,7 @@ export function cellFeatures(cx, cz) {
       const x = ox + (i + 0.5) * step, z = oz + (j + 0.5) * step;
       grid.push({ x, z, h: baseHeight(x, z) });
     }
+    if (i % 4 === 3) yield;
   }
   const ring = (x, z, rad, test) => {
     let n = 0;
@@ -353,6 +394,7 @@ export function cellFeatures(cx, cz) {
     f.landmarks.push(landmark(kind, top.x, top.z, (rng() * 1e9) | 0, cx, cz));
   }
   if (rng() < 0.65) {
+    yield;
     let beach = null, bestN = 0;
     for (const g of grid) {
       if (g.h < 0.05 || g.h > 0.9 || !inCell(g.x, g.z)) continue;
@@ -365,6 +407,7 @@ export function cellFeatures(cx, cz) {
     if (beach && bestN >= 3) f.landmarks.push(landmark('beach', beach.x, beach.z, (rng() * 1e9) | 0, cx, cz));
   }
   if (rng() < 0.6) {
+    yield;
     for (const g of grid) {
       if (g.h < 0.4 || g.h > 4 || !inCell(g.x, g.z)) continue;
       if (ring(g.x, g.z, 14, (h) => h < -0.3) === 8) {
@@ -374,6 +417,7 @@ export function cellFeatures(cx, cz) {
     }
   }
   if ((type === 'ocean' || type === 'bay' || type === 'delta') && rng() < 0.7) {
+    yield;
     for (const g of grid) {
       if (g.h < 0.5 || g.h > 6 || !inCell(g.x, g.z)) continue;
       const wet = ring(g.x, g.z, 18, (h) => h < -0.3);
@@ -383,6 +427,5 @@ export function cellFeatures(cx, cz) {
       }
     }
   }
-  return f;
 }
 

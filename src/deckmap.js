@@ -19,6 +19,39 @@ import * as THREE from 'three';
 const STEP = 0.3;            // anything lower than this on a floor is walked over
 const JOIN = 0.45;           // floors this close in height join across a cell edge
 
+/** A binary min-heap of (priority, node) for the path search. */
+class OpenHeap {
+  constructor() { this.p = []; this.n = []; }
+  get size() { return this.p.length; }
+  push(pri, node) {
+    const p = this.p, n = this.n;
+    let i = p.length; p.push(pri); n.push(node);
+    while (i > 0) {
+      const j = (i - 1) >> 1;
+      if (p[j] <= p[i]) break;
+      [p[i], p[j]] = [p[j], p[i]]; [n[i], n[j]] = [n[j], n[i]]; i = j;
+    }
+  }
+  pop() {
+    const p = this.p, n = this.n;
+    const top = n[0];
+    const lp = p.pop(), ln = n.pop();
+    if (p.length) {
+      p[0] = lp; n[0] = ln;
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1, r = l + 1;
+        let m = i;
+        if (l < p.length && p[l] < p[m]) m = l;
+        if (r < p.length && p[r] < p[m]) m = r;
+        if (m === i) break;
+        [p[i], p[m]] = [p[m], p[i]]; [n[i], n[m]] = [n[m], n[i]]; i = m;
+      }
+    }
+    return top;
+  }
+}
+
 export class DeckMap {
   /**
    * `hull` is the hull object (unrotated, hull frame); `range` is [lo, hi],
@@ -292,10 +325,14 @@ export class DeckMap {
   nodeOf(p) { return p ? this.nodeAt(p.x, p.z, p.y) : null; }
 
   astar(sN, gN, walls) {
-    const key = (n) => `${n.ix},${n.iz},${n.L.y.toFixed(2)}`;
+    // Numeric keys and a binary heap: this runs whenever a hand is sent
+    // somewhere, and sorting the open list every step cost a frame 9 ms on
+    // a big deck.
+    const key = (n) => (n.ix * 4096 + n.iz) * 4096 + (Math.round(n.L.y * 50) + 2048);
     const sk = key(sN), gk = key(gN);
     if (sk === gk) return [];
-    const open = [[0, sN]];
+    const heap = new OpenHeap();
+    heap.push(0, sN);
     const came = new Map();          // key -> { from: node, via: link|null }
     const g = new Map([[sk, 0]]);
     const h = (n) => Math.hypot(n.ix - gN.ix, n.iz - gN.iz);
@@ -303,9 +340,8 @@ export class DeckMap {
     const nb = [];
     let found = false;
     let guard = 0;
-    while (open.length && guard++ < 20000) {
-      open.sort((p, q) => p[0] - q[0]);
-      const [, n] = open.shift();
+    while (heap.size && guard++ < 20000) {
+      const n = heap.pop();
       const k = key(n);
       if (closed.has(k)) continue;
       closed.add(k);
@@ -317,7 +353,7 @@ export class DeckMap {
         if (ng < (g.get(mk) ?? Infinity)) {
           g.set(mk, ng);
           came.set(mk, { from: n, via: via || null });
-          open.push([ng + h(m), m]);
+          heap.push(ng + h(m), m);
         }
       }
     }

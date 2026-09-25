@@ -20,6 +20,7 @@ import { BOATS, fleetCatalog, resolveBoat } from './boats.js';
 import { loadHull } from './boat.js';
 import { applySkin } from './skinner.js';
 import { stationsFor } from './stations.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const S = CONFIG.SEED;
 export const DOCK_RADIUS = 8;        // how close you must be to trigger
@@ -28,28 +29,51 @@ const PIER_HALF_WIDTH = 1.6;         // planking, plus the bumper buoys
 
 // --- placement -----------------------------------------------------------
 
-const dockCache = new Map();
+const dockCache = new Map();   // key -> { docks: [], _gen }
 
 /** Deterministic docks for a chunk: [] or a single { x, z, angle }. Cached: one object per marina. */
 export function chunkDocks(cx, cz) {
-  const k = cx + '|' + cz;
-  let d = dockCache.get(k);
-  if (!d) { d = placeDock(cx, cz); dockCache.set(k, d); }
-  return d;
+  const e = dockEntry(cx, cz);
+  // Wanted now: the rest of the placement is done on the spot.
+  if (e._gen) { const g = e._gen; e._gen = null; while (!g.next().done) { /* to the end */ } }
+  return e.docks;
 }
 
-function placeDock(cx, cz) {
+function dockEntry(cx, cz) {
+  const k = cx + '|' + cz;
+  let e = dockCache.get(k);
+  if (!e) { e = { docks: [], _gen: null }; dockCache.set(k, e); e._gen = placeDock(cx, cz, e.docks); }
+  return e;
+}
+
+/**
+ * Advance a chunk's marina placement for about `budgetMs` (a chunk build
+ * does this a slice a frame: the two dozen soundings of an attempt add up).
+ * True once it is placed, or found to have none.
+ */
+export function warmChunkDocks(cx, cz, budgetMs) {
+  const e = dockEntry(cx, cz);
+  if (!e._gen) return true;
+  const t0 = performance.now();
+  while (true) {
+    if (e._gen.next().done) { e._gen = null; return true; }
+    if (performance.now() - t0 > budgetMs) return false;
+  }
+}
+
+function* placeDock(cx, cz, out) {
   // The outpost gate and the placement rolls are unchanged from when fish
   // markets shared the shoreline, so every marina that exists today stands
   // exactly where it always did. Chunks that used to roll a market get
   // nothing at all, and one in five of the surviving marinas is culled on
   // top of that.
-  if (hash2(cx, cz, S + 401) > 0.36) return [];
+  if (hash2(cx, cz, S + 401) > 0.36) return;
   const rng = mulberry32((hash2(cx, cz, S + 409) * 1e9) | 0);
   const size = CONFIG.CHUNK_SIZE;
   const ox = cx * size, oz = cz * size;
 
   for (let attempt = 0; attempt < 24; attempt++) {
+    if (attempt % 2) yield;
     const x = ox + (rng() - 0.5) * (size - 10);
     const z = oz + (rng() - 0.5) * (size - 10);
     const h = terrainHeight(x, z);
@@ -99,8 +123,9 @@ function placeDock(cx, cz) {
     // Same draw, same position in the sequence, as the old market/marina
     // split — so the marinas that survive are the ones that were already
     // marinas. The old markets are simply gone.
-    if (rng() < 0.62) return [];
-    if (rng() < 0.20) return [];      // and thin the rest by a fifth
+    if (rng() < 0.62) return;
+    if (rng() < 0.20) return;         // and thin the rest by a fifth
+    yield;
 
     const dock = along ? {
       x: along.x, z: along.z, cx, cz,
@@ -121,12 +146,13 @@ function placeDock(cx, cz) {
       alongBank: false,
     };
     layoutHarbour(dock);
+    yield;
     dock.name = marinaName(dock);
     dock.stockEpoch = stockEpoch();
     dock.stock = marinaStock(dock, dock.stockEpoch);
-    return [dock];
+    out.push(dock);
+    return;
   }
-  return [];
 }
 
 // --- the harbour's lot -----------------------------------------------------
@@ -221,18 +247,29 @@ function layoutHarbour(dock) {
   dock.solids = solids;
 }
 
-/** Is a point inside a marina's planking? Registered with nav.js as an obstacle. */
+/**
+ * Is a point inside a marina's planking? Registered with nav.js as an
+ * obstacle, so it is asked for every footprint point of every hull every
+ * frame: the marinas near a chunk are looked up once and kept.
+ */
+const _near = { cx: NaN, cz: NaN, list: [] };
+function docksNear(cx, cz) {
+  if (cx !== _near.cx || cz !== _near.cz) {
+    _near.cx = cx; _near.cz = cz; _near.list.length = 0;
+    for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) for (const d of chunkDocks(cx + ix, cz + iz)) _near.list.push(d);
+  }
+  return _near.list;
+}
 export function dockSolidAt(x, z) {
   const size = CONFIG.CHUNK_SIZE;
-  const cx = Math.round(x / size), cz = Math.round(z / size);
-  for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) {
-    for (const d of chunkDocks(cx + ix, cz + iz)) {
-      const wx = x - d.x, wz = z - d.z;
-      if (Math.abs(wx) > 50 || Math.abs(wz) > 50) continue;
-      const dx = Math.sin(d.angle), dz = Math.cos(d.angle);
-      const az = wx * dx + wz * dz, ax = wx * dz - wz * dx;
-      for (const r of d.solids) if (Math.abs(ax - r.x) <= r.w / 2 && Math.abs(az - r.z) <= r.d / 2) return true;
-    }
+  const list = docksNear(Math.round(x / size), Math.round(z / size));
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i];
+    const wx = x - d.x, wz = z - d.z;
+    if (Math.abs(wx) > 50 || Math.abs(wz) > 50) continue;
+    const dx = Math.sin(d.angle), dz = Math.cos(d.angle);
+    const az = wx * dx + wz * dz, ax = wx * dz - wz * dx;
+    for (const r of d.solids) if (Math.abs(ax - r.x) <= r.w / 2 && Math.abs(az - r.z) <= r.d / 2) return true;
   }
   return false;
 }
@@ -706,7 +743,7 @@ function parkDraft(length) { return 0.4 + length * 0.05; }
  * { key, spec, ax, az, heading, mooring } in the marina's frame (x across
  * the main pier, z out along it; a hull's forward is its local -z).
  */
-function dealSlots(dock) {
+function* dealSlots(dock, out) {
   const dx = Math.sin(dock.angle), dz = Math.cos(dock.angle), rx = dz, rz = -dx;
   const depthAt = (ax, az) => waterDepth(dock.x + dx * az + rx * ax, dock.z + dz * az + rz * ax);
   const floats = (ax, az, along, len, beam) => {
@@ -725,9 +762,9 @@ function dealSlots(dock) {
     const finger = row.small ? SMALL_FINGER : MED_FINGER, pitch = row.small ? SMALL_PITCH : MED_PITCH;
     for (const side of row.sides) if (row.blocked !== side) slips.push({ side, z: row.z, finger, pitch, max: row.small ? SMALL_MAX : MED_MAX, taken: false });
   }
-  const out = [];
   const moored = [];
   for (const { key, spec } of specs) {
+    yield;   // a boat's soundings a frame
     const len = spec.length, beam = len * 0.17;
     let placed = false;
     for (const sl of slips) {
@@ -749,6 +786,7 @@ function dealSlots(dock) {
   const lane = [9, -9, 18, -18, 27, -27, 36, -36];
   let li = 0;
   for (const { key, spec } of moored) {
+    yield;
     const len = spec.length, beam = len * 0.17;
     let done = false;
     while (li < lane.length && !done) {
@@ -762,18 +800,21 @@ function dealSlots(dock) {
       }
     }
   }
-  return out;
 }
 
-/** Load and park the marina's stock boats over the lot (asynchronous). */
-function parkStock(dock, g, alive, docks) {
-  for (const slot of dealSlots(dock)) {
+/** Deal and park the marina's stock boats over the lot (a generator: the dealing is sliced; the hulls load asynchronously). */
+function* parkStock(dock, g, alive, docks) {
+  const slots = [];
+  yield* dealSlots(dock, slots);
+  for (const slot of slots) {
     if (docks.player && docks.player.has(slot.key)) continue;    // bought: gone from the docks
     (async () => {
       let hull;
       try { hull = (await loadHull(slot.spec.hullId)).clone(true); } catch { return; }
       if (!alive.on) return;
       await applySkin(hull, slot.spec);
+      if (!alive.on) return;
+      if (docks.compile) { try { await docks.compile(hull); } catch { /* shown anyway */ } }
       if (!alive.on) return;
       const holder = new THREE.Group();
       holder.add(hull);
@@ -827,7 +868,12 @@ function groundUnder(dock, cx, cz, w, d, ry) {
   return { hi, lo, ok: hi <= 3.4 && hi - lo <= 2.8 };
 }
 
-function buildDock(dock, docks) {
+/**
+ * A marina's meshes, built in stages (a generator: each yield is a point a
+ * frame may stop at, Docks.update pumps it). Whole, a big yard cost a
+ * frame 35 ms. Yields the group when it is done.
+ */
+function* buildDock(dock, docks) {
   const g = new THREE.Group();
   const rng = mulberry32((hash2(dock.cx, dock.cz, S + 449) * 1e9) | 0);
   const L = dock.pierLen;
@@ -860,6 +906,7 @@ function buildDock(dock, docks) {
   lampPost(g, -1.2, 0.5, L - 0.6); lampPost(g, 1.2, 0.5, 1.2);
   if (L > 16) lampPost(g, -1.2, 0.5, L * 0.5);
   railing(g, -1.4, 0.2, -1.4, 3.6, 0.5); railing(g, 1.4, 0.2, 1.4, 3.6, 0.5);
+  yield;
 
   // The fuel dock at the head, the ice cream stand and the boathouse where
   // the layout put them: on the shore on posts, or out over the water on
@@ -878,6 +925,7 @@ function buildDock(dock, docks) {
   }
   house.position.set(H.x, 0, H.z); house.rotation.y = H.ry;
   g.add(house);
+  yield;
   const I = dock.stand;
   if (!I.onLand) { g.add(box(MAT.plank, 3.4, 0.16, 4.4, I.x, 0.42, I.z)); for (const sx of [-1.4, 1.4]) for (const sz of [-1.9, 1.9]) g.add(mesh(GEO.piling, MAT.piling, 1.0, 3.0, 1.0, I.x + sx, -1.1, I.z + sz)); }
   iceCreamStand(g, I.x, I.y, I.z, I.ry, I.down);
@@ -885,16 +933,71 @@ function buildDock(dock, docks) {
   const fh = Math.max(0.3, terrainHeight(dock.x + Math.cos(dock.angle) * 3.6 - Math.sin(dock.angle) * 4.2, dock.z - Math.sin(dock.angle) * 3.6 - Math.cos(dock.angle) * 4.2));
   g.add(mesh(GEO.post, MAT.trim, 1, 6.5, 1, 3.6, fh + 3.25, -4.2));
   g.add(mesh(GEO.box, MAT.flag, 1.4, 0.8, 0.02, 4.35, fh + 6.1, -4.2));
-  nameSign(g, dock.name, 1.9, 0.42, 0.7, 0.15);
+  yield;
+  nameSign(g, dock.name, 1.9, 0.42, 0.7, 0.15);   // paints the name on a canvas
+  yield;
+  // Some four hundred little meshes, one draw call each, become one mesh
+  // per paint: the yard costs the GPU a couple of dozen calls instead.
+  yield* mergeStatic(g);
 
   g.position.set(dock.x, 0, dock.z);
   g.rotation.y = dock.angle;
+  yield;
 
   // The boats for sale, dealt over the lot.
   const alive = { on: true };
   g.userData.alive = alive;
-  parkStock(dock, g, alive, docks);
+  yield* parkStock(dock, g, alive, docks);
   return g;
+}
+
+/**
+ * Fold every single-material mesh under `g` into one mesh per material, in
+ * g's own frame (g must not have been placed yet). Multi-material meshes
+ * (the name board) are left as they are.
+ */
+function* mergeStatic(g) {
+  g.updateMatrixWorld(true);
+  const byMat = new Map();
+  const gone = [];
+  g.traverse((o) => {
+    if (!o.isMesh || Array.isArray(o.material)) return;
+    let e = byMat.get(o.material);
+    if (!e) { e = { geos: [], meshes: [], receive: false }; byMat.set(o.material, e); }
+    e.meshes.push(o);
+    if (o.receiveShadow) e.receive = true;
+    gone.push(o);
+  });
+  for (const o of gone) o.parent.remove(o);
+  // A paint at a time, and the planking (a couple of hundred pieces) in
+  // batches, so no one step is dear.
+  const BATCH = 24;
+  for (const [mat, e] of byMat) {
+    const parts = [];
+    for (let i = 0; i < e.meshes.length; i += BATCH) {
+      const geos = e.meshes.slice(i, i + BATCH).map((o) => o.geometry.clone().applyMatrix4(o.matrixWorld));
+      const m = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+      if (geos.length > 1) for (const ge of geos) ge.dispose();
+      if (m) parts.push(m);
+      if (e.meshes.length > BATCH) yield;
+    }
+    const merged = parts.length === 1 ? parts[0] : mergeGeometries(parts, false);
+    if (parts.length > 1) for (const p of parts) p.dispose();
+    e.geos = e.meshes = null;
+    if (merged) {
+      const m = new THREE.Mesh(merged, mat);
+      m.castShadow = true;
+      m.receiveShadow = e.receive;
+      m.userData.merged = true;
+      g.add(m);
+    }
+    yield;
+  }
+}
+
+/** Free what a marina's meshes own when it goes out of range. */
+function disposeDock(g) {
+  g.traverse((o) => { if (o.isMesh && o.userData.merged) o.geometry.dispose(); });
 }
 
 // --- manager -------------------------------------------------------------
@@ -907,16 +1010,50 @@ export class Docks {
     this.player = player;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this.active = new Map();   // dock -> mesh
+    this.active = new Map();   // dock -> mesh, the yards that are built
+    this.queue = new Map();    // dock -> generator, the yards being built
     this.list = [];
     this.parked = [];          // the stock afloat, with their soft physics
+    this.compile = null;       // (obj) => Promise: shaders ready before it is shown
+    this.budgetMs = 2;         // build work a frame may carry
+    this.stageMs = null;       // set to [] to record the dearest step of each build stage
   }
+
+  /**
+   * Build the queued yards, a stage at a time, until the budget is spent;
+   * `Infinity` finishes them all now (tests). A finished yard has its
+   * shaders compiled in the background before it is shown.
+   */
+  pump(budgetMs) {
+    const t0 = performance.now();
+    for (const [d, gen] of this.queue) {
+      while (true) {
+        const s0 = performance.now();
+        const r = gen.next();
+        if (this.stageMs) { const i = (gen.stage = (gen.stage || 0) + 1); this.stageMs[i] = Math.max(this.stageMs[i] || 0, performance.now() - s0); }
+        if (r.done) {
+          const mesh = r.value;
+          this.queue.delete(d);
+          this.active.set(d, mesh);
+          const show = () => { if (this.active.get(d) === mesh) this.group.add(mesh); };
+          if (this.compile && budgetMs !== Infinity) this.compile(mesh).then(show, show); else show();
+          break;
+        }
+        if (performance.now() - t0 > budgetMs) return;
+      }
+      if (performance.now() - t0 > budgetMs) return;
+    }
+  }
+
+  /** Finish every queued yard now (tests). */
+  settle() { this.pump(Infinity); }
 
   /**
    * The parked boats give way to a hull that runs into them — the bigger
    * they are the less — and swing back to their berths on a spring.
    */
   update(dt, vessels) {
+    if (this.queue.size) this.pump(this.budgetMs);
     // The six-hour roll: once the clock turns, every marina in view gets
     // its new stock, the old boats gone from the docks and the new ones in.
     this.clockAcc = (this.clockAcc || 0) + dt;
@@ -969,7 +1106,11 @@ export class Docks {
       p.group.remove(p.holder);
       this.parked.splice(i, 1);
     }
-    parkStock(dock, mesh, mesh.userData.alive, this);
+    // The old stock's hulls still loading must not land after this: the
+    // new deal gets its own token and the old one is cancelled.
+    mesh.userData.alive.on = false;
+    mesh.userData.alive = { on: true };
+    for (const _ of parkStock(dock, mesh, mesh.userData.alive, this)) { /* all at once: a restock is rare */ }
     if (this.onRestock) this.onRestock(dock);
   }
 
@@ -986,19 +1127,17 @@ export class Docks {
   /** Rebuild the visible set from the currently loaded chunk docks. */
   sync(docks) {
     for (const d of docks) {
-      if (!this.active.has(d)) {
-        const mesh = buildDock(d, this);
-        this.group.add(mesh);
-        this.active.set(d, mesh);
-      }
+      if (!this.active.has(d) && !this.queue.has(d)) this.queue.set(d, buildDock(d, this));
     }
     for (const [d, mesh] of this.active) {
       if (!docks.includes(d)) {
         this.group.remove(mesh);
         if (mesh.userData.alive) mesh.userData.alive.on = false;
+        disposeDock(mesh);
         this.active.delete(d);
       }
     }
+    for (const d of this.queue.keys()) if (!docks.includes(d)) this.queue.delete(d);
     this.list = docks;
   }
 

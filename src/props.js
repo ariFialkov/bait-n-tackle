@@ -320,6 +320,8 @@ function fallsMaterial(speed, alpha) {
 }
 const FALLS_BACK = fallsMaterial(1.0, 0.85);
 const FALLS_FRONT = fallsMaterial(1.45, 0.6);
+/** The shader materials a falls or rapid brings, for compiling ahead of the first one. */
+export function warmMaterials() { return [FALLS_BACK, FALLS_FRONT, FLOW_MAT, MATS.splash, MATS.lily, MATS.rock]; }
 
 // The river above the falls and the white water off a rapid's boulders:
 // streaks that flow along the surface (uv.x runs downstream).

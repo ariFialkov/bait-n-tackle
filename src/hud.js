@@ -164,11 +164,17 @@ export class HUD {
   }
 
   setWallet(balance, roundNet) {
-    this.el.balance.textContent = '$' + balance.toFixed(2);
+    // Called every frame; the DOM is only touched when a figure changes.
+    const b = '$' + balance.toFixed(2);
+    if (b !== this._walletB) { this._walletB = b; this.el.balance.textContent = b; }
     const sign = roundNet >= 0 ? '+' : '−';
-    this.el.round.textContent = `${sign}$${Math.abs(roundNet).toFixed(2)}`;
-    this.el.round.classList.toggle('up', roundNet >= 0);
-    this.el.round.classList.toggle('down', roundNet < 0);
+    const r = `${sign}$${Math.abs(roundNet).toFixed(2)}`;
+    if (r !== this._walletR) {
+      this._walletR = r;
+      this.el.round.textContent = r;
+      this.el.round.classList.toggle('up', roundNet >= 0);
+      this.el.round.classList.toggle('down', roundNet < 0);
+    }
   }
 
   hint(text, ms = 2600) {
@@ -392,15 +398,17 @@ export class HUD {
    */
   setFinders(boatPos, marina) {
     const one = (el, entry, atDock) => {
-      if (!entry || !entry.dock) { el.classList.remove('show'); return; }
-      el.classList.add('show');
-      el.classList.toggle('near', atDock);
+      if (!entry || !entry.dock) { if (el._shown !== false) { el._shown = false; el.classList.remove('show'); } return; }
+      if (el._shown !== true) { el._shown = true; el.classList.add('show'); }
+      if (el._near !== atDock) { el._near = atDock; el.classList.toggle('near', atDock); }
       const d = entry.dock;
       // Screen-space bearing: the camera never rotates, so world -Z is up.
+      // Every frame, so only what has changed is written.
       const ang = Math.atan2(d.headX - boatPos.x, -(d.headZ - boatPos.z));
-      el.querySelector('.finder-arrow').style.transform = arrowRot(ang);
-      el.querySelector('.finder-text b').textContent =
-        atDock ? 'here' : `${Math.round(entry.dist)}m`;
+      const rot = arrowRot(ang);
+      if (rot !== el._rot) { el._rot = rot; el.querySelector('.finder-arrow').style.transform = rot; }
+      const txt = atDock ? 'here' : `${Math.round(entry.dist)}m`;
+      if (txt !== el._txt) { el._txt = txt; el.querySelector('.finder-text b').textContent = txt; }
       // The marina's own name on the chip, once it has one.
       const nameEl = el.querySelector('.finder-name');
       if (nameEl && d.name && nameEl.textContent !== d.name) nameEl.textContent = d.name;

@@ -11,14 +11,19 @@ import { CONFIG } from './config.js';
 import { waterDepth } from './lake.js';
 import { waterKind } from './regions.js';
 import { SPECIES } from './fishdata.js';
-import { buildFishMesh } from './fishmodels.js';
+import { buildFishMesh, speciesReady } from './fishmodels.js';
 
 const VIEW_R = 46;      // fish farther than this get recycled
 const SPAWN_R = 38;     // recycled fish reappear around this radius
 
 // Ambient population skews toward common small species, with the odd big one.
 function pickAmbientSpecies(water = 'fresh', rng = Math.random) {
-  const pool = SPECIES.filter((s) => water === 'both' || s.water === water);
+  let pool = SPECIES.filter((s) => water === 'both' || s.water === water);
+  // While the species are still being built in the background (main.js),
+  // the water is stocked from the ones already built: a first fish of a
+  // kind costs a frame up to 9 ms, and these are only scenery.
+  const ready = pool.filter(speciesReady);
+  if (ready.length >= 6) pool = ready;
   const weights = pool.map((s) => 1 / Math.pow(s.value + 1.5, 0.55));
   const total = weights.reduce((a, b) => a + b, 0);
   let r = rng() * total;

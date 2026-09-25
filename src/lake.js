@@ -9,8 +9,8 @@
 import * as THREE from 'three';
 import { CONFIG, LURES } from './config.js';
 import { fbm, hash2, mulberry32, clamp, lerp } from './noise.js';
-import { chunkDocks } from './docks.js';
-import { terrainHeight, waterDepth, cellFeatures } from './terrain.js';
+import { chunkDocks, warmChunkDocks } from './docks.js';
+import { terrainHeight, waterDepth, cellFeatures, cellReady, warmCell } from './terrain.js';
 import { isNavigable } from './nav.js';
 import { currentAt, FlowField } from './currents.js';
 import { CELL, regionBlend, regionAt, salinity, waterKind, mixHex } from './regions.js';
@@ -68,44 +68,72 @@ function colorAt(h, x, z, out) {
 }
 
 // --- Chunk ---
+//
+// A chunk is built in stages, a few at a time per frame (Lake.pump), so the
+// ring of seven new chunks the boat wants every 64 m never lands in one
+// frame: whole, it cost 50 ms and was the stutter you felt at every chunk
+// line. Everything a chunk owns hangs off its own node, which joins the
+// lake only once the chunk is complete (and its shaders compiled).
 class Chunk {
-  constructor(cx, cz, parentGroup) {
+  constructor(cx, cz) {
     this.cx = cx; this.cz = cz;
-    const size = CONFIG.CHUNK_SIZE, res = CONFIG.CHUNK_RES;
-    const ox = cx * size, oz = cz * size;
-    this.ox = ox; this.oz = oz;
+    const size = CONFIG.CHUNK_SIZE;
+    this.ox = cx * size; this.oz = cz * size;
+    this.node = new THREE.Group();
+    this.mesh = null;
+    this.props = [];
+    this.brush = [];
+    this.features = [];          // { dispose(), update?(t) }
+    this.landmarks = [];
+    this.hotspots = [];
+    this.docks = [];
+    this.state = 'build';        // build -> compile -> ready
+    this.dropped = false;
+  }
 
+  /** The build, as a generator: each yield is a point a frame may stop at. */
+  *build() {
+    const size = CONFIG.CHUNK_SIZE, res = CONFIG.CHUNK_RES, ox = this.ox, oz = this.oz;
     const geo = new THREE.PlaneGeometry(size, size, res, res);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i) + ox, z = pos.getZ(i) + oz;
-      const h = terrainHeight(x, z);
-      pos.setY(i, h);
-      colorAt(h, x, z, tmpC);
-      colors[i * 3] = tmpC.r; colors[i * 3 + 1] = tmpC.g; colors[i * 3 + 2] = tmpC.b;
+    // The ground, a few rows of vertices at a time.
+    const perRow = res + 1, ROWS = 3;
+    for (let r0 = 0; r0 < perRow; r0 += ROWS) {
+      const end = Math.min(pos.count, (r0 + ROWS) * perRow);
+      for (let i = r0 * perRow; i < end; i++) {
+        const x = pos.getX(i) + ox, z = pos.getZ(i) + oz;
+        const h = terrainHeight(x, z);
+        pos.setY(i, h);
+        colorAt(h, x, z, tmpC);
+        colors[i * 3] = tmpC.r; colors[i * 3 + 1] = tmpC.g; colors[i * 3 + 2] = tmpC.b;
+      }
+      yield;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-
     this.mesh = new THREE.Mesh(geo, Chunk.material);
     this.mesh.position.set(ox, 0, oz);
     this.mesh.receiveShadow = true;
-    parentGroup.add(this.mesh);
-
-    const props = buildChunkProps(cx, cz, parentGroup);
+    this.node.add(this.mesh);
+    yield;
+    // What the regions strew over it.
+    const props = buildChunkProps(this.cx, this.cz, this.node);
     this.props = props.meshes;
     this.brush = props.brush;
-    this.features = [];          // { dispose(), update?(t) }
-    this.landmarks = [];
+    yield;
+    // What is built into it.
     this.hotspots = this.buildHotspots(ox, oz, size);
-    this.buildFeatures(parentGroup);
-    this.docks = chunkDocks(cx, cz);
+    yield* this.buildFeatures(this.node);
+    yield;
+    // Its marina, if it has one: placed a few soundings at a time.
+    while (!warmChunkDocks(this.cx, this.cz, 0.6)) yield;
+    this.docks = chunkDocks(this.cx, this.cz);
   }
 
-  /** The built features and landmarks of every region cell this chunk overlaps. */
-  buildFeatures(parent) {
+  /** The built features and landmarks of every region cell this chunk overlaps (a yield after each build). */
+  *buildFeatures(parent) {
     const half = CONFIG.CHUNK_SIZE / 2;
     const x0 = this.ox - half, x1 = this.ox + half, z0 = this.oz - half, z1 = this.oz + half;
     const inside = (p) => p.x >= x0 && p.x < x1 && p.z >= z0 && p.z < z1;
@@ -114,16 +142,18 @@ class Chunk {
     for (let cx = c0x; cx <= c1x; cx++) {
       for (let cz = c0z; cz <= c1z; cz++) {
         const f = cellFeatures(cx, cz);
-        for (const fall of f.falls) if (inside(fall)) this.features.push(buildFalls(fall, parent));
-        for (const d of f.dams) if (inside(d)) this.features.push(buildDam(d, parent));
+        for (const fall of f.falls) if (inside(fall)) { this.features.push(buildFalls(fall, parent)); yield; }
+        for (const d of f.dams) if (inside(d)) { this.features.push(buildDam(d, parent)); yield; }
         for (const l of f.lodges) if (inside(l)) { const im = buildLodge(l, parent); if (im) this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } }); }
-        for (const st of f.stacks) if (inside(st)) this.features.push(buildStack(st, parent));
+        for (const st of f.stacks) if (inside(st)) { this.features.push(buildStack(st, parent)); yield; }
         const boulders = f.boulders.filter(inside);
         if (boulders.length) {
           const im = buildBoulders(boulders, parent);
           this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } });
+          yield;
           // Every boulder in a current gets a boat's wake: the water is the hull here.
           this.features.push(new RockWakes(boulders, parent, currentAt, (b) => regionAt(b.x, b.z).flow || 0));
+          yield;
         }
         for (const lm of f.landmarks) if (inside(lm)) this.landmarks.push(lm);
         for (const hs of f.hotspots) {
@@ -176,10 +206,19 @@ class Chunk {
   }
 
   dispose(parentGroup) {
-    parentGroup.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    for (const im of this.props) { parentGroup.remove(im); im.dispose(); }
+    this.dropped = true;
+    parentGroup.remove(this.node);
+    // Its materials are being compiled in the background: they are freed
+    // once that has finished (pump), or the renderer trips over them.
+    if (this.state === 'compile') return;
+    this.free();
+  }
+
+  free() {
+    if (this.mesh) this.mesh.geometry.dispose();
+    for (const im of this.props) { this.node.remove(im); im.dispose(); }
     for (const f of this.features) f.dispose();
+    this.props = []; this.features = [];
   }
 }
 
@@ -235,10 +274,61 @@ class HotspotFX {
 }
 
 // --- Water surface: big transparent plane with animated shader waves ---
-const WATER_SEG = 104;
+const WATER_SPAN = CONFIG.CHUNK_SIZE * 9;   // metres a side
+const WATER_STEP = 4;                       // metres between vertices: divides the chunk, so a step lands on the lattice
+const WATER_SEG = WATER_SPAN / WATER_STEP;
+
+const _oc = mixHex(0x2f8fb9, 0x2f8fb9, 1), _od = mixHex(0x0b3a63, 0x0b3a63, 1);
+const _wv = new Float32Array(10);
+/** The ten values of a water vertex at (x, z), in one reused array. */
+function waterVertex(x, z) {
+  const bl = regionBlend(x, z);
+  const A = bl.a.biome.water, B = bl.b.biome.water, wa = bl.wa, wb = bl.wb;
+  // Salt water is the sea's colour whatever region it lies in, so the
+  // brackish band shades from river to ocean on its own.
+  const s = salinity(x, z);
+  const c = mixHex(A.shallow, B.shallow, wa);
+  const d = mixHex(A.deep, B.deep, wa);
+  const v = _wv;
+  v[0] = lerp(c.r, _oc.r, s); v[1] = lerp(c.g, _oc.g, s); v[2] = lerp(c.b, _oc.b, s);
+  v[3] = lerp(d.r, _od.r, s); v[4] = lerp(d.g, _od.g, s); v[5] = lerp(d.b, _od.b, s);
+  v[6] = Math.max(A.chop * wa + B.chop * wb, s);
+  v[7] = (A.murk * wa + B.murk * wb) * (1 - s);
+  v[8] = s;
+  const h = terrainHeight(x, z);
+  v[9] = h < 0 ? -h : 0;
+  return v;
+}
+
+/**
+ * A tile of value noise the water's fragment shader reads instead of
+ * hashing it five times a pixel: the same noise, in a 64-unit repeat,
+ * as one texture fetch.
+ */
+function noiseTexture() {
+  const N = 256, PERIOD = 64, data = new Uint8Array(N * N * 4);
+  const h = (ix, iz) => hash2(((ix % PERIOD) + PERIOD) % PERIOD, ((iz % PERIOD) + PERIOD) % PERIOD, 4242);
+  for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+    const x = px / N * PERIOD, z = py / N * PERIOD;
+    const ix = Math.floor(x), iz = Math.floor(z);
+    let fx = x - ix, fz = z - iz;
+    fx = fx * fx * (3 - 2 * fx); fz = fz * fz * (3 - 2 * fz);
+    const a = h(ix, iz), b = h(ix + 1, iz), c = h(ix, iz + 1), d = h(ix + 1, iz + 1);
+    const v = a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+    const o = (py * N + px) * 4;
+    data[o] = data[o + 1] = data[o + 2] = Math.round(v * 255); data[o + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, N, N);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
+}
 
 function makeWater() {
-  const geo = new THREE.PlaneGeometry(CONFIG.CHUNK_SIZE * 9, CONFIG.CHUNK_SIZE * 9, WATER_SEG, WATER_SEG);
+  const geo = new THREE.PlaneGeometry(WATER_SPAN, WATER_SPAN, WATER_SEG, WATER_SEG);
   geo.rotateX(-Math.PI / 2);
   const n = geo.attributes.position.count;
   geo.setAttribute('aShallow', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
@@ -257,6 +347,7 @@ function makeWater() {
       uSun: { value: new THREE.Color(0xfff4e0) },
       uSunDir: { value: new THREE.Vector3(0.4, 0.7, 0.3).normalize() },
       uSunset: { value: 0 },
+      uNoise: { value: noiseTexture() },
     },
     vertexShader: /* glsl */`
       uniform float uTime;
@@ -294,15 +385,12 @@ function makeWater() {
       uniform float uTime;
       uniform vec3 uSky, uSun, uSunDir;
       uniform float uSunset;
+      uniform sampler2D uNoise;
       varying vec3 vWorld, vShallow, vDeep;
       varying float vWave, vChop, vMurk, vDepth, vCrest, vSalt;
       varying vec2 vGrad;
-      float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-      float vnoise(vec2 p) {
-        vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-        float a = hash21(i), b = hash21(i + vec2(1, 0)), c = hash21(i + vec2(0, 1)), d = hash21(i + vec2(1, 1));
-        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-      }
+      // Value noise, baked: one fetch where five hashes and a blend were.
+      float vnoise(vec2 p) { return texture2D(uNoise, p * (1.0 / 64.0)).r; }
       void main() {
         float sp1 = sin(vWorld.x * 1.4 + uTime * 1.5 + sin(vWorld.z * 0.7) * 2.0);
         float sp2 = sin(vWorld.z * 1.1 - uTime * 1.2 + sin(vWorld.x * 0.9) * 2.0);
@@ -359,8 +447,18 @@ export class Lake {
     this.scene = scene;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this.chunks = new Map();
+    this.chunks = new Map();       // key -> Chunk, the ones that are in
+    this.pending = new Map();      // key -> Chunk, queued or being built
+    this.building = null;          // { chunk, gen } the one under way
+    this.budgetMs = 1.8;           // chunk work a frame may carry (a stage may run a little over)
+    this.stageMs = null;           // set to [] to record the dearest step of each build stage
+    this.eye = { x: 0, z: 0 };
+    this.changed = false;
+    this.relistSoon = false;
+    this.compile = null;           // (node) => Promise: compile its shaders before it joins
     this.water = makeWater();
+    this.waterOrigin = null;       // where the plane last stood
+    this.waterTodo = [];           // vertex indices still to be computed
     scene.add(this.water);
     this.fx = new HotspotFX(scene);
     this.flow = new FlowField(scene);
@@ -377,48 +475,142 @@ export class Lake {
 
   key(cx, cz) { return cx + '|' + cz; }
 
-  ensureChunks(x, z) {
+  /**
+   * Keep the ring of chunks round (x, z) alive. New chunks are queued and
+   * built over the frames that follow (pump); `sync` builds them all now,
+   * for the first frame and for tests.
+   */
+  ensureChunks(x, z, sync = false) {
     const size = CONFIG.CHUNK_SIZE, r = CONFIG.VIEW_CHUNKS;
     const ccx = Math.round(x / size), ccz = Math.round(z / size);
-    let changed = false;
+    this.eye.x = x; this.eye.z = z;
     for (let dz = -r; dz <= r; dz++) {
       for (let dx = -r; dx <= r; dx++) {
         const k = this.key(ccx + dx, ccz + dz);
-        if (!this.chunks.has(k)) {
-          this.chunks.set(k, new Chunk(ccx + dx, ccz + dz, this.group));
-          changed = true;
-        }
+        if (!this.chunks.has(k) && !this.pending.has(k)) this.pending.set(k, new Chunk(ccx + dx, ccz + dz));
       }
     }
     for (const [k, chunk] of this.chunks) {
       if (Math.abs(chunk.cx - ccx) > r + 1 || Math.abs(chunk.cz - ccz) > r + 1) {
         chunk.dispose(this.group);
         this.chunks.delete(k);
-        changed = true;
+        this.changed = true;
       }
     }
-    if (changed) {
-      this.hotspots = [];
-      this.docks = [];
-      this.landmarks = [];
-      for (const chunk of this.chunks.values()) {
-        this.hotspots.push(...chunk.hotspots);
-        this.docks.push(...chunk.docks);
-        this.landmarks.push(...chunk.landmarks);
+    for (const [k, chunk] of this.pending) {
+      if (Math.abs(chunk.cx - ccx) > r || Math.abs(chunk.cz - ccz) > r) {
+        chunk.dispose(this.group);
+        this.pending.delete(k);
+        if (this.building && this.building.chunk === chunk) this.building = null;
       }
-      this.fx.sync(this.hotspots);
-      if (this.onDocksChanged) this.onDocksChanged(this.docks);
-      if (this.onLandmarksChanged) this.onLandmarksChanged(this.landmarks);
     }
+    if (sync) this.warmCells(Infinity);
     // Water follows the boat in whole-tile steps to appear infinite, and is
     // re-coloured from the regions under it whenever it steps.
     const tile = ccx + '|' + ccz;
+    let stepped = false;
     if (tile !== this.waterTile) {
       this.waterTile = tile;
       this.water.position.x = ccx * size;
       this.water.position.z = ccz * size;
-      this.refreshWater(ccx * size, ccz * size);
+      this.refreshWater(ccx * size, ccz * size, sync);
+      stepped = true;
     }
+    // The frame the water steps carries little else.
+    this.pump(sync ? Infinity : stepped ? this.budgetMs * 0.2 : this.budgetMs);
+    if (sync) this.fillWater(Infinity);
+  }
+
+  /**
+   * Build the queued chunks, nearest first, a stage at a time, until the
+   * frame's budget is spent. A finished chunk has its shaders compiled off
+   * the main thread (when the renderer offers it) before it joins the lake.
+   */
+  pump(budgetMs) {
+    const t0 = performance.now();
+    while (true) {
+      if (!this.building) {
+        let best = null, bd = Infinity;
+        for (const c of this.pending.values()) {
+          if (c.state !== 'build') continue;
+          const d = (c.ox - this.eye.x) ** 2 + (c.oz - this.eye.z) ** 2;
+          if (d < bd) { bd = d; best = c; }
+        }
+        if (!best) break;
+        this.building = { chunk: best, gen: best.build() };
+      }
+      const { chunk, gen } = this.building;
+      const s0 = performance.now();
+      const done = gen.next().done;
+      const st = this.stageMs, si = this.building ? (this.building.stage = (this.building.stage || 0) + 1) : 0;
+      if (st) st[si] = Math.max(st[si] || 0, performance.now() - s0);   // debug: the dearest step of each stage
+      if (done) {
+        this.building = null;
+        chunk.state = 'compile';
+        const attach = () => { if (chunk.dropped) chunk.free(); else this.attach(chunk); };
+        if (this.compile && budgetMs !== Infinity) this.compile(chunk.node).then(attach, attach);
+        else attach();
+      }
+      if (performance.now() - t0 > budgetMs) break;
+    }
+    // Everything now: the chunks still waiting on a compile go in as they are.
+    if (budgetMs === Infinity) for (const c of [...this.pending.values()]) if (c.state === 'compile') this.attach(c);
+    if (this.relistSoon || (this.changed && budgetMs === Infinity)) { this.relistSoon = false; this.relist(); }
+  }
+
+  /** A built chunk joins the lake (once). */
+  attach(chunk) {
+    const k = this.key(chunk.cx, chunk.cz);
+    if (chunk.dropped || this.pending.get(k) !== chunk) return;
+    chunk.state = 'ready';
+    this.pending.delete(k);
+    this.chunks.set(k, chunk);
+    this.group.add(chunk.node);
+    this.changed = true;
+    this.relistSoon = true;
+  }
+
+  /** Gather the lists (hotspots, marinas, landmarks) from the chunks that are in. */
+  relist() {
+    if (!this.changed) return;
+    this.changed = false;
+    this.hotspots = [];
+    this.docks = [];
+    this.landmarks = [];
+    for (const chunk of this.chunks.values()) {
+      this.hotspots.push(...chunk.hotspots);
+      this.docks.push(...chunk.docks);
+      this.landmarks.push(...chunk.landmarks);
+    }
+    this.fx.sync(this.hotspots);
+    if (this.onDocksChanged) this.onDocksChanged(this.docks);
+    if (this.onLandmarksChanged) this.onLandmarksChanged(this.landmarks);
+  }
+
+  /**
+   * The region cells round the eye (seven by seven, 600 m and more each
+   * way) are built ahead, a slice a frame, nearest first: the ground, the
+   * water and the map then never wait on one. True when all are built.
+   */
+  warmCells(budgetMs) {
+    const ccx = Math.floor(this.eye.x / CELL), ccz = Math.floor(this.eye.z / CELL);
+    const t0 = performance.now();
+    for (let ring = 0; ring <= 3; ring++) {
+      for (let dz = -ring; dz <= ring; dz++) for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+        if (cellReady(ccx + dx, ccz + dz)) continue;
+        if (!warmCell(ccx + dx, ccz + dz, budgetMs - (performance.now() - t0))) return false;
+        if (performance.now() - t0 > budgetMs) return false;
+      }
+    }
+    return true;
+  }
+
+  /** Finish every queued chunk, the cells round it and the water now (tests). */
+  settle() {
+    this.warmCells(Infinity);
+    this.pump(Infinity);
+    this.fillWater(Infinity);
   }
 
   /** The light on the water: the sun's colour and direction and how far into sunset. */
@@ -430,35 +622,74 @@ export class Lake {
     u.uSunset.value = sunset;
   }
 
-  /** Colour, chop, murk and depth per water vertex from what lies under it. */
-  refreshWater(ox, oz) {
+  /**
+   * Colour, chop, murk and depth per water vertex from what lies under it.
+   * The vertices sit on a 4 m lattice the plane steps along in whole chunks,
+   * so after a step nearly every vertex lands on a point already worked out:
+   * those are copied from the cache; the new strip at the far edge (out in
+   * the fog) is filled over the next frames by fillWater. Whole, this cost
+   * 27 ms a step.
+   */
+  refreshWater(ox, oz, sync = false) {
     const geo = this.water.geometry;
     const pos = geo.attributes.position;
-    const sh = geo.attributes.aShallow, dp = geo.attributes.aDeep;
-    const chop = geo.attributes.aChop, murk = geo.attributes.aMurk, depth = geo.attributes.aDepth, salt = geo.attributes.aSalt;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i) + ox, z = pos.getZ(i) + oz;
-      const bl = regionBlend(x, z);
-      const A = bl.a.biome.water, B = bl.b.biome.water, wa = bl.wa, wb = bl.wb;
-      // Salt water is the sea's colour whatever region it lies in, so the
-      // brackish band shades from river to ocean on its own.
-      const s = salinity(x, z);
-      let c = mixHex(A.shallow, B.shallow, wa);
-      let d = mixHex(A.deep, B.deep, wa);
-      if (s > 0) {
-        const oc = mixHex(0x2f8fb9, 0x2f8fb9, 1), od = mixHex(0x0b3a63, 0x0b3a63, 1);
-        c = { r: lerp(c.r, oc.r, s), g: lerp(c.g, oc.g, s), b: lerp(c.b, oc.b, s) };
-        d = { r: lerp(d.r, od.r, s), g: lerp(d.g, od.g, s), b: lerp(d.b, od.b, s) };
-      }
-      sh.setXYZ(i, c.r, c.g, c.b);
-      dp.setXYZ(i, d.r, d.g, d.b);
-      chop.setX(i, Math.max(A.chop * wa + B.chop * wb, s));
-      murk.setX(i, (A.murk * wa + B.murk * wb) * (1 - s));
-      salt.setX(i, s);
-      const h = terrainHeight(x, z);
-      depth.setX(i, h < 0 ? -h : 0);
+    const W = WATER_SEG + 1;               // vertices a side; row along z, column along x
+    const todo = this.waterTodo; todo.length = 0;
+    const from = this.waterOrigin;
+    const sx = from ? Math.round((ox - from.ox) / WATER_STEP) : W, sz = from ? Math.round((oz - from.oz) / WATER_STEP) : W;
+    // The vertices that were already worked out slide along the arrays to
+    // their new index (the new vertex at row r, column c is the old one at
+    // r + sz, c + sx); the rest are owed.
+    // (Clamped: a jump of more than the plane's width keeps nothing.)
+    const c0 = Math.min(W, Math.max(0, -sx)), c1 = Math.max(0, Math.min(W, W - sx));
+    const r0 = Math.min(W, Math.max(0, -sz)), r1 = Math.max(0, Math.min(W, W - sz));
+    if (c1 > c0 && r1 > r0) {
+      const shift = (arr, s) => {
+        const len = (c1 - c0) * s;
+        if (sz >= 0) for (let r = r0; r < r1; r++) { const src = ((r + sz) * W + c0 + sx) * s; arr.copyWithin((r * W + c0) * s, src, src + len); }
+        else for (let r = r1 - 1; r >= r0; r--) { const src = ((r + sz) * W + c0 + sx) * s; arr.copyWithin((r * W + c0) * s, src, src + len); }
+      };
+      const a = geo.attributes;
+      shift(a.aShallow.array, 3); shift(a.aDeep.array, 3);
+      shift(a.aChop.array, 1); shift(a.aMurk.array, 1); shift(a.aDepth.array, 1); shift(a.aSalt.array, 1);
     }
-    sh.needsUpdate = dp.needsUpdate = chop.needsUpdate = murk.needsUpdate = depth.needsUpdate = salt.needsUpdate = true;
+    for (let r = 0; r < W; r++) {
+      if (r < r0 || r >= r1) { for (let c = 0; c < W; c++) todo.push(r * W + c); continue; }
+      for (let c = 0; c < c0; c++) todo.push(r * W + c);
+      for (let c = Math.max(c1, 0); c < W; c++) todo.push(r * W + c);
+    }
+    // (The strip owed lies along the far edge, out in the fog: no order needed.)
+    this.waterOrigin = { ox, oz };
+    this.markWater();
+    this.fillWater(sync ? Infinity : this.budgetMs * 0.4);
+  }
+
+  /** Work out the vertices still owed, for up to `budgetMs`. */
+  fillWater(budgetMs) {
+    const todo = this.waterTodo;
+    if (!todo.length) return;
+    const t0 = performance.now();
+    const geo = this.water.geometry, pos = geo.attributes.position;
+    const { ox, oz } = this.waterOrigin;
+    let n = 0;
+    while (todo.length) {
+      const i = todo.pop();
+      this.putWaterVertex(i, waterVertex(pos.getX(i) + ox, pos.getZ(i) + oz));
+      if ((++n & 31) === 0 && performance.now() - t0 > budgetMs) break;
+    }
+    this.markWater();
+  }
+
+  putWaterVertex(i, v) {
+    const a = this.water.geometry.attributes;
+    a.aShallow.setXYZ(i, v[0], v[1], v[2]);
+    a.aDeep.setXYZ(i, v[3], v[4], v[5]);
+    a.aChop.setX(i, v[6]); a.aMurk.setX(i, v[7]); a.aSalt.setX(i, v[8]); a.aDepth.setX(i, v[9]);
+  }
+
+  markWater() {
+    const a = this.water.geometry.attributes;
+    a.aShallow.needsUpdate = a.aDeep.needsUpdate = a.aChop.needsUpdate = a.aMurk.needsUpdate = a.aDepth.needsUpdate = a.aSalt.needsUpdate = true;
   }
 
   nearestHotspot(x, z) {
@@ -494,6 +725,8 @@ export class Lake {
 
   update(t, boatX, boatZ, dt = 0.016, vessels = null) {
     this.ensureChunks(boatX, boatZ);
+    if (this.waterTodo.length) this.fillWater(this.budgetMs * 0.5);
+    if (!this.pending.size) this.warmCells(this.budgetMs * 0.5);
     this.water.material.uniforms.uTime.value = t;
     this.fx.update(t);
     tickEffects(t);

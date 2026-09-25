@@ -634,6 +634,9 @@ const ROCK_MAT = new THREE.ShaderMaterial({
 });
 
 /** Advance every rock wake's clock. Call once a frame. */
+/** The boulder wakes' material, for compiling ahead of the first rapid. */
+export function rockWakeMaterial() { return ROCK_MAT; }
+
 export function tickRockWakes(t) {
   ROCK_MAT.uniforms.uTime.value = t;
   ROCK_MAT.uniforms.uFlowT.value = t * 5.5;

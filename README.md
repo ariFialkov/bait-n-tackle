@@ -642,6 +642,71 @@ each one favours. That only changes how *often* a fish shows up for that
 bait — the payout is still drawn from the same paytable against the same
 stake — so it cannot be played for an edge.
 
+### Keeping the frame smooth
+
+Nothing the world does is allowed to land in one frame. The rule is that a
+frame carries a couple of milliseconds of world work at most, and anything
+bigger is cut into slices and spread over the frames that follow, out in
+the fog, before it can be seen:
+
+* **Chunks stream in a stage at a time** (`lake.js`). The seven new chunks
+  the boat wants every 64 m used to be built whole, in one frame (50 ms —
+  the stutter at every chunk line). Each is now a generator: a few rows of
+  ground per step, then the props, then each built feature, then the
+  marina; a queue builds the nearest first under a per-frame budget, and
+  a finished chunk joins the lake only once its shaders are compiled
+  (below). A chunk builds in about a third of a second, at 160 m and
+  more from the boat, where the fog has it anyway.
+* **The water plane slides instead of being redone.** Its vertices sit on
+  a 4 m lattice the plane steps along in whole chunks, so after a step the
+  colour, chop, salt and depth of nearly every vertex are shifted along
+  the arrays (a memcpy) and only the new strip at the far edge is worked
+  out, a few hundred vertices a frame. The recolour was 27 ms a step.
+* **Region cells are warmed ahead.** A beaver or pond cell (its dams, its
+  soundings) costs 10–40 ms to lay out, and it used to be built by
+  whatever first touched it — a chunk, the water, the map, the boat. Cell
+  builds are generators too, and the lake advances the seven-by-seven
+  cells round the boat a slice a frame, long before anything asks for
+  them; anything that does ask for an unfinished cell finishes it on the
+  spot, so no reader ever sees half a cell. The same goes for a chunk's
+  marina placement and the dealing of a yard's stock.
+* **Marinas** are built in stages the same way (a big yard was 35 ms),
+  and their four hundred little meshes are folded into one mesh per paint,
+  so a yard in view costs the GPU two dozen draw calls instead of four
+  hundred. A fish is four draw calls rather than ten (its fins and eyes
+  merged, once per species), which matters sixteen fish at a time.
+* **Shaders are compiled in the background.** New country, new yards and
+  new hulls go through `renderer.compileAsync` (parallel shader compile
+  where the browser has it) before they are shown, and the programs the
+  world will want later — a yard's paint and sign, a falls, a rapid's
+  white water, a name over a boat — are compiled behind the menu on
+  stand-in meshes. The first fish of every species is built there too, in
+  the browser's idle moments, and until it is the water is stocked from
+  the species already built.
+* **The water's noise is a texture**: the fragment shader read five
+  hash-noise evaluations a pixel over most of the screen; it now reads a
+  baked 256² value-noise tile once per call, the same noise at the same
+  frequencies. Shadows use plain PCF.
+* **Resolution follows the frame rate.** A phone is drawn at no more than
+  1.5× its screen, a desktop at 2×; if the frames run long the picture is
+  drawn a notch smaller (down to 0.6 of that), and climbs back when they
+  are comfortably short again.
+* **Smaller things, each a fraction of a millisecond a frame** that were
+  adding up: the flow streaks read the current off a cached 4 m lattice
+  (they were a fifth of the update, asking the field five hundred times a
+  frame) with only so many fresh points worked out per frame; the
+  marinas' planking is looked up once per chunk rather than nine times
+  per footprint point; the HUD writes to the DOM only when a figure
+  changes; the minimap paints its tiles six rows a frame, keeps the
+  country and names on a layer redone only when the boat has moved a
+  pixel, and redraws fifteen times a second; the deck-crew path search
+  uses a heap and numeric keys.
+
+For measuring it, `BNT.profile = {}` on the debug handle makes the frame
+loop leave each step's milliseconds there under its name, and
+`BNT.lake.stageMs = []` / `BNT.docks.stageMs = []` record the dearest
+step of each build stage.
+
 ## Project layout
 
 ```

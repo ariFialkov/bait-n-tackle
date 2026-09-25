@@ -5,7 +5,7 @@ import { putIcons } from './icons.js';
 putIcons(document);
 import { CONFIG, LURES } from './config.js';
 import { Lake } from './lake.js';
-import { Boat } from './boat.js';
+import { Boat, hullCompile } from './boat.js';
 import { AmbientFish } from './fish.js';
 import { CameraRig } from './cameraRig.js';
 import { RTPEngine } from './rtp.js';
@@ -20,22 +20,30 @@ import { Tender } from './tender.js';
 import { separateHulls } from './hullphysics.js';
 import { CrewDirector } from './deckcrew.js';
 import { SPECIES } from './fishdata.js';
+import { buildFishMesh } from './fishmodels.js';
 import { Climate } from './climate.js';
 import { Minimap } from './minimap.js';
 import { NpcFleet } from './npc.js';
 import { Labels } from './labels.js';
 import { findStart } from './nav.js';
+import { warmMaterials } from './props.js';
+import { rockWakeMaterial } from './wake.js';
 import { regionBlend, BIOMES } from './regions.js';
 
 // --- Renderer / scene ---
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+// Resolution: a phone's screen is drawn at no more than 1.5x, a desktop's at
+// 2x, and either comes down a notch when the frames run long (see below).
+const COARSE = window.matchMedia('(pointer: coarse)').matches;
+const DPR_CAP = Math.min(window.devicePixelRatio || 1, COARSE ? 1.5 : 2);
+let resScale = 1;
+renderer.setPixelRatio(DPR_CAP);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.06;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbfe3f2);
@@ -65,6 +73,7 @@ const player = new Player();
 const lake = new Lake(scene);
 // Somewhere new every time: a random reach of fresh water with sea room.
 const start = findStart();
+lake.ensureChunks(start.x, start.z, true);   // the first ring, all at once
 lake.update(0, start.x, start.z);
 const boat = new Boat(scene, lake, player);
 boat.placeAt(start.x, start.z, start.heading);
@@ -83,6 +92,84 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// New country and new hulls have their shaders compiled in the background
+// before they are shown, so the first marina, rapid or stranger on the water
+// never stalls a frame while the GPU driver builds a program.
+const compileFor = (obj) => renderer.compileAsync(obj, camera, scene);
+lake.compile = compileFor;
+docks.compile = compileFor;
+hullCompile.fn = compileFor;
+
+/**
+ * And the programs the world will want later — a marina's paint and its
+ * sign, a falls, a rapid's white water, a stranger's name over their boat —
+ * are compiled now, behind the menu, on stand-in meshes.
+ */
+function warmShaders() {
+  const warm = new THREE.Group();
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 8;
+  const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+  const mats = [
+    new THREE.MeshLambertMaterial({ color: 0xa97f4e }),
+    new THREE.MeshLambertMaterial({ map: tex }),
+    new THREE.MeshLambertMaterial({ color: 0xe8483f, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false }),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }),
+    ...warmMaterials(), rockWakeMaterial(),
+  ];
+  for (const m of mats) { const mesh = new THREE.Mesh(box, m); mesh.castShadow = true; warm.add(mesh); }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })); warm.add(sp);
+  const sp2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })); warm.add(sp2);
+  compileFor(warm).catch(() => {});
+}
+warmShaders();
+
+/**
+ * The first fish of a species costs up to 9 ms to build (its body, its
+ * skin painted on a canvas): all hundred-odd are built now, a few at a
+ * time in the browser's idle moments, so none of it lands in play.
+ */
+function warmFish() {
+  const todo = SPECIES.slice();
+  const idle = window.requestIdleCallback
+    ? (fn) => window.requestIdleCallback(fn, { timeout: 250 })
+    : (fn) => setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: false }), 50);
+  const step = (deadline) => {
+    // A busy browser never idles: after the timeout one is built regardless.
+    if (deadline.didTimeout && todo.length) buildFishMesh(todo.shift());
+    while (todo.length && deadline.timeRemaining() > 3) buildFishMesh(todo.shift());
+    if (todo.length) idle(step);
+  };
+  idle(step);
+}
+warmFish();
+
+/**
+ * Dynamic resolution. The frame interval is watched over a second or so;
+ * if the frames are running long the picture is drawn a notch smaller (to
+ * 0.6 of the cap), and once they are comfortably short again it climbs
+ * back. Standard practice on phones; nothing to do with a bet.
+ */
+const resWatch = { acc: 0, n: 0, hold: 0 };
+function watchResolution(interval) {
+  const w = resWatch;
+  if (w.hold > 0) { w.hold -= interval; return; }
+  w.acc += interval; w.n++;
+  if (w.n < 90) return;
+  const avg = w.acc / w.n;
+  w.acc = 0; w.n = 0;
+  let want = resScale;
+  if (avg > 0.025 && resScale > 0.6) want = Math.max(0.6, resScale - 0.15);
+  else if (avg < 0.0172 && resScale < 1) want = Math.min(1, resScale + 0.1);
+  if (want !== resScale) {
+    resScale = want;
+    renderer.setPixelRatio(DPR_CAP * resScale);   // (a resize: a few ms, once)
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    w.hold = 3;   // let it settle before judging again
+  }
+}
 
 const ambientFish = new AmbientFish(scene, 16);
 ambientFish.setFocus(start.x, start.z);
@@ -330,38 +417,57 @@ const clock = new THREE.Clock();
 let saveAcc = 0;
 let lastTenderState = tender.state;
 
+// Frame profiling, off unless a test sets BNT.profile = {}: each step of
+// the frame then leaves its milliseconds there under its name.
+let profile = null, profT = 0;
+const tick = (name) => { if (!profile) return; const now = performance.now(); profile[name] = (profile[name] || 0) + now - profT; profT = now; };
+
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const raw = clock.getDelta();
+  const dt = Math.min(raw, 0.05);
   const t = clock.elapsedTime;
+  if (t > 4 && document.visibilityState !== 'hidden') watchResolution(raw);
 
+  profile = window.BNT && window.BNT.profile; if (profile) profT = performance.now();
   const driving = state === 'play' && !marina.open;
   const move = driving ? input.moveVector() : { x: 0, z: 0 };
   // A mother ship with nobody at her helm holds station: she does not drift
   // off downstream while you are away in the tender.
   boat.anchored = helm !== boat;
   boat.update(dt, helm === boat ? move : { x: 0, z: 0 }, t);
+  tick('boat');
   tender.update(dt, t, helm === tender ? move : { x: 0, z: 0 }, boat, helm === tender);
   // Two hulls, one patch of water: neither drives through the other.
   if (tender.deployed) separateHulls(boat, tender);
+  tick('tender');
   // The boats lying at a marina give way and swing back.
   docks.update(dt, tender.deployed ? [boat, tender] : [boat]);
+  tick('docks');
   // The other boats: driving, fishing, calling at the marinas, calling across.
   npcs.update(dt, t, tender.deployed ? [boat, tender] : [boat], state === 'play' && !marina.open);
+  tick('npcs');
   const eye = helm === tender ? tender.pos : boat.pos;
   lake.update(t, eye.x, eye.z, dt, tender.deployed ? [boat, tender] : [boat]);
+  tick('lake');
   ambientFish.setFocus(eye.x, eye.z);
   ambientFish.update(t, dt);
+  tick('fish');
   if (state === 'play') {
     fishing.update(dt, t);
+    tick('fishing');
     updateDocks(dt);
     updateSonar(dt);
     updateRegion(dt, eye.x, eye.z);
+    tick('finders');
   }
   crew.update(dt, t, helm === tender);
+  tick('crew');
   climate.update(dt, eye.x, eye.z, lake);
   labels.update(eye.x, eye.z, state === 'play');
+  tick('climateLabels');
   rig.update(dt, t, (helm === tender ? tender : boat).group.position);
+  tick('rig');
 
   // Keep the sun (and its shadow frustum) centered on the boat. At sunset
   // it sits low, and the shadows run long.
@@ -370,6 +476,7 @@ function frame() {
   sun.target.position.set(eye.x, 0, eye.z);
   lake.setLight(sun.color, _sunDir.copy(sun.position).sub(sun.target.position), ss, scene.background);
   if (state === 'play') minimap.update(eye.x, eye.z, (helm === tender ? tender : boat).heading, lake.docks);
+  tick('minimap');
 
   hud.setWallet(player.balance, rtp.netRound());
   hud.setTenderChip(tender);
@@ -379,11 +486,14 @@ function frame() {
     const mar = docks.nearest(eye.x, eye.z);
     hud.setFinders(eye, mar.dist <= DOCK_HINT_RANGE ? mar : null);
   }
+  tick('hud');
 
   saveAcc += dt;
   if (saveAcc > 3) { saveAcc = 0; player.save(); }
+  tick('save');
 
   renderer.render(scene, camera);
+  tick('render');
 }
 frame();
 
@@ -391,6 +501,8 @@ frame();
 window.BNT = {
   hud, rtp, fishing, boat, tender, crew, player, dex, marina, docks, lake, rig, SPECIES,
   equipBoat, refreshShipPanel, separateHulls, labels, climate, minimap, npcs, start, BIOMES,
+  renderer, scene, camera, sun, ambientFish,
+  get resScale() { return resScale; },
   get helm() { return helm; },
   get region() { return lastRegion; },
 };

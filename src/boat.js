@@ -40,6 +40,9 @@ const smooth = (k) => k * k * (3 - 2 * k);
 const loader = new GLTFLoader();
 const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
 
+/** Set by main.js: compiles a hull's shaders off the frame before it is shown. */
+export const hullCompile = { fn: null };
+
 export function loadHull(hullId) {
   if (!modelCache.has(hullId)) {
     modelCache.set(hullId, loader.loadAsync(boatModelURL(hullId)).then((gltf) => {
@@ -255,6 +258,8 @@ export class Boat {
     if (!hull) hull = buildProceduralHull(spec.hullId, spec.length);
     if (!hull) hull = fallbackHull(spec.length);
     await applySkin(hull, spec);
+    // Its shaders, compiled before it is shown (main.js sets the hook).
+    if (hullCompile.fn) { try { await hullCompile.fn(hull); } catch { /* shown anyway */ } }
 
     // The moving parts, and anything that comes off the model (the seiner's
     // modelled tender), before the hull is measured.
