@@ -328,43 +328,72 @@ seconds to answer:
   the wallet or the RTP ledger; the side bet itself was settled when it
   was accepted.
 * **The long haul** — three boats found circling and waiting for a
-  fourth. The finish is the farthest named water that connects to here:
-  the water round the boats is flood-filled first (sliced over frames),
-  a water three or four basins off is taken by preference, then two, and
-  never the open sea while there is anything else; a kilometre by water
-  at least where the water runs that far. The card names it and the
-  distance by water; the chip points at the finish; and the live panel
-  lists the named waters of the quickest way there, in order (Alder
-  Ponds → Birch River → Wolf Pond), the current one lit. The long haul is
-  only proposed where the water runs six hundred metres and more; a
-  small lake gets an ordinary boat instead.
+  fourth, and a race of four **paid by place**: first home takes 2½×
+  the stake, second has the stake back, third half of it, last nothing.
+  The finish is a far named water that connects to here: the water
+  round the player is flood-filled first (a 6 m grid laid on the world,
+  sliced over frames, its own path back remembered), a water three or
+  four basins off is taken by preference, then two, and never the open
+  sea while there is anything else; a kilometre by water at least where
+  the water runs that far, and no more than three and a half where there
+  is a choice. The route is the fill's own path, pulled straight, behind
+  a short link from the circle. The card names the finish and the
+  distance by water; the chip points at it; and the live panel gives the
+  player's place of four as it stands and the **next water on the way**
+  with the metres to it ("2nd of 4 · next Birch River 340 m", then
+  "finish Wolf Pond 120 m"). The long haul is only proposed where the
+  water runs six hundred metres and more; a small lake gets an ordinary
+  boat instead.
 
 The stake is a tenth of the wallet, to a tidy figure. Every side bet is
-an **isolated bet against the game RTP** exactly like a catch
-(`rtp.js sideBet`): the payout is drawn from the paytable the moment the
-bet is placed; it is won when that draw is at least the stake, and lost
-otherwise, with the mass a catch would have paid on the losing draws
-added to every win so the expected payout is RTP × stake to the cent.
-The outcome is fixed before anything happens on the water, and what
-happens on the water is **staged to match**, with no skill in it:
+an **isolated bet against the game RTP** exactly like a catch. A race,
+a run and a match are binary (`rtp.js sideBet`): the payout is drawn
+from the paytable the moment the bet is placed; it is won when that draw
+is at least the stake, and lost otherwise, with the mass a catch would
+have paid on the losing draws added to every win so the expected payout
+is RTP × stake to the cent. The long haul draws a place instead
+(`rtp.js placeBet`): the odds of first to fourth are 20 / 28 / 32 / 20
+per cent, and with the payouts above that returns 0.50 + 0.28 + 0.16 =
+0.94 of the stake, the game RTP, to the cent. The outcome is fixed
+before anything happens on the water, and what happens on the water is
+**staged to match**, with no skill in it — but it is staged as a race,
+not a procession:
 
-* On a bet the player is meant to win, the other boat is held a margin
-  behind the player's own progress, and never past nine tenths of the
-  way until the player is home. It is the only case a boat is slowed.
-* On a bet the player is meant to lose, the other boat is **never
-  slowed**: it runs flat out, is not eased for tight water, and is let
-  out past its top speed whenever it falls behind the margin it is meant
-  to hold ahead of the player. In the long haul the first of the three
-  does this and the other two trail the player whatever the result.
+* Until past the halfway mark **the order is open**: each other boat
+  runs about level with the player and swings either side of that on a
+  phase of its own — past the player at a peak, well back at a trough —
+  so leads change hands, boats are passed and pass back, and a bend is
+  tight. Over the third quarter the swings die away and each boat's
+  mark drifts out to its final margin, ahead or behind; from about six
+  sevenths of the way the order is the one drawn. In the long haul the
+  place changes hands a dozen times on the way.
+* A boat meant to finish **behind** the player tracks its mark and may
+  be eased right off to fall back; once the order is settling it is
+  never let past nine tenths of the way until the player is home. It is
+  the only kind of boat that is slowed.
+* A boat meant to finish **ahead** is never held under half throttle
+  while the order is open (its troughs are the player pulling away, not
+  it being reined in) and, once settling, is never slowed at all: flat
+  out, not eased for tight water, and let out past its top speed — its
+  drive raised with the cap, since drag is what sets a hull's top —
+  whenever it is short of its mark. The surges are measured against the
+  player's own speed over the ground, so a slow hull still gets past a
+  fast player.
 * A racing boat that is shoved off its route, or backs out of a corner,
-  takes the route up again from its nearest point.
-* In a fishing match the other basket fills, fish by fish, to a margin
-  under or over the player's, and the last fish lands on the bell.
+  takes the route up again from its nearest point; one hung on a bank
+  or a rock for more than a moment is put back on it at the next mark.
+* In a fishing match the other basket fills, fish by fish, and a basket
+  only ever fills, so the swings are one-sided: on a match the player is
+  to win, the other basket closes to within a fish and falls back, never
+  past (nothing the player then did could put it behind again); on one
+  the player is to lose it may lead early, fall back, and surge over the
+  last third of the clock, the last fish landing on the bell.
 
 Nothing the player does can move the result; giving up (the four-minute
 limit, longer for the long haul, ninety seconds for a match) only
-forfeits the stake. The purse is paid at the finish, and the live card in
-the corner shows both boats' progress, or both baskets, and the clock.
+forfeits the stake. The purse is paid at the finish — the long haul's by
+the place drawn, whatever the player saw — and the live card in the
+corner shows both boats' progress, or both baskets, and the clock.
 
 ### Boats and the shore
 
@@ -717,8 +746,11 @@ the fog, before it can be seen:
   hundred. A fish is four draw calls rather than ten (its fins and eyes
   merged, once per species), which matters sixteen fish at a time.
 * **Shaders are compiled in the background.** New country, new yards and
-  new hulls go through `renderer.compileAsync` (parallel shader compile
-  where the browser has it) before they are shown, and the programs the
+  new hulls go through the renderer's `compile` and a wait on their
+  programs (parallel shader compile where the browser has it) before they
+  are shown — a material disposed while its program is still building, a
+  boat gone over the horizon, is dropped from the wait rather than
+  tripped over — and the programs the
   world will want later — a yard's paint and sign, a falls, a rapid's
   white water, a name over a boat — are compiled behind the menu on
   stand-in meshes. The first fish of every species is built there too, in

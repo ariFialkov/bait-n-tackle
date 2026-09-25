@@ -219,17 +219,14 @@ export class HUD {
     const left = Math.max(0, c.limit - c.t);
     $('comp-clock').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     $('comp-stake').textContent = `$${c.stake} down`;
-    // The long race: the waters of the quickest way, the current one lit.
-    const legs = $('comp-legs');
-    if (c.legs && c.legs.length) {
-      const at = c.legAt ?? 0;
-      const key = c.legs.map((l) => l.name).join('|') + '#' + at;
-      if (legs._key !== key) {
-        legs._key = key;
-        legs.innerHTML = c.legs.map((l, i) => `<span class="${i < at ? 'done' : i === at ? 'now' : ''}">${l.name}</span>`).join('<i>→</i>');
-        legs.classList.remove('hidden');
-      }
-    } else if (!legs.classList.contains('hidden')) { legs.classList.add('hidden'); legs._key = null; }
+    // The long haul: the place you hold now, and the next water on the way.
+    const next = $('comp-legs');
+    if (c.kind === 'long') {
+      const ord = ['1st', '2nd', '3rd', '4th'][Math.min(4, Math.max(1, c.placeNow || 1)) - 1];
+      const n = c.next;
+      const txt = `<span class="now">${ord} of 4</span><i>·</i>` + (n ? (n.finish ? `finish <span>${n.name}</span>` : `next <span>${n.name}</span>`) + ` <b>${Math.round(n.dist)} m</b>` : '');
+      if (next._key !== txt) { next._key = txt; next.innerHTML = txt; next.classList.remove('hidden'); }
+    } else if (!next.classList.contains('hidden')) { next.classList.add('hidden'); next._key = null; }
   }
   clearComp() { $('comp').classList.add('hidden'); this.clearGoalFinder(); }
 

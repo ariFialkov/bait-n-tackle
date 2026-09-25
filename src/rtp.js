@@ -31,6 +31,12 @@ export function sideBetOdds() {
   return odds;
 }
 
+// The four-boat race's places and what they pay, as multiples of the stake.
+export const PLACE_MULT = [2.5, 1, 0.5, 0];
+export const PLACE_ODDS = [0.20, 0.28, 0.32, 0.20];
+// (Their expected return must be the RTP: 0.5 + 0.28 + 0.16 = 0.94.)
+if (Math.abs(PLACE_MULT.reduce((a, m, i) => a + m * PLACE_ODDS[i], 0) - CONFIG.RTP) > 1e-9) throw new Error('PLACE_ODDS do not return the RTP');
+
 export class RTPEngine {
   constructor() {
     this.reset();
@@ -108,6 +114,23 @@ export class RTPEngine {
     const p = this.samplePayout(stake, rng);
     const win = p >= stake;
     return { win, payout: win ? p + stake * lostMass / pWin : 0 };
+  }
+
+  /**
+   * A four-boat race, paid by finishing place: first 2.5x the stake,
+   * second the stake back, third half of it, last nothing. The place is
+   * drawn once, here, from PLACE_ODDS, whose expected return is the game
+   * RTP to the cent (0.20*2.5 + 0.28*1 + 0.32*0.5 = 0.94); the race is
+   * then staged to finish in that order. Returns { place (1..4), payout }.
+   */
+  placeBet(stake, rng = Math.random) {
+    const r = rng();
+    let acc = 0;
+    for (let i = 0; i < PLACE_ODDS.length; i++) {
+      acc += PLACE_ODDS[i];
+      if (r <= acc || i === PLACE_ODDS.length - 1) return { place: i + 1, payout: stake * PLACE_MULT[i] };
+    }
+    return { place: 4, payout: 0 };
   }
 
   /** Convenience: resolve a full isolated bet in one go. */

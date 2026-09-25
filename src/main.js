@@ -121,7 +121,19 @@ window.addEventListener('resize', () => {
 // New country and new hulls have their shaders compiled in the background
 // before they are shown, so the first marina, rapid or stranger on the water
 // never stalls a frame while the GPU driver builds a program.
-const compileFor = (obj) => renderer.compileAsync(obj, camera, scene);
+// (The renderer's own compileAsync, but a material disposed while its
+// program is still building — a boat gone over the horizon, a marina left
+// behind — is simply dropped from the wait, not tripped over.)
+const compileFor = (obj) => {
+  const materials = renderer.compile(obj, camera, scene);
+  return new Promise((resolve) => {
+    const check = () => {
+      materials.forEach((m) => { const p = renderer.properties.get(m).currentProgram; if (!p || p.isReady()) materials.delete(m); });
+      if (materials.size === 0) resolve(obj); else setTimeout(check, 10);
+    };
+    setTimeout(check, 10);
+  });
+};
 lake.compile = compileFor;
 docks.compile = compileFor;
 hullCompile.fn = compileFor;
