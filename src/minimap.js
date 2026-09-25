@@ -77,7 +77,7 @@ export class Minimap {
    * Draw the map round (x, z). `heading` is the hull's; `docks` a list of
    * {x, z}; `hotspot` is drawn when a sonar has found one.
    */
-  update(x, z, heading, docks) {
+  update(x, z, heading, docks, others = null) {
     this.frame++;
     const { ctx, size } = this;
     const half = size / 2, reach = half * MPP;
@@ -118,6 +118,14 @@ export class Minimap {
     ctx.clearRect(0, 0, size, size);
     ctx.beginPath(); ctx.arc(half, half, half - 1, 0, Math.PI * 2); ctx.clip();
     ctx.drawImage(layer.c, (layer.x - x) / MPP, (layer.z - z) / MPP);
+    // The other boats on the water: teal dots, where they are this instant.
+    if (others) for (const o of others) {
+      const sx = half + (o.x - x) / MPP, sz = half + (o.z - z) / MPP;
+      if (Math.hypot(sx - half, sz - half) > half - 3) continue;
+      ctx.fillStyle = '#3ee8d6';
+      ctx.beginPath(); ctx.arc(sx, sz, 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 40, 40, 0.6)'; ctx.lineWidth = 1; ctx.stroke();
+    }
     // The boat: an arrow the way the bow points. Forward is (-sin h, -cos h).
     const ang = Math.atan2(-Math.cos(heading), -Math.sin(heading));
     ctx.translate(half, half); ctx.rotate(ang);

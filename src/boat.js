@@ -51,7 +51,12 @@ export function loadHull(hullId) {
         if (o.isMesh) {
           o.castShadow = true;
           o.receiveShadow = false;
-          if (o.material) o.material.side = THREE.FrontSide;
+          if (o.material) {
+            o.material.side = THREE.FrontSide;
+            // Seen at a slant from the game's camera, a map squeezed to a
+            // few pixels shimmers; anisotropic filtering steadies it.
+            if (o.material.map) o.material.map.anisotropy = 8;
+          }
         }
       });
       return root;
@@ -242,9 +247,10 @@ export class Boat {
    * Swap to a different boat. `key` is a skin key ("cuddy:cherry-red"): the
    * hull model is shared between a hull's skins and repainted on the way in.
    */
-  async setBoat(key) {
+  async setBoat(key, { lite = false } = {}) {
     const spec = resolveBoat(key);
     this.spec = spec;
+    this.liteHull = lite;
 
     // --- hull ---
     let hull = null;
@@ -281,7 +287,9 @@ export class Boat {
     const range = st?.deck || [Math.max(0.2, box.max.y * 0.22) - 0.45, Math.max(0.2, box.max.y * 0.22) + 0.45];
     const deckY = st?.helm?.y ?? (range[0] + range[1]) / 2;
     this.crewScale = st?.crewScale ?? 1;
-    this.deck = new DeckMap(hull, range, box, {
+    // The deck map is for the people who walk the deck: a boat nobody
+    // boards (another fisherman's) does without.
+    this.deck = lite ? null : new DeckMap(hull, range, box, {
       cell: st?.cell || 0.5,
       headroom: 1.7 * this.crewScale + 0.02,
       links: st?.links || [],

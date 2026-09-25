@@ -52,6 +52,89 @@ class OpenHeap {
   }
 }
 
+/**
+ * A hull's triangles in the hull's frame, binned by the deck-map cells
+ * their footprint covers. Answers the two questions the deck map asks: the
+ * heights of every surface over a point, and whether a short horizontal
+ * segment meets anything. Both faces of every triangle count.
+ */
+class TriGrid {
+  constructor(hull, minX, minZ, cell, nx, nz) {
+    this.minX = minX; this.minZ = minZ; this.cell = cell; this.nx = nx; this.nz = nz;
+    const v = new THREE.Vector3();
+    const tri = [];
+    hull.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      const g = o.geometry, p = g.attributes.position, idx = g.index, m = o.matrixWorld;
+      if (!p) return;
+      const n = idx ? idx.count : p.count;
+      for (let i = 0; i < n; i++) {
+        v.fromBufferAttribute(p, idx ? idx.getX(i) : i).applyMatrix4(m);
+        tri.push(v.x, v.y, v.z);
+      }
+    });
+    this.t = Float32Array.from(tri);
+    const T = this.t, count = T.length / 9;
+    this.bins = new Array(nx * nz);
+    for (let i = 0; i < this.bins.length; i++) this.bins[i] = [];
+    for (let k = 0; k < count; k++) {
+      const o = k * 9;
+      const x0 = Math.min(T[o], T[o + 3], T[o + 6]), x1 = Math.max(T[o], T[o + 3], T[o + 6]);
+      const z0 = Math.min(T[o + 2], T[o + 5], T[o + 8]), z1 = Math.max(T[o + 2], T[o + 5], T[o + 8]);
+      const i0 = Math.max(0, Math.floor((x0 - minX) / cell)), i1 = Math.min(nx - 1, Math.ceil((x1 - minX) / cell));
+      const j0 = Math.max(0, Math.floor((z0 - minZ) / cell)), j1 = Math.min(nz - 1, Math.ceil((z1 - minZ) / cell));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) this.bins[j * nx + i].push(k);
+    }
+  }
+
+  /** The heights of every triangle over (x, z), highest first, into `out`. */
+  heightsAt(x, z, ix, iz, out) {
+    out.length = 0;
+    const T = this.t;
+    for (const k of this.bins[iz * this.nx + ix]) {
+      const o = k * 9;
+      const ax = T[o], ay = T[o + 1], az = T[o + 2], bx = T[o + 3], by = T[o + 4], bz = T[o + 5], cx = T[o + 6], cy = T[o + 7], cz = T[o + 8];
+      // Barycentric, in the x/z plane.
+      const d = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
+      if (Math.abs(d) < 1e-12) continue;
+      const u = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / d;
+      const w = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / d;
+      if (u < -1e-6 || w < -1e-6 || u + w > 1 + 1e-6) continue;
+      out.push(ay + (by - ay) * u + (cy - ay) * w);
+    }
+    out.sort((a, b) => b - a);
+  }
+
+  /** Does the segment from (x, y, z) along (dx, 0, dz) for `len` meet a triangle? (Moller-Trumbore) */
+  blocked(x, y, z, dx, dz, len, ix, iz) {
+    const T = this.t;
+    const jx = Math.min(this.nx - 1, Math.max(0, ix + dx)), jz = Math.min(this.nz - 1, Math.max(0, iz + dz));
+    for (const bin of [this.bins[iz * this.nx + ix], this.bins[jz * this.nx + jx]]) {
+      for (const k of bin) {
+        const o = k * 9;
+        const ax = T[o], ay = T[o + 1], az = T[o + 2];
+        const e1x = T[o + 3] - ax, e1y = T[o + 4] - ay, e1z = T[o + 5] - az;
+        const e2x = T[o + 6] - ax, e2y = T[o + 7] - ay, e2z = T[o + 8] - az;
+        // p = dir x e2, with dir = (dx, 0, dz)
+        const px = -dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y;
+        const det = e1x * px + e1y * py + e1z * pz;
+        if (Math.abs(det) < 1e-9) continue;
+        const inv = 1 / det;
+        const tx = x - ax, ty = y - ay, tz = z - az;
+        const u = (tx * px + ty * py + tz * pz) * inv;
+        if (u < 0 || u > 1) continue;
+        // q = t x e1
+        const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
+        const v = (dx * qx + dz * qz) * inv;
+        if (v < 0 || u + v > 1) continue;
+        const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+        if (t >= 0 && t <= len) return true;
+      }
+    }
+    return false;
+  }
+}
+
 export class DeckMap {
   /**
    * `hull` is the hull object (unrotated, hull frame); `range` is [lo, hi],
@@ -74,29 +157,19 @@ export class DeckMap {
     for (let i = 0; i < N; i++) this.layers[i] = [];
     this.solid = new Uint8Array(N);      // 1 where the ray met the hull at all (not over the side)
 
-    const ray = new THREE.Raycaster();
-    const from_ = new THREE.Vector3();
-    const dir = new THREE.Vector3(0, -1, 0);
+    // The hull's triangles, binned by the cells they stand over, so a cell
+    // asks only the few dozen over it and not all fourteen thousand. (Cast
+    // as rays against the whole model, the scan of a big hull ran to ten
+    // seconds; it is a few tens of milliseconds this way.) Both faces of
+    // every triangle count: some decks are modelled with their faces down.
     hull.updateWorldMatrix(true, true);
-    const top = bounds.max.y + 1;
-    // Some decks are modelled with their faces downward, which a one-sided
-    // ray would sail straight through: look at both sides while mapping.
-    const sides = [];
-    hull.traverse((o) => {
-      if (!o.isMesh || !o.material) return;
-      for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
-        sides.push([m, m.side]);
-        m.side = THREE.DoubleSide;
-      }
-    });
+    const grid = new TriGrid(hull, this.minX, this.minZ, CELL, this.nx, this.nz);
+    const ys = [];
     for (let iz = 0; iz < this.nz; iz++) {
       for (let ix = 0; ix < this.nx; ix++) {
         // A hair off the cell's centre: low-poly decks have edges that line
         // up with a round-number grid, and a ray down an edge finds nothing.
-        from_.set(this.minX + ix * CELL + CELL * 0.037, top, this.minZ + iz * CELL + CELL * 0.043);
-        ray.set(from_, dir);
-        ray.far = top - bounds.min.y + 1;
-        const ys = ray.intersectObject(hull, true).map((h) => h.point.y);   // nearest (highest) first
+        grid.heightsAt(this.minX + ix * CELL + CELL * 0.037, this.minZ + iz * CELL + CELL * 0.043, ix, iz, ys);   // highest first
         const out = this.layers[iz * this.nx + ix];
         this.solid[iz * this.nx + ix] = ys.length ? 1 : 0;
         for (let k = 0; k < ys.length; k++) {
@@ -114,7 +187,6 @@ export class DeckMap {
         }
       }
     }
-    for (const [m, side] of sides) m.side = side;
 
     // A cell at the very edge with open water beside it is the gunwale,
     // not somewhere to put a foot: keep the walkable area one cell in.
@@ -125,9 +197,7 @@ export class DeckMap {
 
     // Walls: a ray at body height from each floor to each of its four
     // neighbours. Anything in the way closes that edge.
-    const hit = new THREE.Vector3();
     const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    for (const [m] of sides) m.side = THREE.DoubleSide;
     for (let iz = 0; iz < this.nz; iz++) for (let ix = 0; ix < this.nx; ix++) {
       for (const L of this.layers[iz * this.nx + ix]) {
         if (!L.walk) continue;
@@ -137,17 +207,13 @@ export class DeckMap {
           if (!M || !M.walk) continue;
           // Two rays, at the knee and the chest: a wall with a window in it
           // is still a wall, and a low bulwark still stops a foot.
-          hit.set(dx, 0, dz);
+          const px = this.minX + ix * CELL + CELL * 0.037, pz = this.minZ + iz * CELL + CELL * 0.043;
           for (const k of [0.22, 0.6]) {
-            from_.set(this.minX + ix * CELL + CELL * 0.037, L.y + headroom * k, this.minZ + iz * CELL + CELL * 0.043);
-            ray.set(from_, hit);
-            ray.far = CELL;
-            if (ray.intersectObject(hull, true).length) { L.wall |= (1 << d); break; }
+            if (grid.blocked(px, L.y + headroom * k, pz, dx, dz, CELL, ix, iz)) { L.wall |= (1 << d); break; }
           }
         }
       }
     }
-    for (const [m, side] of sides) m.side = side;
 
     // Ladders between levels.
     this.links = [];

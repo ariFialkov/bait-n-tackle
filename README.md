@@ -709,6 +709,8 @@ the fog, before it can be seen:
   them; anything that does ask for an unfinished cell finishes it on the
   spot, so no reader ever sees half a cell. The same goes for a chunk's
   marina placement and the dealing of a yard's stock.
+* **The minimap** marks the other fishermen's boats as teal dots, moved
+  every redraw, so they can be found; the marinas stay gold.
 * **Marinas** are built in stages the same way (a big yard was 35 ms),
   and their four hundred little meshes are folded into one mesh per paint,
   so a yard in view costs the GPU two dozen draw calls instead of four
@@ -731,11 +733,26 @@ the fog, before it can be seen:
   shimmer as the boat moves; a small normal bias keeps acne off the props.
   A marina's slivers — railing posts, plank seams, cleats, mullions, under
   two texels wide — cast no shadow at all (their shadows could only pop in
-  and out as the map stepped); everything solid still does.
+  and out as the map stepped); everything solid still does. Hull maps,
+  painted and original, are sampled with anisotropic filtering: the busy
+  camo paints shimmered where the map is seen at a slant and squeezed to
+  a few pixels (the hull models themselves carry no doubled faces).
 * **Resolution follows the frame rate.** A phone is drawn at no more than
   1.5× its screen, a desktop at 2×; if the frames run long the picture is
   drawn a notch smaller (down to 0.6 of that), and climbs back when they
   are comfortably short again.
+* **A boat comes in without a freeze.** The deck map (where the crew can
+  stand and walk, `deckmap.js`) used to be scanned by casting rays at the
+  whole hull model, cell by cell: a tenth of a second for a skiff and ten
+  seconds for a steamboat, on the main thread, every time a boat was
+  built — including every other fisherman's boat as it appeared. The
+  scan now bins the hull's triangles by the cells they stand over and
+  asks each cell only its own few dozen, which gives the same map (every
+  floor, wall and ladder identical) in ten to seventy milliseconds; and
+  a boat nobody boards (another fisherman's) has no deck map at all. A
+  skin's paint (a megapixel of pixel work) is done in slices of a few
+  milliseconds with the frame given back between them, and one skin
+  wanted by two boats at once is painted once.
 * **Smaller things, each a fraction of a millisecond a frame** that were
   adding up: the flow streaks read the current off a cached 4 m lattice
   (they were a fifth of the update, asking the field five hundred times a

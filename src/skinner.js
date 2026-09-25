@@ -68,16 +68,62 @@ export function paintCanvas(source, paint) {
   return cv;
 }
 
-/** Cached CanvasTexture for a hull model wearing a given skin. */
+/**
+ * The same recolouring, spread over frames: a megapixel map is twenty to
+ * seventy milliseconds of pixel work, which used to land in one frame as
+ * every other fisherman's boat came in. Rows are done in slices of a few
+ * milliseconds with the frame given back between them.
+ */
+async function paintCanvasAsync(source, paint) {
+  const w = source.width || source.naturalWidth;
+  const h = source.height || source.naturalHeight;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0);
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const lut = buildLUT(paint);
+  const SLICE = 3;   // ms
+  let t0 = performance.now();
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] !== 0) { const u = d[i] * 3; d[i] = lut[u]; d[i + 1] = lut[u + 1]; d[i + 2] = lut[u + 2]; }
+    if ((i & 0x3fff) === 0 && performance.now() - t0 > SLICE) { await new Promise((r) => setTimeout(r, 0)); t0 = performance.now(); }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
+function finishTexture(canvas) {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false;                           // matches the GLB convention
+  // Busy paint (the camo bands) shimmers where the map is seen at a slant
+  // and squeezed to a few pixels; anisotropic filtering steadies it.
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Cached CanvasTexture for a hull model wearing a given skin, painted now. */
 export function skinTexture(source, spec) {
   const key = `${spec.hullId}:${spec.skinId}`;
   if (cache.has(key)) return cache.get(key);
-  const tex = new THREE.CanvasTexture(paintCanvas(source, spec.paint));
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.flipY = false;                           // matches the GLB convention
-  tex.needsUpdate = true;
+  const tex = finishTexture(paintCanvas(source, spec.paint));
   cache.set(key, tex);
+  pending.set(key, Promise.resolve(tex));
   return tex;
+}
+
+const pending = new Map();        // key -> Promise<CanvasTexture>, so two boats wanting one skin paint it once
+/** The same, painted over frames. */
+function skinTextureAsync(source, spec) {
+  const key = `${spec.hullId}:${spec.skinId}`;
+  if (cache.has(key)) return Promise.resolve(cache.get(key));
+  if (pending.has(key)) return pending.get(key);
+  const p = paintCanvasAsync(source, spec.paint).then((cv) => { const tex = finishTexture(cv); cache.set(key, tex); return tex; });
+  pending.set(key, p);
+  return p;
 }
 
 /** The hull's camo neutral map, fetched once. Resolves null if it is missing. */
@@ -109,6 +155,7 @@ export async function applySkin(root, spec) {
   // missing it falls back to the clean map — a flat boat beats a blank one.
   const camo = spec.style === 'camo' ? await camoSource(spec.hullId) : null;
 
+  const jobs = [];
   root.traverse((o) => {
     if (!o.isMesh || !o.material) return;
 
@@ -124,9 +171,12 @@ export async function applySkin(root, spec) {
 
     const src = camo || (o.material.map && o.material.map.image);
     if (!src || !(src.width || src.naturalWidth)) return;
-    const mat = o.material.clone();
-    mat.map = skinTexture(src, spec);
-    mat.needsUpdate = true;
-    o.material = mat;
+    jobs.push(skinTextureAsync(src, spec).then((tex) => {
+      const mat = o.material.clone();
+      mat.map = tex;
+      mat.needsUpdate = true;
+      o.material = mat;
+    }));
   });
+  await Promise.all(jobs);
 }

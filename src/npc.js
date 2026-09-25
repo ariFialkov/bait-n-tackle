@@ -337,7 +337,7 @@ class Fisherman {
     // Fishing gear: a line and a float, and the fish when one is on.
     this.line = null; this.bobber = null; this.fish = null; this.lineOut = 0;
     this.cast = null;
-    this.boat.setBoat(key).then(() => { this.ready = true; this.label.visible = true; });
+    this.boat.setBoat(key, { lite: true }).then(() => { this.ready = true; this.label.visible = true; });
   }
 
   get pos() { return this.boat.pos; }
@@ -1141,6 +1141,14 @@ export class NpcFleet {
     if (npcArrived && !c.win) { this.finish('lose', 'npcHome'); return; }
     if (arrived) { this.finish(c.win ? 'win' : 'lose', 'playerHome'); return; }
     if (c.t >= c.limit) { this.finish('forfeit', 'time'); return; }
+  }
+
+  /** Where the other boats are, for the minimap: one reused list of {x, z}. */
+  mapDots() {
+    const out = this._dots || (this._dots = []);
+    out.length = 0;
+    for (const f of this.boats) if (f.ready) out.push(f.pos);
+    return out;
   }
 
   // --- the frame ---

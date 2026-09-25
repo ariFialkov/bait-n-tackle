@@ -5,7 +5,8 @@ import { putIcons } from './icons.js';
 putIcons(document);
 import { CONFIG, LURES } from './config.js';
 import { Lake } from './lake.js';
-import { Boat, hullCompile } from './boat.js';
+import { Boat, hullCompile, loadHull } from './boat.js';
+import { BOATS } from './boats.js';
 import { AmbientFish } from './fish.js';
 import { CameraRig } from './cameraRig.js';
 import { RTPEngine } from './rtp.js';
@@ -169,6 +170,19 @@ function warmFish() {
   idle(step);
 }
 warmFish();
+
+/**
+ * And the hull models: the first boat of each kind to appear used to bring
+ * its model's parse with it (a few tens of milliseconds, in one frame). They
+ * are fetched and parsed one at a time behind the menu instead, a moment
+ * apart, and are cached from then on.
+ */
+function warmHulls() {
+  const ids = BOATS.map((b) => b.id).filter((id) => id !== player.boat.hullId);
+  const next = () => { const id = ids.shift(); if (!id) return; loadHull(id).catch(() => {}).then(() => setTimeout(next, 400)); };
+  setTimeout(next, 1500);
+}
+warmHulls();
 
 /**
  * Dynamic resolution. The frame interval is watched over a second or so;
@@ -500,7 +514,7 @@ function frame() {
   sun.target.position.set(eye.x, 0, eye.z);
   snapShadowFrustum();
   lake.setLight(sun.color, _sunDir.copy(sun.position).sub(sun.target.position), ss, scene.background);
-  if (state === 'play') minimap.update(eye.x, eye.z, (helm === tender ? tender : boat).heading, lake.docks);
+  if (state === 'play') minimap.update(eye.x, eye.z, (helm === tender ? tender : boat).heading, lake.docks, npcs.mapDots());
   tick('minimap');
 
   hud.setWallet(player.balance, rtp.netRound());
