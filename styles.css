@@ -1051,9 +1051,11 @@ html, body {
 /* ---------- Icons: one stroke family, drawn like the auto reel glyph ---------- */
 svg.ico { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.22em; }
 svg.ico.inl { width: 1em; height: 1em; margin-right: 0.3em; vertical-align: -0.18em; }
-#play-btn, #dex-btn, .chip.btn, #trawl-badge, .sonar-head, .rc-head, #boat-rods, #tender-chip, .dex-head h2 {
+#play-btn, #dex-btn, .chip.btn, .sonar-head, .rc-head, #boat-rods, #tender-chip, .dex-head h2 {
   display: inline-flex; align-items: center; gap: 0.45em;
 }
+/* The trawl badge is hidden until the net is down: only its shown state lays out. */
+#trawl-badge.show { display: inline-flex; align-items: center; gap: 0.45em; }
 #play-btn svg.ico, #dex-btn svg.ico { width: 1.25em; height: 1.25em; }
 .dex-head h2 svg.ico { width: 1.1em; height: 1.1em; color: #ffd166; }
 #trawl-badge svg.ico, .sonar-head svg.ico { width: 1.05em; height: 1.05em; }
