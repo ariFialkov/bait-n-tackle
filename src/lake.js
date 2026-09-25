@@ -314,18 +314,29 @@ function makeWater() {
         vec3 N = normalize(vec3(-vGrad.x, 1.0, -vGrad.y));
         float ndl = dot(N, uSunDir);
         col *= 1.0 + (ndl - 0.7) * 0.9 * vChop;
-        float spec = pow(max(dot(reflect(-uSunDir, N), viewDir), 0.0), 48.0);
-        col += uSun * spec * (0.25 + 0.55 * uSunset) * vChop;
+        // Chop: small water heaped between the swells, so the surface is
+        // never a smooth face.
+        float bump = vnoise(vWorld.xz * 0.9 + vec2(uTime * 0.35, -uTime * 0.2)) + vnoise(vWorld.xz * 2.6 - vec2(uTime * 0.5, uTime * 0.4)) * 0.5;
+        col *= 1.0 + (bump - 0.75) * 0.32 * vChop;
         float fres = pow(1.0 - abs(viewDir.y), 2.0);
         col = mix(col, uSky, fres * 0.45);
         // At sunset the whole surface takes the sky's warmth: the water
         // holds the pink of the sky, more of it the flatter the view.
         vec3 warm = mix(col * vec3(0.82, 0.74, 0.98), uSky * 0.92, fres * 0.75);
         col = mix(col, warm, uSunset * 0.7);
-        // Whitecaps: the crests of the swell break where the water is rough.
+        // Whitecaps: the crests of the swell break where the water is rough,
+        // into streaks of foam torn along the wind, and the glitter runs in
+        // long thin lines along the wave trains, thickest in the trough
+        // between two crests of chop.
         float n = vnoise(vWorld.xz * 0.45 + vec2(uTime * 0.25, -uTime * 0.15));
         float n2 = vnoise(vWorld.xz * 1.8 - vec2(uTime * 0.6, uTime * 0.3));
-        float cap = smoothstep(0.42, 0.8, vCrest) * smoothstep(0.42, 0.75, n * 0.7 + n2 * 0.45) * vChop;
+        vec2 d1 = normalize(vec2(0.86, 0.5));
+        vec2 p1 = vec2(dot(vWorld.xz, d1), dot(vWorld.xz, vec2(-d1.y, d1.x)));
+        float streak = vnoise(vec2(p1.x * 0.32 - uTime * 0.55, p1.y * 2.4 + n * 2.0));
+        float cap = smoothstep(0.55, 0.9, vCrest) * smoothstep(0.62, 0.86, n2 * 0.55 + streak * 0.6) * vChop * 0.7;
+        float ph = p1.x * 0.075 - uTime * 0.95 + sin(vWorld.z * 0.02) * 1.2;
+        float lines = smoothstep(0.965, 0.997, sin(ph * 6.0 + n * 1.1)) * smoothstep(0.3, 0.55, n) * (0.6 + 0.4 * n2) * vChop;
+        cap = min(1.0, cap + lines * 0.95);
         // Surf: waves breaking on the shore, more of it the rougher the water.
         float pulse = 0.5 + 0.5 * sin(uTime * 1.6 + vWorld.x * 0.12 + vWorld.z * 0.08 + n * 4.0);
         float surf = smoothstep(1.5, 0.0, vDepth) * smoothstep(0.35, 0.8, n2 * 0.6 + pulse * 0.55) * (0.25 + vChop * 0.75);

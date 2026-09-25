@@ -216,8 +216,10 @@ rolls in and **breaks white on its crests** and on every shore, hardest on
 the coast. The open sea's swell is two trains of waves crossing, with
 peaked crests and long troughs, the surface pulled toward each crest so
 the faces steepen, and the faces lit toward the sun and shaded away from
-it with the sun's glitter down them, so the sea has height rather than a
-rippling colour; the hull rides the same two trains. Sky, fog, the colour and strength of the sun, and what is falling
+it, with chop heaped between the swells, so the sea has height rather than
+a rippling colour; the hull rides the same two trains. The glitter runs in
+long thin lines along the wave trains, and the crests tear into streaks of
+foam along the wind. Sky, fog, the colour and strength of the sun, and what is falling
 (rain over the marshes, snow in falls country) are the regions' too
 (`climate.js`), eased toward as you cross from one to the next.
 
