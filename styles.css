@@ -1083,3 +1083,57 @@ svg.ico.inl { width: 1em; height: 1em; margin-right: 0.3em; vertical-align: -0.1
 #marina-close.waiting { opacity: 0.35; cursor: wait; }
 #marina.busy .boat-btn { pointer-events: none; opacity: 0.6; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+
+/* ---------- Side bets: the offer, and the live bet ---------- */
+#challenge {
+  position: absolute;
+  left: 50%; bottom: max(96px, calc(env(safe-area-inset-bottom) + 90px));
+  transform: translateX(-50%);
+  width: min(360px, 90vw);
+  background: rgba(8, 40, 56, 0.92);
+  border: 1px solid rgba(255, 209, 102, 0.55);
+  border-radius: 16px;
+  padding: 12px 16px 14px;
+  color: #eaf6fb;
+  pointer-events: auto;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  z-index: 5;
+}
+#challenge.hidden { display: none; }
+.ch-head { display: flex; justify-content: space-between; align-items: baseline; }
+.ch-name { font-weight: 800; color: #ffd166; font-size: 0.86rem; }
+.ch-timer { font-size: 0.72rem; font-weight: 700; color: #7da8bc; }
+.ch-title { font-size: 1.15rem; font-weight: 800; color: #fff; margin-top: 2px; }
+.ch-text { font-size: 0.82rem; color: #c9dde8; margin-top: 4px; line-height: 1.35; }
+.ch-stake { font-size: 0.74rem; font-weight: 700; color: #7dedae; margin-top: 6px; }
+.ch-btns { display: flex; gap: 8px; margin-top: 10px; }
+.ch-btns button {
+  flex: 1; border: none; border-radius: 999px; padding: 9px 0;
+  font-family: inherit; font-weight: 800; font-size: 0.86rem; cursor: pointer;
+}
+#ch-accept { background: linear-gradient(180deg, #ffe08a, #ffc94d); color: #063346; }
+#ch-decline { background: rgba(255, 255, 255, 0.12); color: #eaf6fb; }
+#comp {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  top: max(236px, calc(env(safe-area-inset-top) + 232px));
+  width: 214px;
+  background: rgba(8, 40, 56, 0.78);
+  backdrop-filter: blur(5px);
+  border-radius: 12px;
+  padding: 8px 10px 9px;
+  color: #eaf6fb;
+  font-size: 0.72rem;
+  z-index: 3;
+}
+#comp.hidden { display: none; }
+.comp-title { font-weight: 800; color: #ffd166; font-size: 0.72rem; letter-spacing: 0.04em; margin-bottom: 5px; }
+.comp-row { display: grid; grid-template-columns: 58px 1fr 44px; align-items: center; gap: 6px; margin-top: 3px; }
+.comp-who { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comp-bar { height: 7px; background: rgba(255, 255, 255, 0.14); border-radius: 99px; overflow: hidden; }
+.comp-bar i { display: block; height: 100%; width: 0; background: #7dedae; border-radius: 99px; transition: width 0.25s linear; }
+.comp-row:nth-child(3) .comp-bar i { background: #ff9a5c; }
+.comp-row b { text-align: right; color: #fff; }
+.comp-timer { display: flex; justify-content: space-between; margin-top: 6px; color: #7da8bc; font-weight: 700; }
+@media (max-width: 640px) { #comp { top: max(200px, calc(env(safe-area-inset-top) + 196px)); width: 180px; } }

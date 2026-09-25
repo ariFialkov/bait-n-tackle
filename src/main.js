@@ -22,6 +22,7 @@ import { CrewDirector } from './deckcrew.js';
 import { SPECIES } from './fishdata.js';
 import { Climate } from './climate.js';
 import { Minimap } from './minimap.js';
+import { NpcFleet } from './npc.js';
 import { Labels } from './labels.js';
 import { findStart } from './nav.js';
 import { regionBlend, BIOMES } from './regions.js';
@@ -159,6 +160,8 @@ boat.onBoatChanged = (spec) => hud.setBoat(spec);
 equipBoat(player.boatId);
 
 const marina = new Marina(player, (key) => { docks.sold(key); return equipBoat(key, true); });
+// The other fishermen on the water, and the side bets they call across.
+const npcs = new NpcFleet(scene, lake, player, rtp, hud, fishing, docks);
 // Stock turned over while the store is open at that marina: show the new boats.
 docks.onRestock = (dock) => { if (marina.open && marina.dock === dock) marina.render(); };
 
@@ -343,6 +346,8 @@ function frame() {
   if (tender.deployed) separateHulls(boat, tender);
   // The boats lying at a marina give way and swing back.
   docks.update(dt, tender.deployed ? [boat, tender] : [boat]);
+  // The other boats: driving, fishing, calling at the marinas, calling across.
+  npcs.update(dt, t, tender.deployed ? [boat, tender] : [boat], state === 'play' && !marina.open);
   const eye = helm === tender ? tender.pos : boat.pos;
   lake.update(t, eye.x, eye.z, dt, tender.deployed ? [boat, tender] : [boat]);
   ambientFish.setFocus(eye.x, eye.z);
@@ -385,7 +390,7 @@ frame();
 // Debug/test handle (harmless in production).
 window.BNT = {
   hud, rtp, fishing, boat, tender, crew, player, dex, marina, docks, lake, rig, SPECIES,
-  equipBoat, refreshShipPanel, separateHulls, labels, climate, minimap, start, BIOMES,
+  equipBoat, refreshShipPanel, separateHulls, labels, climate, minimap, npcs, start, BIOMES,
   get helm() { return helm; },
   get region() { return lastRegion; },
 };

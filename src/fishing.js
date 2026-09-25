@@ -393,6 +393,8 @@ export class Fishing {
     line.catch = c;
     line.catchWager = cost;
     line.fish = new HookedFish(this.scene, c.species, c.sizeMult);
+    // A fishing match counts the rod's catches as they are hooked.
+    if (this.onCatch) this.onCatch(c);
 
     if (!quiet) {
       this.hud.hint(this.autoReel ? 'Fish on!' : 'Fish on! Keep swiping to bring it in', 2600);

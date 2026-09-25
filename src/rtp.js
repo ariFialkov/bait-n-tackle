@@ -12,6 +12,25 @@ import { CONFIG } from './config.js';
 import { speciesInTiers } from './fishdata.js';
 import { clamp } from './noise.js';
 
+// The paytable's chance of a multiplier of at least 1, and the expected
+// multiplier over the draws below 1 — the mass a loss forfeits.
+let odds = null;
+export function sideBetOdds() {
+  if (odds) return odds;
+  let pWin = 0, lostMass = 0;
+  for (const b of CONFIG.PAYTABLE) {
+    const lo = b.lo, hi = b.hi;
+    if (lo >= 1) { pWin += b.p; continue; }
+    if (hi <= 1) { lostMass += b.p * (lo + hi) / 2; continue; }
+    // The band straddles 1: split it.
+    const fWin = (hi - 1) / (hi - lo);
+    pWin += b.p * fWin;
+    lostMass += b.p * (1 - fWin) * (lo + 1) / 2;
+  }
+  odds = { pWin, lostMass };
+  return odds;
+}
+
 export class RTPEngine {
   constructor() {
     this.reset();
@@ -70,6 +89,25 @@ export class RTPEngine {
     const sizeMult = clamp(value / species.value, 0.5, 1.6);
     const kg = Math.max(0.005, species.kg * sizeMult * sizeMult);
     return { species, sizeMult, kg, value };
+  }
+
+  /**
+   * A side bet against another boat — a race, a run through the rocks, a
+   * fishing match. It is a binary bet with the same expected value as any
+   * other wager here: the payout P is drawn from the paytable exactly as
+   * for a catch; the bet is WON when P is at least the stake, and lost
+   * otherwise. A loss pays nothing, so the mass a catch would have paid on
+   * those draws (E[P; P < stake]) is added to every win instead, spread by
+   * the odds of winning, and E[payout] = RTP * stake to the cent. The
+   * outcome is fixed the moment the bet is placed; what happens on the
+   * water afterward is staged to match it, and nothing the player does
+   * can move it. Returns { win, payout }.
+   */
+  sideBet(stake, rng = Math.random) {
+    const { pWin, lostMass } = sideBetOdds();
+    const p = this.samplePayout(stake, rng);
+    const win = p >= stake;
+    return { win, payout: win ? p + stake * lostMass / pWin : 0 };
   }
 
   /** Convenience: resolve a full isolated bet in one go. */

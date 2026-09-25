@@ -278,6 +278,44 @@ like the rest of the HUD, held over its point in the world by projecting
 it every frame, fading in as the landmark comes into view and out again as
 it leaves (`labels.js`).
 
+### Other fishermen, and the side bets
+
+A handful of **NPC boats** live round the player (`npc.js`): real hulls
+from the fleet in their paint, driven by the same physics as the player's
+own boat — the same wake, heel and trim, rods and casts, smoke — with a
+name over the wheelhouse (Big Earl, Grandma Lou, Two-Hook Tony …). They
+cruise between spots along routes planned round the land (A* over a grid
+of the navigable water, pulled straight where it can be), stop to fish —
+cast, wait, hook something, fight it in — and call in at the marinas.
+They are **solid**: a hull runs into one as it runs into the tender, the
+shove shared by size, and they steer clear of the player. They come and
+go as the player moves, so there are always a few about.
+
+Passing one, it may **call across** with a side bet, and a card comes up
+with fourteen seconds to answer:
+
+* **Race** — first boat to a named water two to five hundred metres off.
+* **Run the rocks** — through four gates, marked with buoys along a route
+  through rapids, coves or river bends, in order, then home.
+* **Fishing match** — most of a named species by weight on the rod in
+  ninety seconds.
+
+The stake is a tenth of the wallet, to a tidy figure. Every side bet is
+an **isolated bet against the game RTP** exactly like a catch
+(`rtp.js sideBet`): the payout is drawn from the paytable the moment the
+bet is placed; it is won when that draw is at least the stake, and lost
+otherwise, with the mass a catch would have paid on the losing draws
+added to every win so the expected payout is RTP × stake to the cent.
+The outcome is fixed before anything happens on the water, and what
+happens on the water is **staged to match**: the other boat is held a
+margin behind the player's own progress on a won bet and sent a margin
+ahead on a lost one (let out past its top speed if it has to be), and in
+a fishing match its basket fills, fish by fish, to a margin under or over
+the player's. Nothing the player does can move the result; giving up
+(the four-minute limit, or ninety seconds for a match) only forfeits the
+stake. The purse is paid at the finish, and the live card in the corner
+shows both boats' progress, or both baskets, and the clock.
+
 ### Boats and the shore
 
 **Marinas** generate deterministically along the shoreline as the river
@@ -630,6 +668,7 @@ src/
   climate.js   sky, fog, sun and precipitation eased toward the regions round the boat, and the sunset
   minimap.js   the round map in the corner
   icons.js     the HUD's stroke icons, one family, filled into every [data-icon] element
+  npc.js       the other fishermen: their boats, their routes and fishing, and the side bets
   labels.js    the landmark pins in the world
   lake.js      infinite chunked water and country, the per-region water shader, hotspots
   boat.js      boat mesh, trawl net, and the working machinery on it

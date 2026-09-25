@@ -178,6 +178,44 @@ export class HUD {
     this.hintTimer = setTimeout(() => this.el.hint.classList.remove('show'), ms);
   }
 
+  // --- side bets ---
+  /** An offer from another boat: name, title, text, stake; accept/decline run on the buttons or the timer. */
+  showChallenge(offer, onAccept, onDecline) {
+    const el = $('challenge');
+    el.querySelector('.ch-name').textContent = offer.npc.name;
+    el.querySelector('.ch-title').textContent = offer.title;
+    el.querySelector('.ch-text').textContent = offer.text;
+    el.querySelector('.ch-stake').textContent = `$${offer.stake} down · winner takes the purse`;
+    el.classList.remove('hidden');
+    const a = $('ch-accept'), d = $('ch-decline');
+    a.onclick = (e) => { e.stopPropagation(); onAccept(); };
+    d.onclick = (e) => { e.stopPropagation(); onDecline(); };
+    this._chStart = performance.now();
+    clearInterval(this._chTick);
+    this._chTick = setInterval(() => { const left = Math.max(0, 14 - Math.floor((performance.now() - this._chStart) / 1000)); el.querySelector('.ch-timer').textContent = left; }, 250);
+    el.querySelector('.ch-timer').textContent = '14';
+  }
+  hideChallenge() { $('challenge').classList.add('hidden'); clearInterval(this._chTick); }
+  /** The live bet: `you` and `npc` are progress 0..1 for a race, kilograms for a match. */
+  setComp(c, you, npc) {
+    const el = $('comp');
+    el.classList.remove('hidden');
+    el.querySelector('.comp-title').textContent = c.kind === 'fishing' ? `${c.species.name} match` : `${c.title} · ${c.goal.name}`;
+    $('comp-npc-name').textContent = c.npc.name;
+    if (c.kind === 'fishing') {
+      const top = Math.max(1, you, npc);
+      $('comp-you').style.width = `${(you / top) * 100}%`; $('comp-npc').style.width = `${(npc / top) * 100}%`;
+      $('comp-you-v').textContent = `${you.toFixed(1)} kg`; $('comp-npc-v').textContent = `${npc.toFixed(1)} kg`;
+    } else {
+      $('comp-you').style.width = `${you * 100}%`; $('comp-npc').style.width = `${npc * 100}%`;
+      $('comp-you-v').textContent = `${Math.round(you * 100)}%`; $('comp-npc-v').textContent = `${Math.round(npc * 100)}%`;
+    }
+    const left = Math.max(0, c.limit - c.t);
+    $('comp-clock').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    $('comp-stake').textContent = `$${c.stake} down`;
+  }
+  clearComp() { $('comp').classList.add('hidden'); }
+
   // --- boat chip ---
   setBoat(spec) {
     this.rods = spec.rods;

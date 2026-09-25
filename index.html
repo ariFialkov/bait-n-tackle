@@ -124,6 +124,22 @@
       <div class="rn-sub"></div>
     </div>
 
+    <!-- A side bet called across from another boat -->
+    <div id="challenge" class="hidden">
+      <div class="ch-head"><span class="ch-name">Big Earl</span><span class="ch-timer">14</span></div>
+      <div class="ch-title">Race</div>
+      <div class="ch-text">First boat to Juniper Lake takes it.</div>
+      <div class="ch-stake">$10 each · winner takes the purse</div>
+      <div class="ch-btns"><button id="ch-accept">You're on</button><button id="ch-decline">Pass</button></div>
+    </div>
+    <!-- The live side bet: both boats' progress, or both baskets -->
+    <div id="comp" class="hidden">
+      <div class="comp-title">Race to Juniper Lake</div>
+      <div class="comp-row"><span class="comp-who">You</span><div class="comp-bar"><i id="comp-you"></i></div><b id="comp-you-v"></b></div>
+      <div class="comp-row"><span class="comp-who" id="comp-npc-name">Big Earl</span><div class="comp-bar"><i id="comp-npc"></i></div><b id="comp-npc-v"></b></div>
+      <div class="comp-timer"><span id="comp-clock">4:00</span><span id="comp-stake">$10 down</span></div>
+    </div>
+
     <div id="bite">❗</div>
     <div id="hint"></div>
     <div id="toasts"></div>
