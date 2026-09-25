@@ -275,8 +275,8 @@ function makeWater() {
         // and a slope handed to the fragment shader to light the faces.
         vec2 d1 = normalize(vec2(0.86, 0.5)), d2 = normalize(vec2(-0.35, 0.94));
         float k1 = 0.075, k2 = 0.115;
-        float ph1 = dot(wp.xz, d1) * k1 - uTime * 0.95 + sin(wp.z * 0.02) * 1.2;
-        float ph2 = dot(wp.xz, d2) * k2 - uTime * 1.25 + sin(wp.x * 0.03) * 0.9;
+        float ph1 = dot(wp.xz, d1) * k1 - uTime * 0.42 + sin(wp.z * 0.02) * 1.2;
+        float ph2 = dot(wp.xz, d2) * k2 - uTime * 0.55 + sin(wp.x * 0.03) * 0.9;
         float s1 = pow(0.5 + 0.5 * sin(ph1), 1.8) * 2.0 - 1.0;
         float s2 = pow(0.5 + 0.5 * sin(ph2), 1.8) * 2.0 - 1.0;
         float swell = s1 * 0.6 + s2 * 0.36;
@@ -332,10 +332,10 @@ function makeWater() {
         float n2 = vnoise(vWorld.xz * 1.8 - vec2(uTime * 0.6, uTime * 0.3));
         vec2 d1 = normalize(vec2(0.86, 0.5));
         vec2 p1 = vec2(dot(vWorld.xz, d1), dot(vWorld.xz, vec2(-d1.y, d1.x)));
-        float streak = vnoise(vec2(p1.x * 0.32 - uTime * 0.55, p1.y * 2.4 + n * 2.0));
+        float streak = vnoise(vec2(p1.x * 0.32 - uTime * 0.25, p1.y * 2.4 + n * 2.0));
         float cap = smoothstep(0.55, 0.9, vCrest) * smoothstep(0.62, 0.86, n2 * 0.55 + streak * 0.6) * vChop * 0.7;
-        float ph = p1.x * 0.075 - uTime * 0.95 + sin(vWorld.z * 0.02) * 1.2;
-        float lines = smoothstep(0.965, 0.997, sin(ph * 6.0 + n * 1.1)) * smoothstep(0.3, 0.55, n) * (0.6 + 0.4 * n2) * vChop;
+        float ph = p1.x * 0.075 - uTime * 0.42 + sin(vWorld.z * 0.02) * 1.2;
+        float lines = smoothstep(0.955, 0.996, sin(ph * 13.0 + n * 1.4)) * smoothstep(0.28, 0.5, n) * (0.6 + 0.4 * n2) * vChop;
         cap = min(1.0, cap + lines * 0.95);
         // Surf: waves breaking on the shore, more of it the rougher the water.
         float pulse = 0.5 + 0.5 * sin(uTime * 1.6 + vWorld.x * 0.12 + vWorld.z * 0.08 + n * 4.0);
@@ -547,8 +547,8 @@ export class Lake {
       + Math.sin(z * 0.28 - t * 0.9) * 0.05
       + Math.sin((x + z) * 0.12 + t * 0.6) * 0.07;
     // The same two crossing wave trains the surface shader raises.
-    const ph1 = (x * 0.8646 + z * 0.5027) * 0.075 - t * 0.95 + Math.sin(z * 0.02) * 1.2;
-    const ph2 = (x * -0.3491 + z * 0.9371) * 0.115 - t * 1.25 + Math.sin(x * 0.03) * 0.9;
+    const ph1 = (x * 0.8646 + z * 0.5027) * 0.075 - t * 0.42 + Math.sin(z * 0.02) * 1.2;
+    const ph2 = (x * -0.3491 + z * 0.9371) * 0.115 - t * 0.55 + Math.sin(x * 0.03) * 0.9;
     const s1 = Math.pow(0.5 + 0.5 * Math.sin(ph1), 1.8) * 2 - 1;
     const s2 = Math.pow(0.5 + 0.5 * Math.sin(ph2), 1.8) * 2 - 1;
     const swell = s1 * 0.6 + s2 * 0.36;
