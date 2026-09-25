@@ -29,8 +29,8 @@
       <p class="tagline">Trawl the shallows. Cast for trophies.</p>
     </div>
     <div class="menu-actions">
-      <button id="play-btn">⛵ &nbsp;Set Sail</button>
-      <button id="dex-btn">📖 &nbsp;Fishopedia</button>
+      <button id="play-btn" data-icon="sail"><span>Set Sail</span></button>
+      <button id="dex-btn" data-icon="book"><span>Fishopedia</span></button>
       <p class="menu-tips">Drive to coves &amp; rough water — that’s where the fish bite fastest.</p>
     </div>
   </div>
@@ -38,14 +38,14 @@
   <!-- Fishopedia -->
   <div id="dex" class="hidden">
     <div class="dex-head">
-      <h2>📖 Fishopedia</h2>
+      <h2 data-icon="book"><span>Fishopedia</span></h2>
       <span class="dex-count" id="dex-count">120 species</span>
       <div class="dex-filter">
         <button class="on" data-water="all">All</button>
         <button data-water="fresh">Freshwater</button>
         <button data-water="salt">Saltwater</button>
       </div>
-      <button id="dex-close">✕</button>
+      <button id="dex-close" data-icon="close" aria-label="Close"></button>
     </div>
     <div id="dex-grid"></div>
   </div>
@@ -55,15 +55,15 @@
     <div id="topbar">
       <div class="chip" id="balance">$0.00</div>
       <div class="chip" id="round-net">+$0.00</div>
-      <div class="chip badge" id="trawl-badge">🕸️ TRAWLING</div>
-      <button class="chip btn" id="new-round">↺ Round</button>
-      <button class="chip btn" id="menu-btn">⛵ Menu</button>
+      <div class="chip badge" id="trawl-badge" data-icon="net"><span>TRAWLING</span></div>
+      <button class="chip btn" id="new-round" data-icon="round"><span>Round</span></button>
+      <button class="chip btn" id="menu-btn" data-icon="sail"><span>Menu</span></button>
     </div>
 
     <!-- The boat you are sailing -->
     <div id="boat-chip">
       <span class="boat-chip-name" id="boat-name">Skiff</span>
-      <span class="boat-chip-rods" id="boat-rods">🎣 1 rod</span>
+      <span class="boat-chip-rods" id="boat-rods"><span>1 rod</span></span>
     </div>
 
     <!-- The map in the corner: country round the boat, north up -->
@@ -72,20 +72,20 @@
     <!-- Direction finder for the nearest marina -->
     <div id="finders">
       <div class="finder" id="finder-marina">
-        <span class="finder-arrow">➤</span>
+        <span class="finder-arrow" data-icon="arrow"></span>
         <span class="finder-text"><span class="finder-name">Marina</span> <b>120m</b></span>
       </div>
     </div>
 
     <!-- Sonar fish-finder (Mud-Dredger and up) -->
     <div id="sonar" class="hidden">
-      <div class="sonar-head">📡 SONAR</div>
+      <div class="sonar-head" data-icon="sonar"><span>SONAR</span></div>
       <div id="sonar-rows"></div>
     </div>
 
-    <button id="lure-toggle" title="Lures">🎣</button>
+    <button id="lure-toggle" title="Lures" data-icon="rod"></button>
     <div id="lure-panel" class="collapsed"></div>
-    <button id="net-toggle" title="Nets">🕸️</button>
+    <button id="net-toggle" title="Nets" data-icon="net"></button>
     <div id="net-panel" class="collapsed"></div>
     <button id="autoreel-btn" title="Auto reel: hook and reel automatically">
       <svg class="ar-icon" viewBox="0 0 26 26" fill="none" stroke="currentColor"
@@ -100,14 +100,14 @@
       </svg>
       <span class="ar-tag">AUTO REEL</span>
     </button>
-    <button id="pot-btn" class="hidden" title="Pots">🦀<span id="pot-count">0</span></button>
+    <button id="pot-btn" class="hidden" title="Pots" data-icon="pot"><span id="pot-count">0</span></button>
     <div id="pot-panel" class="collapsed"></div>
-    <button id="ship-toggle" class="hidden" title="Ship systems">⚙️</button>
+    <button id="ship-toggle" class="hidden" title="Ship systems" data-icon="gear"></button>
     <div id="ship-panel" class="collapsed"></div>
 
     <!-- Tender status, while it is out on its own -->
     <div id="tender-chip" class="hidden">
-      <span class="tc-icon">🚤</span>
+      <span class="tc-icon" data-icon="tender"></span>
       <span class="tc-text">Tender working · <b id="tc-budget">$0</b> left</span>
     </div>
 
@@ -124,7 +124,7 @@
       <div class="rn-sub"></div>
     </div>
 
-    <div id="bite">❗</div>
+    <div id="bite" data-icon="bite"></div>
     <div id="hint"></div>
     <div id="toasts"></div>
   </div>
@@ -132,9 +132,10 @@
   <!-- Marina / boat store -->
   <div id="marina" class="hidden">
     <div class="dex-head">
-      <h2 id="marina-title">⚓ Marina</h2>
+      <h2 id="marina-title" data-icon="anchor"><span id="marina-title-text">Marina</span></h2>
       <span class="dex-count" id="marina-cash">$0.00</span>
-      <button id="marina-close">✕</button>
+      <span id="marina-busy" class="hidden" data-icon="spinner"><span>Preparing your boat</span></span>
+      <button id="marina-close" data-icon="close" aria-label="Close"></button>
     </div>
     <div id="marina-grid"></div>
   </div>
@@ -142,7 +143,7 @@
   <!-- Tender report -->
   <div id="tender-report" class="hidden">
     <div class="rc-card">
-      <div class="rc-head">🚤 Tender is back</div>
+      <div class="rc-head" data-icon="tender"><span>Tender is back</span></div>
       <div class="rc-rows" id="tr-rows"></div>
       <div class="rc-total"><span>Landed</span><b id="tr-total">$0.00</b></div>
       <button id="tr-close">Nice work</button>

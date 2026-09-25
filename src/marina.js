@@ -34,7 +34,10 @@ export class Marina {
     this.el = $('marina');
     this.grid = $('marina-grid');
     this.cashEl = $('marina-cash');
-    this.titleEl = $('marina-title');
+    this.titleEl = $('marina-title-text');
+    this.busyEl = $('marina-busy');
+    this.closeBtn = $('marina-close');
+    this.busy = false;
     this.open = false;
     this.dock = null;
 
@@ -64,6 +67,7 @@ export class Marina {
   }
 
   close() {
+    if (this.busy) return;
     this.open = false;
     this.el.classList.add('hidden');
   }
@@ -71,7 +75,7 @@ export class Marina {
   render() {
     const p = this.player;
     this.cashEl.textContent = money(p.balance);
-    if (this.titleEl) this.titleEl.textContent = this.dock ? `⚓ ${this.dock.name}` : '⚓ Marina';
+    if (this.titleEl) this.titleEl.textContent = this.dock ? this.dock.name : 'Marina';
     this.grid.innerHTML = '';
 
     // Every skin of the fleet, keyed, for the two lists below.
@@ -174,10 +178,25 @@ export class Marina {
     else this.render();
   }
 
-  pick(key) {
-    if (this.player.equip(key)) {
-      this.render();
-      if (this.onChanged) this.onChanged(key);
-    }
+  /**
+   * Take a boat. The hull loads and is built on the main thread, which can
+   * take a few seconds for a big one, so the header shows it is working
+   * and the close button waits until the boat is alongside.
+   */
+  async pick(key) {
+    if (!this.player.equip(key)) return;
+    this.render();
+    this.setBusy(true);
+    // Let the spinner paint before the heavy work starts.
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 40)));
+    try { if (this.onChanged) await this.onChanged(key); }
+    finally { this.setBusy(false); }
+  }
+
+  setBusy(on) {
+    this.busy = on;
+    if (this.busyEl) this.busyEl.classList.toggle('hidden', !on);
+    if (this.closeBtn) { this.closeBtn.disabled = on; this.closeBtn.classList.toggle('waiting', on); }
+    this.el.classList.toggle('busy', on);
   }
 }

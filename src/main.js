@@ -1,6 +1,8 @@
 // Bait N' Tackle — bootstrap and game loop.
 
 import * as THREE from 'three';
+import { putIcons } from './icons.js';
+putIcons(document);
 import { CONFIG, LURES } from './config.js';
 import { Lake } from './lake.js';
 import { Boat } from './boat.js';
@@ -156,7 +158,7 @@ function refreshShipPanel() {
 boat.onBoatChanged = (spec) => hud.setBoat(spec);
 equipBoat(player.boatId);
 
-const marina = new Marina(player, (key) => { docks.sold(key); equipBoat(key, true); });
+const marina = new Marina(player, (key) => { docks.sold(key); return equipBoat(key, true); });
 
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);

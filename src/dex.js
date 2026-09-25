@@ -4,6 +4,7 @@
 // where you fish changes which fish you see, never what a catch pays).
 
 import { SPECIES, TIER_NAMES } from './fishdata.js';
+import { icon } from './icons.js';
 import { LURES, NETS } from './config.js';
 import { fishIconURL } from './fishicons.js';
 import { speciesAreas } from './fishmodels.js';
@@ -22,10 +23,10 @@ function baitFor(species) {
   const parts = [];
   // Lightest net rated for this tier (legends are casting-only).
   const net = NETS.find((n) => n.maxTier >= species.tier);
-  if (net) parts.push(`${net.emoji} ${net.name}`);
+  if (net) parts.push(`${icon(net.icon, 'inl')}${net.name}`);
   const lure = LURES.find(
     (l) => species.tier >= l.tiers[0] && species.tier <= l.tiers[1]);
-  if (lure) parts.push(`${lure.emoji} ${lure.name}`);
+  if (lure) parts.push(`${icon(lure.icon, 'inl')}${lure.name}`);
   return parts.join(' · ');
 }
 

@@ -103,10 +103,10 @@ export const CONFIG = {
 // Trawl nets: costPerM is the trawl bet size; maxTier caps the species a
 // net can land (never above TRAWL_TIER_CAP — legends are casting-only).
 export const NETS = [
-  { id: 'skiff', name: 'Skiff Net',  costPerM: 0.06, maxTier: 1, emoji: '🕸️', color: 0x6e7b45 },
-  { id: 'gill',  name: 'Gill Net',   costPerM: 0.30, maxTier: 2, emoji: '🥅', color: 0x4c7b6e },
-  { id: 'seine', name: 'Seine Net',  costPerM: 1.50, maxTier: 3, emoji: '🪢', color: 0x54689a },
-  { id: 'deep',  name: 'Deep Trawl', costPerM: 6.00, maxTier: 4, emoji: '⚓', color: 0x7a5a92 },
+  { id: 'skiff', name: 'Skiff Net',  costPerM: 0.06, maxTier: 1, icon: 'net-skiff', color: 0x6e7b45 },
+  { id: 'gill',  name: 'Gill Net',   costPerM: 0.30, maxTier: 2, icon: 'net-gill', color: 0x4c7b6e },
+  { id: 'seine', name: 'Seine Net',  costPerM: 1.50, maxTier: 3, icon: 'net-seine', color: 0x54689a },
+  { id: 'deep',  name: 'Deep Trawl', costPerM: 6.00, maxTier: 4, icon: 'net-deep', color: 0x7a5a92 },
 ];
 
 // Pots: `stake` is the whole bet, paid when the pot goes over the side and
@@ -115,18 +115,18 @@ export const NETS = [
 // of the cage — never the payout, which the paytable draws from the stake
 // alone like every other bet.
 export const POTS = [
-  { id: 'crab',     name: 'Crab Pot',      bait: 'fish scraps',  stake: 3,  maxTier: 2, emoji: '🦀', color: 0x8a6a3a, size: 1.0 },
-  { id: 'lobster',  name: 'Lobster Trap',  bait: 'whole herring', stake: 15, maxTier: 3, emoji: '🦞', color: 0x5a6f4a, size: 1.15 },
-  { id: 'deep',     name: 'Deep Cage',     bait: 'a mackerel',   stake: 75, maxTier: 4, emoji: '🐙', color: 0x4a5a78, size: 1.3 },
+  { id: 'crab',     name: 'Crab Pot',      bait: 'fish scraps',  stake: 3,  maxTier: 2, icon: 'pot-crab', color: 0x8a6a3a, size: 1.0 },
+  { id: 'lobster',  name: 'Lobster Trap',  bait: 'whole herring', stake: 15, maxTier: 3, icon: 'pot-lobster', color: 0x5a6f4a, size: 1.15 },
+  { id: 'deep',     name: 'Deep Cage',     bait: 'a mackerel',   stake: 75, maxTier: 4, icon: 'pot-deep', color: 0x4a5a78, size: 1.3 },
 ];
 
 export const LURES = [
-  { id: 'worm',      name: 'Garden Worm',   cost: 1,   tiers: [0, 1], emoji: '🪱' },
-  { id: 'spinner',   name: 'Spinner',       cost: 3,   tiers: [1, 1], emoji: '✨' },
-  { id: 'spoon',     name: 'Spoon',         cost: 6,   tiers: [1, 2], emoji: '🥄' },
-  { id: 'jig',       name: 'Bucktail Jig',  cost: 12,  tiers: [2, 2], emoji: '🎏' },
-  { id: 'crank',     name: 'Crankbait',     cost: 25,  tiers: [2, 3], emoji: '🐡' },
-  { id: 'shad',      name: 'Live Shad',     cost: 50,  tiers: [3, 3], emoji: '🐟' },
-  { id: 'swimbait',  name: 'Big Swimbait',  cost: 100, tiers: [3, 4], emoji: '🦈' },
-  { id: 'trophy',    name: 'Trophy Rig',    cost: 200, tiers: [4, 5], emoji: '🏆' },
+  { id: 'worm',      name: 'Garden Worm',   cost: 1,   tiers: [0, 1], icon: 'lure-worm' },
+  { id: 'spinner',   name: 'Spinner',       cost: 3,   tiers: [1, 1], icon: 'lure-spinner' },
+  { id: 'spoon',     name: 'Spoon',         cost: 6,   tiers: [1, 2], icon: 'lure-spoon' },
+  { id: 'jig',       name: 'Bucktail Jig',  cost: 12,  tiers: [2, 2], icon: 'lure-jig' },
+  { id: 'crank',     name: 'Crankbait',     cost: 25,  tiers: [2, 3], icon: 'lure-crank' },
+  { id: 'shad',      name: 'Live Shad',     cost: 50,  tiers: [3, 3], icon: 'lure-shad' },
+  { id: 'swimbait',  name: 'Big Swimbait',  cost: 100, tiers: [3, 4], icon: 'lure-swimbait' },
+  { id: 'trophy',    name: 'Trophy Rig',    cost: 200, tiers: [4, 5], icon: 'lure-trophy' },
 ];

@@ -2,6 +2,7 @@
 // indicator, plus the menu overlay.
 
 import { LURES, NETS, POTS } from './config.js';
+import { icon } from './icons.js';
 import { TIER_NAMES } from './fishdata.js';
 import { fishIconURL } from './fishicons.js';
 
@@ -12,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 export const HAUL_TOAST_MS = 3200;
 export const TOAST_FADE_MS = 400;
 
-// The ➤ glyph points RIGHT at rest; a bearing of 0 means straight up the
+// The arrow icon points RIGHT at rest; a bearing of 0 means straight up the
 // screen, so every arrow is turned back a quarter before its bearing.
 const arrowRot = (bearing) => `rotate(${bearing - Math.PI / 2}rad)`;
 
@@ -64,7 +65,7 @@ export class HUD {
     this.onPotSelect = null;
     this.rods = 1;
     this._sonarKey = '';
-    // The 🦀 button opens the pot panel: Drop pot at the top, then the
+    // The pot button opens the pot panel: Drop pot at the top, then the
     // three pots to choose from (each its own stake and bait).
     this.el.potBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -148,7 +149,7 @@ export class HUD {
     items.forEach((item, i) => {
       const btn = document.createElement('button');
       btn.className = 'lure' + (i === 0 ? ' selected' : '');
-      btn.innerHTML = `<span class="lure-emoji">${item.emoji}</span>` +
+      btn.innerHTML = `<span class="lure-emoji">${icon(item.icon)}</span>` +
         `<span class="lure-name">${item.name}` +
           (item.bait ? `<span class="lure-sub">${item.bait}</span>` : '') + `</span>` +
         `<span class="lure-cost">${costLabel(item)}</span>`;
@@ -181,7 +182,7 @@ export class HUD {
   setBoat(spec) {
     this.rods = spec.rods;
     this.el.boatName.textContent = spec.name;
-    this.el.boatRods.textContent = `🎣 ${spec.rods} rod${spec.rods > 1 ? 's' : ''}`;
+    this.el.boatRods.innerHTML = `${icon('rod')}<span>${spec.rods} rod${spec.rods > 1 ? 's' : ''}</span>`;
     this.el.netToggle.classList.toggle('hidden', !spec.features.trawl);
     this.el.potBtn.classList.toggle('hidden', !spec.features.pots);
     this.el.sonar.classList.toggle('hidden', !spec.features.sonar);
@@ -285,7 +286,7 @@ export class HUD {
       LURES.forEach((l, i) => {
         const row = document.createElement('div');
         row.className = 'bag-row' + (this.bag[i] ? ' has' : '');
-        row.innerHTML = `<span class="bag-emoji">${l.emoji}</span>` +
+        row.innerHTML = `<span class="bag-emoji">${icon(l.icon)}</span>` +
           `<span class="bag-name">${l.name}<small>$${l.cost} each</small></span>` +
           `<button class="bag-btn" data-d="-1" aria-label="fewer">−</button>` +
           `<span class="bag-n">${this.bag[i]}</span>` +
@@ -380,8 +381,8 @@ export class HUD {
     }
     this.el.sonarRows.innerHTML = entries.map((e) =>
       `<div class="sonar-row">` +
-        `<span class="sonar-bear" style="transform:${arrowRot(e.bearing)}">➤</span>` +
-        `<span class="sonar-lure">${e.lure.emoji} ${e.lure.name}</span>` +
+        `<span class="sonar-bear" style="transform:${arrowRot(e.bearing)}">${icon('arrow')}</span>` +
+        `<span class="sonar-lure">${icon(e.lure.icon)}<span>${e.lure.name}</span></span>` +
         `<span class="sonar-dist">${Math.round(e.dist)}m</span>` +
       `</div>`).join('');
   }
@@ -402,7 +403,7 @@ export class HUD {
 
   setTrawling(on, net) {
     this.el.trawlBadge.classList.toggle('show', on);
-    if (on && net) this.el.trawlBadge.textContent = `${net.emoji} ${net.name.toUpperCase()}`;
+    if (on && net) this.el.trawlBadge.innerHTML = `${icon(net.icon)}<span>${net.name.toUpperCase()}</span>`;
     this.el.netAction.innerHTML = `<span>${on ? 'Pull net' : 'Deploy net'}</span>`;
     this.el.netAction.classList.toggle('on', !!on);
   }

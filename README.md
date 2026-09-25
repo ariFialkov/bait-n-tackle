@@ -231,6 +231,14 @@ grazing angle with the sun's glitter down its faces. It eases in and out
 over half a minute, rolls round on its own with no switch and no HUD, and
 is the same for everyone at the same moment.
 
+**Icons.** Every button, chip and gear row wears a stroke icon from one
+family (`icons.js`): a 26-unit box, round-capped strokes, no fill, drawn
+like the auto reel glyph — sail, book, net, rod, pot, gear, anchor, sonar,
+the lures, nets and pots, the landmark kinds. No emoji anywhere, so the
+HUD looks the same on every platform. Taking a boat at a marina shows a
+spinner by the close button while the hull loads and is built, and the
+close button waits until the boat is alongside.
+
 **The minimap.** A small round map in the top-left corner: the country
 round the boat at five metres a pixel, north up, water shaded by depth and
 salt, the shore, the land rising to snow, the marinas as dots, the names
@@ -617,6 +625,7 @@ src/
   props.js     the props drawn by biome, the brush spring, waterfalls, white water, dams, stacks
   climate.js   sky, fog, sun and precipitation eased toward the regions round the boat, and the sunset
   minimap.js   the round map in the corner
+  icons.js     the HUD's stroke icons, one family, filled into every [data-icon] element
   labels.js    the landmark pins in the world
   lake.js      infinite chunked water and country, the per-region water shader, hotspots
   boat.js      boat mesh, trawl net, and the working machinery on it

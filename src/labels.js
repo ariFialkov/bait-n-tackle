@@ -6,8 +6,9 @@
 // it leaves, and only the ones within a couple of hundred metres exist.
 
 import * as THREE from 'three';
+import { icon } from './icons.js';
 
-const KIND_ICON = { peak: '▲', hill: '▲', beach: '≈', rock: '●', dam: '▬', falls: '⫽', point: '◆' };
+const KIND_ICON = { peak: 'peak', hill: 'hill', beach: 'beach', rock: 'rock', dam: 'dam', falls: 'falls', point: 'point' };
 const KIND_CLASS = { peak: 'peak', hill: 'hill', beach: 'beach', rock: 'rock', dam: 'dam', falls: 'falls', point: 'point' };
 const SHOW_DIST = 150;      // metres: nearer than this a label is on
 const KEEP_DIST = 175;      // ... and it is not dropped until this far
@@ -26,7 +27,7 @@ export class Labels {
       if (this.active.has(lm)) continue;
       const el = document.createElement('div');
       el.className = `lm ${KIND_CLASS[lm.kind] || ''}`;
-      el.innerHTML = `<span class="lm-pill"><span class="lm-icon">${KIND_ICON[lm.kind] || '●'}</span>${lm.name}</span><span class="lm-pin"></span>`;
+      el.innerHTML = `<span class="lm-pill"><span class="lm-icon">${icon(KIND_ICON[lm.kind] || 'rock')}</span>${lm.name}</span><span class="lm-pin"></span>`;
       this.container.appendChild(el);
       this.active.set(lm, { el, on: false });
     }
