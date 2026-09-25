@@ -13,8 +13,6 @@ import { mulberry32, clamp } from './noise.js';
 import { CONFIG } from './config.js';
 import { terrainHeight, baseHeight } from './terrain.js';
 import { chunkItems } from './scatter.js';
-import { currentAt } from './currents.js';
-import { regionAt } from './regions.js';
 
 // --- geometry -------------------------------------------------------------------
 
@@ -518,46 +516,6 @@ export function buildBoulders(list, parent) {
 }
 
 /**
- * White water tearing off a rapid's boulders: a wake of foam trailing
- * downstream from each, opening as it goes, flowing with the current.
- */
-export function buildBoulderWakes(list, parent) {
-  const geos = [];
-  const v = { x: 0, z: 0 };
-  for (const b of list) {
-    currentAt(b.x, b.z, v);
-    let sp = Math.hypot(v.x, v.z);
-    let ux, uz;
-    if (sp < 0.15) {
-      // Still water right at it (it stands at the edge): the stream goes
-      // the way the region's water goes.
-      const r = regionAt(b.x, b.z);
-      v.x = Math.cos(r.flow || 0); v.z = Math.sin(r.flow || 0); sp = 1;
-    }
-    ux = v.x / sp; uz = v.z / sp;
-    const r = b.s * 0.85, len = 7 + b.s * 3 + sp * 1.8;
-    const px = -uz, pz = ux;
-    const geo = new THREE.PlaneGeometry(1, 1, 5, 1);
-    const p = geo.attributes.position, uv = geo.attributes.uv;
-    const fades = new Float32Array(p.count);
-    for (let i = 0; i < p.count; i++) {
-      const u = p.getX(i) + 0.5;                 // 0 at the boulder .. 1 downstream
-      const w = r * 0.8 + u * (r * 0.8 + 1.4);     // a wedge, not a slab
-      const side = p.getY(i) * 2;                // -1 .. 1 across
-      const x = b.x + ux * (r * 0.6 + u * len) + px * side * w;
-      const z = b.z + uz * (r * 0.6 + u * len) + pz * side * w;
-      fades[i] = u;
-      p.setXYZ(i, x, CONFIG.WATER_LEVEL + 0.07, z);
-      uv.setXY(i, u * len / 9, p.getY(i) + 0.5);
-    }
-    geo.setAttribute('phase', new THREE.Float32BufferAttribute(new Array(p.count).fill(b.r / 6.28), 1));
-    geo.setAttribute('fade', new THREE.Float32BufferAttribute(fades, 1));
-    geos.push(geo.toNonIndexed());
-  }
-  return flowMesh(geos, parent);
-}
-
-/**
  * A beaver dam: two dense, messy bundles of logs and sticks reaching in
  * from each bank — a half-built bridge of timber, with a gap between the
  * wings a boat can take, or no gap at all once the beavers have finished.
@@ -595,57 +553,6 @@ export function buildDam(d, parent) {
   const a = instance(GEO.log, MATS.damlog, logs, parent, (t, m) => lying(t.x, t.y, t.z, t.s, t.r, t.tilt, m));
   const b = instance(GEO.stick, MATS.stick, sticks, parent, (t, m) => lying(t.x, t.y, t.z, t.s, t.r, t.tilt, m));
   return { dispose() { for (const im of [a, b]) if (im) { parent.remove(im); im.dispose(); } } };
-}
-
-/**
- * White water rushing through a rapid: lanes of foam traced along the
- * current from seed points in the strait, laid on the surface and flowing,
- * so the run reads as the moving water it is.
- */
-export function buildRapidLanes(cell, region, parent) {
-  const rng = mulberry32((region.seed ^ 0x9e3779b9) >>> 0);
-  const v = { x: 0, z: 0 };
-  const geos = [];
-  const CELLW = 240;
-  for (let n = 0; n < 60 && geos.length < 10; n++) {
-    let x = region.cx * CELLW + 10 + rng() * (CELLW - 20), z = region.cz * CELLW + 10 + rng() * (CELLW - 20);
-    currentAt(x, z, v);
-    if (Math.hypot(v.x, v.z) < 1.5) continue;
-    // Walk back up the flow to start the lane, then trace it down.
-    for (let k = 0; k < 20; k++) { currentAt(x, z, v); const sp = Math.hypot(v.x, v.z); if (sp < 1.0) break; x -= v.x / sp * 2; z -= v.z / sp * 2; }
-    const pts = [];
-    for (let k = 0; k < 70; k++) {
-      currentAt(x, z, v); const sp = Math.hypot(v.x, v.z);
-      if (sp < 0.8) break;
-      pts.push({ x, z, ux: v.x / sp, uz: v.z / sp, sp });
-      x += v.x / sp * 2.2; z += v.z / sp * 2.2;
-    }
-    if (pts.length < 8) continue;
-    const w = 0.9 + rng() * 1.2, phase = rng();
-    const pos = [], uv = [], ph = [], fd = [];
-    let along = 0;
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i];
-      if (i) along += 2.2;
-      const ww = w * (0.6 + 0.4 * Math.sin((i / (pts.length - 1)) * Math.PI)) * (0.7 + 0.15 * p.sp);
-      const px = -p.uz, pz = p.ux;
-      pos.push(p.x + px * ww, CONFIG.WATER_LEVEL + 0.08, p.z + pz * ww, p.x - px * ww, CONFIG.WATER_LEVEL + 0.08, p.z - pz * ww);
-      uv.push(along / 9, 0, along / 9, 1);
-      ph.push(phase, phase);
-      const f = i / (pts.length - 1);
-      fd.push(f, f);
-    }
-    const idx = [];
-    for (let i = 0; i < pts.length - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setAttribute('phase', new THREE.Float32BufferAttribute(ph, 1));
-    g.setAttribute('fade', new THREE.Float32BufferAttribute(fd, 1));
-    g.setIndex(idx);
-    geos.push(g.toNonIndexed());
-  }
-  return flowMesh(geos, parent);
 }
 
 /** A beaver lodge: a dome of sticks standing in the water. */

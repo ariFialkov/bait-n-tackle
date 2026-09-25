@@ -184,9 +184,8 @@ can take, and once in four finished right across and blocking the creek
 (which is which re-rolls every twenty minutes, each dam on its own clock),
 with a stick lodge in the water off one end — creeks carry several, rivers
 and ponds the odd one. Rapids are a strait, the channel narrowed, boulders along both edges
-funnelling the stream and more standing in it, each with a wake of white
-water tearing off downstream, and lanes of foam traced along the current
-the whole way through, rushing. The coast gets sea stacks standing out of the
+funnelling the stream and more standing in it, each with a boat's wake of
+white water tearing off it downstream (see *Wake*, below), rushing. The coast gets sea stacks standing out of the
 swell. The props (`props.js`) are instanced per chunk from lists decided
 once per chunk (`scatter.js`), and the **solid** ones — rocks, boulders,
 logs, driftwood, mangrove trunks — are obstacles the hull physics respects
@@ -408,6 +407,17 @@ real foam does, with smooth laminar ripples curling around them. Hull
 displacement sets how wide the V opens and how tall the crests stand; engine
 power sets how white and noisy it churns and how hard the transom throws
 spray.
+
+A boulder standing in a rapid is a hull the water is driving past, so it
+gets exactly this wake, not a painted strip: `RockWakes` in `wake.js` lays
+the same nine-column ribbon once along the streamline running off each
+boulder downstream, with the same crests, the same split down the middle
+and the same dissolving foam, and the same spray tearing off its upstream
+face and flying over it. The one difference is that the rock stands still
+and the water moves, so every sample carries the current's velocity and the
+texture, the crests and the dissolving islands are all carried off with it.
+The ribbon follows the current's bends, so the wakes curve and twist through
+the rocks and run into one another where the strait narrows.
 
 The top two hulls automate rather than improve. The **tender** (Seiner) can be
 taken into channels the seiner cannot enter, or sent out fishing on its own

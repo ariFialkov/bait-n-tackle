@@ -14,8 +14,8 @@ import { terrainHeight, waterDepth, cellFeatures } from './terrain.js';
 import { isNavigable } from './nav.js';
 import { currentAt, FlowField } from './currents.js';
 import { CELL, regionBlend, regionAt, salinity, waterKind, mixHex } from './regions.js';
-import { buildChunkProps, buildFalls, buildBoulders, buildBoulderWakes, buildDam, buildLodge, buildStack, buildRapidLanes, tickEffects, updateBrush } from './props.js';
-import { cellRegion } from './regions.js';
+import { buildChunkProps, buildFalls, buildBoulders, buildDam, buildLodge, buildStack, tickEffects, updateBrush } from './props.js'
+import { RockWakes, tickRockWakes } from './wake.js';
 
 export { terrainHeight, waterDepth, isNavigable, salinity, waterKind, regionAt, currentAt };
 const _still = { x: 0, z: 0 };
@@ -116,17 +116,14 @@ class Chunk {
         const f = cellFeatures(cx, cz);
         for (const fall of f.falls) if (inside(fall)) this.features.push(buildFalls(fall, parent));
         for (const d of f.dams) if (inside(d)) this.features.push(buildDam(d, parent));
-        // A rapid's foam lanes belong to the chunk its site is in.
-        const reg = cellRegion(cx, cz);
-        if (reg.type === 'rapids' && inside(reg)) { const lanes = buildRapidLanes(f, reg, parent); if (lanes) this.features.push(lanes); }
         for (const l of f.lodges) if (inside(l)) { const im = buildLodge(l, parent); if (im) this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } }); }
         for (const st of f.stacks) if (inside(st)) this.features.push(buildStack(st, parent));
         const boulders = f.boulders.filter(inside);
         if (boulders.length) {
           const im = buildBoulders(boulders, parent);
           this.features.push({ dispose: () => { parent.remove(im); im.dispose(); } });
-          const wakes = buildBoulderWakes(boulders, parent);
-          if (wakes) this.features.push(wakes);
+          // Every boulder in a current gets a boat's wake: the water is the hull here.
+          this.features.push(new RockWakes(boulders, parent, currentAt, (b) => regionAt(b.x, b.z).flow || 0));
         }
         for (const lm of f.landmarks) if (inside(lm)) this.landmarks.push(lm);
         for (const hs of f.hotspots) {
@@ -174,8 +171,8 @@ class Chunk {
     return found;
   }
 
-  update(t) {
-    for (const f of this.features) if (f.update) f.update(t);
+  update(t, dt, x, z) {
+    for (const f of this.features) if (f.update) f.update(t, dt, x, z);
   }
 
   dispose(parentGroup) {
@@ -448,8 +445,9 @@ export class Lake {
     this.water.material.uniforms.uTime.value = t;
     this.fx.update(t);
     tickEffects(t);
+    tickRockWakes(t);
     this.flow.update(dt, boatX, boatZ, t);
-    for (const chunk of this.chunks.values()) chunk.update(t);
+    for (const chunk of this.chunks.values()) chunk.update(t, dt, boatX, boatZ);
     // The soft props bend out of the hulls' way, in the chunks near them.
     if (vessels && vessels.length) {
       const size = CONFIG.CHUNK_SIZE;

@@ -51,7 +51,9 @@ const VERT = /* glsl */`
   attribute float aWaveK;
   attribute float aSeed;
   attribute float aLat;
+  attribute vec2  aDrift;
   uniform float uTime;
+  uniform float uFlowT;
   uniform float uCrestH;
   uniform float uWashLen;
   varying float vSide;
@@ -65,10 +67,11 @@ const VERT = /* glsl */`
   varying float vH;
   varying vec2  vWorld;
   varying float vLat;
+  varying vec2  vDrift;
 
   void main() {
     vSide = aSide; vAge = aAge; vFoam = aFoam;
-    vDist = aDist; vWaveK = aWaveK; vSeed = aSeed; vLat = aLat;
+    vDist = aDist; vWaveK = aWaveK; vSeed = aSeed; vLat = aLat; vDrift = aDrift;
 
     float a = abs(aSide);
     // Cross-section: a crest riding each edge, a hollow lane between them.
@@ -81,7 +84,7 @@ const VERT = /* glsl */`
     float env = pow(max(0.0, 1.0 - aAge), 1.15) * aFoam;
     env *= smoothstep(0.0, uWashLen * 0.28, aDist);
 
-    float ripple = sin(aDist * aWaveK - aAge * 1.8 + aSeed) * (1.0 - a * 0.65);
+    float ripple = sin(aDist * aWaveK - aAge * 1.8 - uFlowT + aSeed) * (1.0 - a * 0.65);
     float h = (crest - hollow * 0.45 + ripple * 0.22) * uCrestH * env;
     vH = h / max(0.0001, uCrestH);
 
@@ -100,6 +103,7 @@ const VERT = /* glsl */`
 const FRAG = /* glsl */`
   precision highp float;
   uniform float uTime;
+  uniform float uFlowT;    // rock wakes: the crests run downstream with the water
   uniform float uPower;    // 0..1 — how hard this hull drives the water
   uniform float uWashLen;  // metres of boiling water behind the transom
   uniform vec3  uFoam;     // white water
@@ -116,6 +120,7 @@ const FRAG = /* glsl */`
   varying float vH;
   varying vec2  vWorld;
   varying float vLat;
+  varying vec2  vDrift;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise(vec2 p) {
@@ -138,7 +143,9 @@ const FRAG = /* glsl */`
     // Water texture sampled in WORLD metres, so it stays a fixed physical
     // size however wide the wake has opened, and stays put on the water as
     // the boat drives away from it.
-    vec2 w = vWorld;
+    // A wake laid behind a rock in a current is carried off downstream:
+    // its texture drifts with the water instead of staying put.
+    vec2 w = vWorld - vDrift * uTime;
     float nA = fbm(w * 0.55 + uTime * vec2(0.05, -0.03));   // broad patches
     float nB = fbm(w * 1.75 - uTime * vec2(0.13, 0.09));    // chop
     float nC = noise(w * 5.5 + uTime * vec2(0.45, 0.28));   // fizz
@@ -159,7 +166,7 @@ const FRAG = /* glsl */`
 
     // --- transverse arcs across the V, cusped toward the stern ---
     float d = vDist + a * a * 2.2;
-    float tw = sin(d * vWaveK - vAge * 1.8 + vSeed);
+    float tw = sin(d * vWaveK - vAge * 1.8 - uFlowT + vSeed);
     tw = smoothstep(0.45, 1.0, tw) * (1.0 - smoothstep(0.62, 0.86, a));
     tw *= 0.5 + nB * 0.9;
 
@@ -291,21 +298,25 @@ class SternSpray {
     const nx = -bz, nz = bx;
     // Two uniforms averaged give a centre-weighted spread, so the spray
     // boils out of the middle of the transom rather than along its full beam.
-    const lateral = (Math.random() + Math.random() - 1) * this.beam * 0.75;
+    // A rock in a current supplies its own stern (its upstream face, so the
+    // water piles onto it and flies over) and beam; a hull uses the spec's.
+    const stern = vessel.sprayStern ?? this.stern, beam = vessel.sprayBeam ?? this.beam;
+    const power = vessel.sprayPower ?? this.power;
+    const lateral = (Math.random() + Math.random() - 1) * beam * 0.75;
     const o = i * 3;
-    this.pos[o] = pos.x + bx * this.stern + nx * lateral;
+    this.pos[o] = pos.x + bx * stern + nx * lateral;
     this.pos[o + 1] = CONFIG.WATER_LEVEL + 0.08;
-    this.pos[o + 2] = pos.z + bz * this.stern + nz * lateral;
+    this.pos[o + 2] = pos.z + bz * stern + nz * lateral;
 
-    const kick = (0.8 + Math.random() * 2.4) * (0.6 + frac * 0.9);
-    const out = (Math.random() - 0.5) * (1.7 + this.beam * 0.55);
+    const kick = (0.8 + Math.random() * 2.4) * (0.6 + frac * 0.9) + (vessel.sprayCarry ?? 0);
+    const out = (Math.random() - 0.5) * (1.7 + beam * 0.55);
     this.vel[o] = bx * kick + nx * out;
-    this.vel[o + 1] = (1.8 + Math.random() * 2.8) * (0.62 + this.power * 0.8);
+    this.vel[o + 1] = (1.8 + Math.random() * 2.8) * (0.62 + power * 0.8);
     this.vel[o + 2] = bz * kick + nz * out;
 
     this.life[i] = 1;
     this.decay[i] = 1 / (0.42 + Math.random() * 0.5);
-    this.aSize.array[i] = (1.2 + Math.random() * 2.6) * (0.65 + this.power * 0.75);
+    this.aSize.array[i] = (1.2 + Math.random() * 2.6) * (0.65 + power * 0.75);
   }
 
   update(dt, vessel, moving, frac) {
@@ -373,6 +384,7 @@ export class WakeTrail {
       aWaveK: new THREE.BufferAttribute(new Float32Array(n), 1),
       aSeed: new THREE.BufferAttribute(new Float32Array(n), 1),
       aLat: new THREE.BufferAttribute(new Float32Array(n), 1),
+      aDrift: new THREE.BufferAttribute(new Float32Array(n * 2), 2),   // a hull's wake stays put
     };
     for (const [name, a] of Object.entries(this.attr)) {
       a.setUsage(THREE.DynamicDrawUsage);
@@ -396,6 +408,7 @@ export class WakeTrail {
       fragmentShader: FRAG,
       uniforms: {
         uTime: { value: 0 },
+        uFlowT: { value: 0 },
         uPower: { value: 0.3 },
         uWashLen: { value: 8 },
         uCrestH: { value: 0.3 },
@@ -580,5 +593,165 @@ export class WakeTrail {
     this.mesh.geometry.dispose();
     this.mat.dispose();
     this.spray.dispose();
+  }
+}
+
+// --- rock wakes ---------------------------------------------------------------
+//
+// A boulder standing in a rapid is a hull the water is driving past, so it
+// gets the same wake as a boat: the same ribbon, the same crests and split
+// and dissolving foam, the same spray tearing off it. The difference is that
+// the hull stands still and the water moves, so the trail is laid once along
+// the streamline running off downstream, and everything on it — texture,
+// crests, dissolving islands — is carried off with the current.
+
+const ROCK_STEP = 0.6;
+const ROCK_COLS = COLS;
+
+/** One material for every rock wake in the world; time is set once a frame. */
+const ROCK_MAT = new THREE.ShaderMaterial({
+  vertexShader: VERT,
+  fragmentShader: FRAG,
+  uniforms: {
+    uTime: { value: 0 },
+    uFlowT: { value: 0 },
+    uPower: { value: 0.78 },
+    uWashLen: { value: 4.2 },
+    uCrestH: { value: 0.34 },
+    uFoam: { value: new THREE.Color(0xffffff) },
+    uTrough: { value: new THREE.Color(0xa9dcea) },
+    uShadow: { value: new THREE.Color(0x2c7ca4) },
+  },
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+
+/** Advance every rock wake's clock. Call once a frame. */
+export function tickRockWakes(t) {
+  ROCK_MAT.uniforms.uTime.value = t;
+  ROCK_MAT.uniforms.uFlowT.value = t * 5.5;
+}
+
+/**
+ * The wakes of a chunk's boulders, as one static ribbon mesh plus a shared
+ * spray system. `flow(x, z, out)` gives the current at a point; `fallback`
+ * the direction to lay a wake when the rock stands in slack water at the
+ * channel's edge (the region's flow).
+ */
+export class RockWakes {
+  constructor(rocks, parent, flow, fallback) {
+    this.parent = parent;
+    this.rocks = [];
+    const pos = [], side = [], age = [], foam = [], dist = [], waveK = [], seed = [], lat = [], drift = [], idx = [];
+    const v = { x: 0, z: 0 };
+    for (const b of rocks) {
+      const r = b.s * 0.85;
+      flow(b.x, b.z, v);
+      let sp = Math.hypot(v.x, v.z);
+      if (sp < 0.3) { const a = fallback(b); v.x = Math.cos(a) * 1.2; v.z = Math.sin(a) * 1.2; sp = 1.2; }
+      const ux = v.x / sp, uz = v.z / sp;
+      // The rock as a hull for the spray: it faces upstream, and the spray
+      // spawns on that face and is carried over and round it.
+      const speedK = Math.min(1, sp / 6);
+      this.rocks.push({
+        x: b.x, z: b.z, r, sp,
+        vessel: { pos: { x: b.x, z: b.z }, heading: Math.atan2(ux, uz), sprayStern: -r * 0.55, sprayBeam: r * 1.1, sprayPower: 0.5 + speedK * 0.5, sprayCarry: sp * 0.45, spec: null },
+        rate: (6 + sp * 5) * (0.6 + r * 0.5),
+        acc: Math.random(),
+      });
+      // Lay the trail down the streamline.
+      const len = 9 + r * 5 + sp * 2.6;
+      const width = r * 2.3, maxSpread = 1.2 + r * 2.2;
+      const foamK = Math.min(1.15, 0.45 + speedK * 0.7);
+      const waveKv = (Math.PI * 2) / (2.2 + sp * 0.9);
+      const rockSeed = Math.random() * 6.283;
+      let x = b.x + ux * r * 0.8, z = b.z + uz * r * 0.8, dx = ux, dz = uz, s = sp;
+      let d = 0;
+      const samples = [];
+      for (let k = 0; k < 90; k++) {
+        samples.push({ x, z, dx, dz, s, d });
+        if (d >= len) break;
+        x += dx * ROCK_STEP; z += dz * ROCK_STEP; d += ROCK_STEP;
+        flow(x, z, v);
+        const ns = Math.hypot(v.x, v.z);
+        if (ns < 0.5) {
+          // Run out into slack water: the last few samples carry straight on
+          // and the ribbon fades to nothing.
+          if (d > 3) { samples.push({ x, z, dx, dz, s, d, end: true }); }
+          break;
+        }
+        // Follow the current, bending gently so the ribbon never kinks.
+        const tx = v.x / ns, tz = v.z / ns;
+        dx = dx * 0.55 + tx * 0.45; dz = dz * 0.55 + tz * 0.45;
+        const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+        s = ns;
+      }
+      if (samples.length < 3) continue;
+      const total = samples[samples.length - 1].d;
+      const base = pos.length / 3;
+      for (let k = 0; k < samples.length; k++) {
+        const sm = samples[k];
+        const half = Math.min(width * 0.55 + sm.d * KELVIN_TAN, width * 0.55 + maxSpread);
+        const nx = -sm.dz, nz = sm.dx;
+        const a = sm.end ? 1 : Math.min(1, sm.d / Math.max(total, len));
+        for (let j = 0; j < ROCK_COLS; j++) {
+          const sd = -1 + (2 * j) / (ROCK_COLS - 1);
+          pos.push(sm.x + nx * sd * half, 0, sm.z + nz * sd * half);
+          side.push(sd); age.push(a); foam.push(foamK); dist.push(sm.d);
+          waveK.push(waveKv); seed.push(rockSeed); lat.push(sd * half);
+          drift.push(sm.dx * sm.s, sm.dz * sm.s);
+        }
+      }
+      for (let k = 0; k < samples.length - 1; k++) {
+        for (let j = 0; j < ROCK_COLS - 1; j++) {
+          const v00 = base + k * ROCK_COLS + j, v01 = v00 + 1, v10 = v00 + ROCK_COLS, v11 = v10 + 1;
+          idx.push(v00, v01, v10, v01, v11, v10);
+        }
+      }
+    }
+    this.mesh = null;
+    if (pos.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('aSide', new THREE.Float32BufferAttribute(side, 1));
+      geo.setAttribute('aAge', new THREE.Float32BufferAttribute(age, 1));
+      geo.setAttribute('aFoam', new THREE.Float32BufferAttribute(foam, 1));
+      geo.setAttribute('aDist', new THREE.Float32BufferAttribute(dist, 1));
+      geo.setAttribute('aWaveK', new THREE.Float32BufferAttribute(waveK, 1));
+      geo.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+      geo.setAttribute('aLat', new THREE.Float32BufferAttribute(lat, 1));
+      geo.setAttribute('aDrift', new THREE.Float32BufferAttribute(drift, 2));
+      geo.setIndex(idx);
+      this.mesh = new THREE.Mesh(geo, ROCK_MAT);
+      this.mesh.frustumCulled = false;
+      this.mesh.renderOrder = 3;
+      this.mesh.position.y = CONFIG.WATER_LEVEL + 0.04;
+      this.mesh.userData.rockWake = true;
+      parent.add(this.mesh);
+    }
+    this.spray = this.rocks.length ? new SternSpray(parent) : null;
+    if (this.spray) this.spray.points.userData.rockWake = true;
+  }
+
+  /** Spray off the rocks near (x, z): the ones the player can see. */
+  update(t, dt, x, z) {
+    if (!this.spray) return;
+    let emitted = false;
+    for (const rk of this.rocks) {
+      if (Math.abs(rk.x - x) > 90 || Math.abs(rk.z - z) > 90) continue;
+      rk.acc += rk.rate * dt;
+      let guard = 6;
+      while (rk.acc >= 1 && guard-- > 0) { rk.acc -= 1; this.spray.spawn(rk.vessel, Math.min(1, rk.sp / 6)); emitted = true; }
+      rk.acc = Math.min(rk.acc, 2);
+    }
+    // Move what is flying; spawn nothing more (the loop above did that).
+    this.spray.update(dt, null, false, 0);
+    if (emitted) this.spray.points.visible = true;
+  }
+
+  dispose() {
+    if (this.mesh) { this.parent.remove(this.mesh); this.mesh.geometry.dispose(); }
+    if (this.spray) this.spray.dispose();
   }
 }
