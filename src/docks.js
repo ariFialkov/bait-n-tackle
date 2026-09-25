@@ -956,14 +956,31 @@ function* buildDock(dock, docks) {
  * g's own frame (g must not have been placed yet). Multi-material meshes
  * (the name board) are left as they are.
  */
+// A piece thinner than this across two of its three sides — a railing
+// post, a plank seam, a cleat, a window mullion — is under two shadow-map
+// texels wide, and its shadow can only pop in and out as the map moves
+// with the boat. Those cast no shadow; everything solid still does.
+const THIN = 0.22;
+const _dims = new THREE.Vector3(), _bb = new THREE.Box3();
+function isThin(o) {
+  if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+  _bb.copy(o.geometry.boundingBox).getSize(_dims);
+  const m = o.matrixWorld.elements;
+  const sx = Math.hypot(m[0], m[1], m[2]), sy = Math.hypot(m[4], m[5], m[6]), sz = Math.hypot(m[8], m[9], m[10]);
+  const d = [_dims.x * sx, _dims.y * sy, _dims.z * sz].sort((a, b) => a - b);
+  return d[1] <= THIN;
+}
+
 function* mergeStatic(g) {
   g.updateMatrixWorld(true);
   const byMat = new Map();
   const gone = [];
   g.traverse((o) => {
     if (!o.isMesh || Array.isArray(o.material)) return;
-    let e = byMat.get(o.material);
-    if (!e) { e = { geos: [], meshes: [], receive: false }; byMat.set(o.material, e); }
+    // The thin pieces of a paint go in a mesh of their own that casts no shadow.
+    const key = isThin(o) ? o.material.uuid + '|thin' : o.material.uuid;
+    let e = byMat.get(key);
+    if (!e) { e = { mat: o.material, geos: [], meshes: [], receive: false, cast: !key.endsWith('|thin') }; byMat.set(key, e); }
     e.meshes.push(o);
     if (o.receiveShadow) e.receive = true;
     gone.push(o);
@@ -972,7 +989,8 @@ function* mergeStatic(g) {
   // A paint at a time, and the planking (a couple of hundred pieces) in
   // batches, so no one step is dear.
   const BATCH = 24;
-  for (const [mat, e] of byMat) {
+  for (const e of byMat.values()) {
+    const mat = e.mat;
     const parts = [];
     for (let i = 0; i < e.meshes.length; i += BATCH) {
       const geos = e.meshes.slice(i, i + BATCH).map((o) => o.geometry.clone().applyMatrix4(o.matrixWorld));
@@ -986,7 +1004,7 @@ function* mergeStatic(g) {
     e.geos = e.meshes = null;
     if (merged) {
       const m = new THREE.Mesh(merged, mat);
-      m.castShadow = true;
+      m.castShadow = e.cast;
       m.receiveShadow = e.receive;
       m.userData.merged = true;
       g.add(m);

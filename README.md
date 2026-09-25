@@ -690,6 +690,9 @@ the fog, before it can be seen:
   the boat moves in whole shadow-map texels (the light and its target are
   snapped together across the light's view), so shadow edges do not
   shimmer as the boat moves; a small normal bias keeps acne off the props.
+  A marina's slivers — railing posts, plank seams, cleats, mullions, under
+  two texels wide — cast no shadow at all (their shadows could only pop in
+  and out as the map stepped); everything solid still does.
 * **Resolution follows the frame rate.** A phone is drawn at no more than
   1.5× its screen, a desktop at 2×; if the frames run long the picture is
   drawn a notch smaller (down to 0.6 of that), and climbs back when they
