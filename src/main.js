@@ -272,7 +272,7 @@ equipBoat(player.boatId);
 
 const marina = new Marina(player, (key) => { docks.sold(key); return equipBoat(key, true); });
 // The other fishermen on the water, and the side bets they call across.
-const npcs = new NpcFleet(scene, lake, player, rtp, hud, fishing, docks);
+const npcs = new NpcFleet(scene, lake, player, rtp, hud, fishing, docks, ambientFish);
 // Stock turned over while the store is open at that marina: show the new boats.
 docks.onRestock = (dock) => { if (marina.open && marina.dock === dock) marina.render(); };
 

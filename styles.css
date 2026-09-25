@@ -649,6 +649,8 @@ html, body {
   transform-origin: 50% 50%;
 }
 #finder-marina .finder-arrow { color: #7fd8ff; }
+#finder-goal { opacity: 1; background: rgba(70, 38, 10, 0.72); color: #ffe6cf; }
+#finder-goal .finder-arrow { color: #ff9a5c; }
 .finder-text b { color: #fff; }
 
 /* ---------- Minimap ---------- */
@@ -1136,4 +1138,11 @@ svg.ico.inl { width: 1em; height: 1em; margin-right: 0.3em; vertical-align: -0.1
 .comp-row:nth-child(3) .comp-bar i { background: #ff9a5c; }
 .comp-row b { text-align: right; color: #fff; }
 .comp-timer { display: flex; justify-content: space-between; margin-top: 6px; color: #7da8bc; font-weight: 700; }
+/* The long race: the named waters of the quickest way to the finish, the current one lit. */
+.comp-legs { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.12); color: #9fbfcf; font-size: 0.68rem; line-height: 1.45; }
+.comp-legs.hidden { display: none; }
+.comp-legs span { white-space: nowrap; }
+.comp-legs span.done { color: #6f8a97; }
+.comp-legs span.now { color: #ffd166; font-weight: 800; }
+.comp-legs i { color: #587485; font-style: normal; margin: 0 3px; }
 @media (max-width: 640px) { #comp { top: max(200px, calc(env(safe-area-inset-top) + 196px)); width: 180px; } }

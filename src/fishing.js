@@ -22,7 +22,7 @@ import { CONFIG, LURES, NETS, POTS } from './config.js';
 import { waterDepth } from './lake.js';
 import { clamp, lerp } from './noise.js';
 import { HookedFish } from './hookedfish.js';
-import { poolFor } from './fishdata.js';
+import { poolFor, speciesInTiers } from './fishdata.js';
 import { HAUL_TOAST_MS, TOAST_FADE_MS } from './hud.js';
 
 const SNAP_S = 1.0;            // a parted line whipping back and settling
@@ -164,6 +164,12 @@ export class Fishing {
     this.autoReel = !!player.autoReel;
     this.autoTimer = 0;
 
+    // A fishing match (npc.js): while one is on, the rods are a separate
+    // game. Casts cost nothing and pay nothing; the water is thick with the
+    // match's species; any other fish is tossed back. The side bet itself
+    // was settled when it was accepted, so nothing here touches the RTP.
+    this.match = null;
+
     this.potIndex = 0;
     this.pots = [];
     this.hauls = [];               // pots on their way up and over the rail
@@ -292,7 +298,7 @@ export class Fishing {
     if (this.boat.trawling) { say('Stow the net to cast'); return false; }
     const line = this.lines.find((l) => !l.busy);
     if (!line) { say('Every rod is already out'); return false; }
-    if (this.player.balance < this.lure.cost) {
+    if (!this.match && this.player.balance < this.lure.cost) {
       say(`Need $${this.lure.cost} to land a fish on the ${this.lure.name}`);
       return false;
     }
@@ -313,7 +319,7 @@ export class Fishing {
     // No money moves yet — the bet is placed only if a fish is landed.
     line.reset();
     line.rodIndex = rodIndex;
-    line.wager = this.lure.cost;
+    line.wager = this.match ? 0 : this.lure.cost;
     line.lureIndex = this.lureIndex;
     line.distTotal = dist;
     line.target.copy(target);
@@ -373,6 +379,7 @@ export class Fishing {
    * covered, in which case the fish is never hooked and nothing is charged.
    */
   setHook(line, quiet = false) {
+    if (this.match) return this.setMatchHook(line, quiet);
     const cost = line.wager;
     if (this.player.balance < cost) {
       this.hud.hint('No cash for the tackle — it slipped the hook');
@@ -408,9 +415,52 @@ export class Fishing {
     line.hotness = spot ? spot.hotness : 0;
     // A hotspot bites faster, and faster still on the bait it favours.
     const match = spot && spot.hotspot.lureId === LURES[line.lureIndex].id ? 1 : 0.45;
-    const speedup = 1 + line.hotness * match * (CONFIG.HOTSPOT_BITE_BOOST - 1);
+    let speedup = 1 + line.hotness * match * (CONFIG.HOTSPOT_BITE_BOOST - 1);
+    if (this.match) speedup = Math.max(speedup, 2.2);   // a match is ninety seconds: the water is biting
     line.biteTimer = (CONFIG.BITE_MIN_S +
       Math.random() * (CONFIG.BITE_MAX_S - CONFIG.BITE_MIN_S)) / speedup;
+  }
+
+  // ---------- the fishing match ----------
+  /** The match is on: the rods play the match's game until endMatch. */
+  startMatch(species) {
+    this.match = { species, hooked: 0, counted: 0 };
+    this.hud.hint(`Match on: ${species.name} count, everything else goes back`, 3200);
+  }
+
+  endMatch() {
+    this.match = null;
+    // Anything still on a line was a match fish: it goes back, unpaid.
+    for (const l of this.lines) if (l.busy && l.catch && l.catch.match) l.end();
+  }
+
+  /**
+   * A hook set during a match: no stake, no payout. Most bites are the
+   * match's species (the water is stocked with them for the ninety
+   * seconds); the rest are tossed back at the rail. Only the match's
+   * species counts, by weight, toward the side bet — which was settled
+   * when it was accepted, so this changes nothing about its outcome.
+   */
+  setMatchHook(line, quiet = false) {
+    const m = this.match;
+    line.hooked = true;
+    line.biting = false;
+    this.hud.setBite(this.lines.some((l) => l.biting));
+    let species = m.species;
+    if (Math.random() >= 0.7) {
+      const pool = speciesInTiers(0, 3, this.poolAt(line.pos.x, line.pos.z)).filter((s) => s !== m.species);
+      if (pool.length) species = pool[Math.floor(Math.random() * pool.length)];
+    }
+    const sizeMult = 0.75 + Math.random() * 0.6;
+    const c = { species, sizeMult, kg: Math.max(0.005, species.kg * sizeMult * sizeMult), value: 0, match: true, counts: species === m.species };
+    m.hooked++;
+    line.catch = c;
+    line.catchWager = 0;
+    line.fish = new HookedFish(this.scene, c.species, c.sizeMult);
+    if (c.counts) { m.counted++; if (this.onCatch) this.onCatch(c); }
+    if (!quiet) this.hud.hint(c.counts ? `Fish on — a ${species.name}, it counts!` : 'Fish on', 2200);
+    if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+    return true;
   }
 
   /** The fish is over the rail: show what the hook already paid for. */
@@ -419,6 +469,7 @@ export class Fishing {
     const cost = line.catchWager;
     line.end();
     if (!c) return;
+    if (c.match) { this.hud.showMatchCatch(c); return; }
     this.hud.showCatch(c, cost);
     if (c.value >= CONFIG.BIGCATCH_MIN_VALUE || c.species.tier >= 4) {
       this.hud.showBigCatch(c);
@@ -889,7 +940,7 @@ export class Fishing {
         const match = spot && spot.hotspot.lureId === LURES[line.lureIndex].id ? 1 : 0.45;
         const chance = lerp(CONFIG.CAST_CATCH_CHANCE, CONFIG.HOTSPOT_CATCH_CHANCE,
           clamp(line.hotness * match, 0, 1));
-        line.willCatch = Math.random() < chance;
+        line.willCatch = Math.random() < (this.match ? 0.96 : chance);
         this.scheduleBite(line);
       }
       line.drawLine();

@@ -219,8 +219,32 @@ export class HUD {
     const left = Math.max(0, c.limit - c.t);
     $('comp-clock').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     $('comp-stake').textContent = `$${c.stake} down`;
+    // The long race: the waters of the quickest way, the current one lit.
+    const legs = $('comp-legs');
+    if (c.legs && c.legs.length) {
+      const at = c.legAt ?? 0;
+      const key = c.legs.map((l) => l.name).join('|') + '#' + at;
+      if (legs._key !== key) {
+        legs._key = key;
+        legs.innerHTML = c.legs.map((l, i) => `<span class="${i < at ? 'done' : i === at ? 'now' : ''}">${l.name}</span>`).join('<i>→</i>');
+        legs.classList.remove('hidden');
+      }
+    } else if (!legs.classList.contains('hidden')) { legs.classList.add('hidden'); legs._key = null; }
   }
-  clearComp() { $('comp').classList.add('hidden'); }
+  clearComp() { $('comp').classList.add('hidden'); this.clearGoalFinder(); }
+
+  /** The chip that points at a bet's next mark: a gate, a goal, the finish. */
+  setGoalFinder(name, x, z, boatPos) {
+    const el = $('finder-goal');
+    if (!el._shown) { el._shown = true; el.classList.add('show'); }
+    const ang = Math.atan2(x - boatPos.x, -(z - boatPos.z));
+    const rot = arrowRot(ang);
+    if (rot !== el._rot) { el._rot = rot; el.querySelector('.finder-arrow').style.transform = rot; }
+    if (name !== el._name) { el._name = name; el.querySelector('.finder-name').textContent = name; }
+    const txt = `${Math.round(Math.hypot(x - boatPos.x, z - boatPos.z))}m`;
+    if (txt !== el._txt) { el._txt = txt; el.querySelector('.finder-text b').textContent = txt; }
+  }
+  clearGoalFinder() { const el = $('finder-goal'); if (el && el._shown) { el._shown = false; el.classList.remove('show'); } }
 
   // --- boat chip ---
   setBoat(spec) {
@@ -475,6 +499,15 @@ export class HUD {
       `<div class="catch-sub">${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg · paid at the rail` +
         `</div></div>` +
       `<div class="catch-value">$${c.value.toFixed(2)}</div>`, cls, 4200);
+  }
+
+  /** A fish landed during a fishing match: it counted, or it went back. */
+  showMatchCatch(c) {
+    this.toast(
+      `<img class="catch-icon" src="${fishIconURL(c.species)}" alt="">` +
+      `<div class="catch-body"><div class="catch-name">${c.species.name}</div>` +
+      `<div class="catch-sub">${c.counts ? `${c.kg.toFixed(c.kg < 1 ? 2 : 1)} kg · counts for the match` : 'tossed back'}</div></div>`,
+      c.counts ? 'win' : 'meh', 3000);
   }
 
   showTrawlHaul(catches, total) {

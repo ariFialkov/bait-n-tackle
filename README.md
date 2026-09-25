@@ -290,26 +290,54 @@ cast, wait, hook something, fight it in — and call in at the marinas.
 They are **solid**: a hull runs into one as it runs into the tender, the
 shove shared by size, and they steer clear of the player.
 
-They come as **encounters**, not a standing crowd: every four or five
-minutes (sooner if the player has been alone a while) one is put on the
-water where the player will come across it — crossing their path from
+They come as **encounters**, not a standing crowd: every minute and a
+half or two (sooner if the player has been alone a while) one is put on
+the water where the player will come across it — crossing their path from
 one side to the other a boat-length or two off the beam, moored ahead of
-them fishing, or bound for a marina near them — and goes on living after
-that, wandering, fishing and calling at marinas, until it is left far
-behind. At most three are alive at once. A boat's cost scales with its
+them fishing, bound for a marina near them, or three of them circling on
+open water waiting for a fourth — and goes on living after that,
+wandering, fishing and calling at marinas, until it is left far behind.
+Up to six are alive at once. Two in five are **just out on the water**
+and never call across. Hulls follow the water: small and common ones
+mostly (skiffs, speedboats, cuddies), the working boats now and then, a
+paddleboat or steamboat rarely and almost never in a creek; the circling
+three are sturdy, fast mid-sized boats. A boat's cost scales with its
 distance: near the player it runs in full; further off it is stepped a
 few times a second without its wake and smoke and throws no shadow; its
 feelers over the water ahead are cast a few times a second rather than
 every frame.
 
-Passing one, it may **call across** with a side bet, and a card comes up
-with fourteen seconds to answer:
+Passing one that is not the idle kind, it may **call across** with a side
+bet — what it proposes goes with its hull: the nimble boats race and run
+the rocks, the working boats fish — and a card comes up with fourteen
+seconds to answer:
 
 * **Race** — first boat to a named water two to five hundred metres off.
-* **Run the rocks** — through four gates, marked with buoys along a route
-  through rapids, coves or river bends, in order, then home.
+  A chip on the HUD points at the goal with the distance.
+* **Run the rocks** — through three or four gates to a named water, in
+  order, then home. The route has to thread a real rapid: it is only
+  offered where it runs through rapids with eight boulders and more
+  within ten metres of it, and the gates are put where the rock is
+  thickest. The chip points at the next gate ("Gate 2 of 4 · 85 m").
 * **Fishing match** — most of a named species by weight on the rod in
-  ninety seconds.
+  ninety seconds. For those ninety seconds the rods play **a separate
+  game**: casts cost nothing and pay nothing, the water round the boat
+  is stocked with the species (most of the fish in view become it, and
+  most bites are it), anything else is tossed back at the rail, and only
+  the named species counts, by weight. Nothing caught in a match touches
+  the wallet or the RTP ledger; the side bet itself was settled when it
+  was accepted.
+* **The long haul** — three boats found circling and waiting for a
+  fourth. The finish is the farthest named water that connects to here:
+  the water round the boats is flood-filled first (sliced over frames),
+  a water three or four basins off is taken by preference, then two, and
+  never the open sea while there is anything else; a kilometre by water
+  at least where the water runs that far. The card names it and the
+  distance by water; the chip points at the finish; and the live panel
+  lists the named waters of the quickest way there, in order (Alder
+  Ponds → Birch River → Wolf Pond), the current one lit. The long haul is
+  only proposed where the water runs six hundred metres and more; a
+  small lake gets an ordinary boat instead.
 
 The stake is a tenth of the wallet, to a tidy figure. Every side bet is
 an **isolated bet against the game RTP** exactly like a catch
@@ -318,14 +346,25 @@ bet is placed; it is won when that draw is at least the stake, and lost
 otherwise, with the mass a catch would have paid on the losing draws
 added to every win so the expected payout is RTP × stake to the cent.
 The outcome is fixed before anything happens on the water, and what
-happens on the water is **staged to match**: the other boat is held a
-margin behind the player's own progress on a won bet and sent a margin
-ahead on a lost one (let out past its top speed if it has to be), and in
-a fishing match its basket fills, fish by fish, to a margin under or over
-the player's. Nothing the player does can move the result; giving up
-(the four-minute limit, or ninety seconds for a match) only forfeits the
-stake. The purse is paid at the finish, and the live card in the corner
-shows both boats' progress, or both baskets, and the clock.
+happens on the water is **staged to match**, with no skill in it:
+
+* On a bet the player is meant to win, the other boat is held a margin
+  behind the player's own progress, and never past nine tenths of the
+  way until the player is home. It is the only case a boat is slowed.
+* On a bet the player is meant to lose, the other boat is **never
+  slowed**: it runs flat out, is not eased for tight water, and is let
+  out past its top speed whenever it falls behind the margin it is meant
+  to hold ahead of the player. In the long haul the first of the three
+  does this and the other two trail the player whatever the result.
+* A racing boat that is shoved off its route, or backs out of a corner,
+  takes the route up again from its nearest point.
+* In a fishing match the other basket fills, fish by fish, to a margin
+  under or over the player's, and the last fish lands on the bell.
+
+Nothing the player does can move the result; giving up (the four-minute
+limit, longer for the long haul, ninety seconds for a match) only
+forfeits the stake. The purse is paid at the finish, and the live card in
+the corner shows both boats' progress, or both baskets, and the clock.
 
 ### Boats and the shore
 

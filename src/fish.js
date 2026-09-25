@@ -45,6 +45,7 @@ export class AmbientFish {
     this.group = new THREE.Group();
     scene.add(this.group);
     this.focus = new THREE.Vector3();
+    this.feature = null;
     this.fish = [];
     for (let i = 0; i < count; i++) {
       const f = {
@@ -78,6 +79,17 @@ export class AmbientFish {
 
   setFocus(x, z) { this.focus.set(x, 0, z); }
 
+  /**
+   * Stock the water with one species (a fishing match), or none: while it
+   * is set, most of the fish round the boat are that one — two in three
+   * change at once, the rest as they are recycled. Scenery only.
+   */
+  setFeature(species) {
+    this.feature = species || null;
+    if (!species) return;
+    for (const f of this.fish) if (Math.random() < 0.66 && f.species !== species) this.dress(f, species);
+  }
+
   /** Drop a fish at a random watery point around the focus at ~radius r. */
   place(f, r) {
     for (let tries = 0; tries < 12; tries++) {
@@ -87,9 +99,10 @@ export class AmbientFish {
       if (waterDepth(x, z) > 1.2) {
         f.x = x; f.z = z;
         f.heading = Math.random() * Math.PI * 2;
-        // The wrong kind of fish for this water: it comes back as the right one.
         const pool = poolAt(x, z);
-        if (pool !== 'both' && f.species.water !== pool) this.dress(f, pickAmbientSpecies(pool));
+        if (this.feature && Math.random() < 0.75) { if (f.species !== this.feature) this.dress(f, this.feature); }
+        // The wrong kind of fish for this water: it comes back as the right one.
+        else if ((pool !== 'both' && f.species.water !== pool) || (!this.feature && f.species === this._wasFeature)) this.dress(f, pickAmbientSpecies(pool));
         return true;
       }
     }
