@@ -228,9 +228,14 @@ export class Tender {
     // The tender's group, in the mother's hull frame, when it stands on
     // the chocks, and when it floats alongside (world y ≈ 0.02).
     const wellGroupY = well.y + keel - this.lift;
-    const floatGroupY = mother.hullFrame.worldToLocal(this._v.set(0, 0.02, 0)).y;
     const side = c.side ?? 1;
     const dropX = side * ((mother.hullBounds?.halfBeam ?? 3) + this.hullBounds.halfBeam + 0.8);
+    // The water's height in the hull's frame, taken directly under the drop
+    // point. (Not at the world origin: with the ship pitched or rolled on
+    // the swell, a point hundreds of metres away maps to a wildly different
+    // height, and the crane would lower the tender far under the surface.)
+    const dropW = mother.hullFrame.localToWorld(this._v.set(dropX, 0, well.z));
+    const floatGroupY = mother.hullFrame.worldToLocal(this._v.set(dropW.x, 0.02, dropW.z)).y;
     return { well, side, wellGroupY, floatGroupY, dropX, dropZ: well.z, clear: 1.7 };
   }
 
