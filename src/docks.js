@@ -73,12 +73,68 @@ export function chunkDocks(cx, cz) {
       angle: Math.atan2(dx, dz),
       pierLen,
       key: `${cx}|${cz}`,
+      // Two in five are big harbours: more rows of slips, more boats.
+      big: rng() < 0.4,
     };
+    layoutHarbour(dock);
     dock.name = marinaName(dock);
     dock.stock = marinaStock(dock);
     return [dock];
   }
   return [];
+}
+
+// --- the harbour's lot -----------------------------------------------------
+//
+// A marina is laid out like a car park: a main pier runs out from the shore
+// and rows of fingers stand off it on both sides, a slip beside each finger.
+// The rows nearest the shore take the small boats, the rows further out
+// the middling ones; anything bigger lies at a mooring in a line beyond
+// the head, on a rope to a buoy. The lot is only as long as the water
+// allows: each row is added while there is depth for the main pier, the
+// finger tips and the slips, so a creek marina gets a short lot and a lake
+// marina the whole thing.
+const SMALL_PITCH = 4.4, SMALL_FINGER = 6.8, SMALL_MAX = 7.2;      // skiff, speedboat, cuddy
+const MED_PITCH = 6.8, MED_FINGER = 12.6, MED_MAX = 12.8;          // trawler, dredger, gillnetter
+const PIER_W = 2.8;
+
+function layoutHarbour(dock) {
+  const dx = Math.sin(dock.angle), dz = Math.cos(dock.angle), rx = dz, rz = -dx;
+  const at = (ax, az) => waterDepth(dock.x + dx * az + rx * ax, dock.z + dz * az + rz * ax);
+  // Which sides of the pier a row at z0 has water for: the finger's tip and
+  // the slip beside it both need depth, and so does the pier itself there.
+  const sidesAt = (z0, pitch, finger) => {
+    if (at(0, z0 + pitch) < 1.3) return [];
+    const sides = [];
+    for (const s of [1, -1]) {
+      if (at(s * (PIER_W / 2 + finger), z0) < 0.9) continue;
+      if (at(s * (PIER_W / 2 + finger * 0.55), z0 + pitch * 0.5) < 1.0) continue;
+      sides.push(s);
+    }
+    return sides;
+  };
+  // Each wanted row goes at the first z out from the last where at least one
+  // side has water; the pier runs on out through the shallows to reach it.
+  const place = (z, pitch, finger, small) => {
+    for (let zz = z; zz <= z + 14; zz += 2) {
+      const sides = sidesAt(zz, pitch, finger);
+      if (sides.length) return { z: zz, small, sides };
+    }
+    return null;
+  };
+  const wantSmall = dock.big ? 3 : 2, wantMed = dock.big ? 2 : 1;
+  const rows = [];
+  let z = 4.5;
+  for (let i = 0; i < wantSmall; i++) { const r = place(z, SMALL_PITCH, SMALL_FINGER, true); if (!r) break; rows.push(r); z = r.z + SMALL_PITCH; }
+  for (let i = 0; i < wantMed; i++) { const r = place(z, MED_PITCH, MED_FINGER, false); if (!r) break; rows.push(r); z = r.z + MED_PITCH; }
+  // The main pier runs a little past the last row to the fuel dock at its
+  // head; every row was placed where the pier had water, so it always can.
+  if (rows.length) {
+    const L = Math.max(dock.pierLen, z + 1.5);
+    dock.pierLen = L;
+    dock.headX = dock.x + dx * L; dock.headZ = dock.z + dz * L;
+  }
+  dock.rows = rows;
 }
 
 // --- berthing ------------------------------------------------------------
@@ -217,7 +273,8 @@ export function marinaName(dock) {
 const RARITY_W = [1, 0.42, 0.15, 0.045];
 export function marinaStock(dock) {
   const rng = mulberry32((hash2(dock.cx, dock.cz, S + 431) * 1e9) | 0);
-  const n = 2 + Math.floor(rng() * 3);
+  // A big harbour carries five to nine boats, a small one three to five.
+  const n = dock.big ? 5 + Math.floor(rng() * 5) : 3 + Math.floor(rng() * 3);
   const pool = [];
   fleetCatalog().forEach(({ hull, skins }, hi) => {
     for (const sk of skins) if (sk.price > 0) pool.push({ key: sk.key, hull: hull.id, w: RARITY_W[sk.rarity] / Math.pow(1 + hi, 1.35) });
@@ -229,8 +286,9 @@ export function marinaStock(dock) {
     let r = rng() * total, pick = pool[pool.length - 1];
     for (const c of pool) { r -= c.w; if (r <= 0) { pick = c; break; } }
     out.push(pick.key);
-    // One of each hull on the docks.
-    for (let i = pool.length - 1; i >= 0; i--) if (pool[i].hull === pick.hull) pool.splice(i, 1);
+    pool.splice(pool.indexOf(pick), 1);
+    // Another skin of the same hull is unlikely, not impossible.
+    for (const c of pool) if (c.hull === pick.hull) c.w *= 0.12;
   }
   return out;
 }
@@ -330,11 +388,11 @@ function railing(g, x0, z0, x1, z1, y, step = 1.1) {
 // --- boathouses: three kinds, so the coast is not one shack repeated ---
 
 /** A working boathouse: gable roof, big bay open to the water, dormer, life ring. */
-function boathouseA(wall, roof, rng) {
+function boathouseA(wall, roof, rng, y0 = 1.1, down = 3.2) {
   const g = new THREE.Group();
-  const W = 7.2, D = 7.0, H = 3.2, y0 = 1.1;
+  const W = 7.2, D = 7.0, H = 3.2;
   // Stands on pilings, the floor a hand above the highest ground.
-  for (const sx of [-3.2, 0, 3.2]) for (const sz of [-3.0, 0, 3.0]) g.add(mesh(GEO.piling, MAT.piling, 1.3, 3.2, 1.3, sx, y0 - 1.6, sz));
+  for (const sx of [-3.2, 0, 3.2]) for (const sz of [-3.0, 0, 3.0]) g.add(mesh(GEO.piling, MAT.piling, 1.3, down, 1.3, sx, y0 - down / 2, sz));
   g.add(box(MAT.plank, W + 0.6, 0.2, D + 0.6, 0, y0, 0));
   // Walls: back, two sides, and the front split round the bay.
   g.add(box(wall, W, H, 0.24, 0, y0 + H / 2, -D / 2));
@@ -373,10 +431,10 @@ function boathouseA(wall, roof, rng) {
 }
 
 /** An A-frame lodge: two great roof planes to the deck, a glass front, chimney, veranda. */
-function boathouseB(wall, roof, rng) {
+function boathouseB(wall, roof, rng, y0 = 1.0, down = 3.0) {
   const g = new THREE.Group();
-  const W = 7.6, D = 7.4, y0 = 1.0, rise = 4.6;
-  for (const sx of [-3.4, 0, 3.4]) for (const sz of [-3.2, 0, 3.2]) g.add(mesh(GEO.piling, MAT.piling, 1.3, 3.0, 1.3, sx, y0 - 1.5, sz));
+  const W = 7.6, D = 7.4, rise = 4.6;
+  for (const sx of [-3.4, 0, 3.4]) for (const sz of [-3.2, 0, 3.2]) g.add(mesh(GEO.piling, MAT.piling, 1.3, down, 1.3, sx, y0 - down / 2, sz));
   g.add(box(MAT.plank, W + 2.4, 0.2, D + 2.6, 0, y0, 0.6));       // deck all round
   // The two roof slopes run to the deck.
   const half = W / 2, slope = Math.hypot(half, rise), ang = Math.atan2(rise, half);
@@ -410,10 +468,10 @@ function boathouseB(wall, roof, rng) {
 }
 
 /** A long shed of a boat yard: corrugated roof, sliding door, hoist arm, barrels, a water tank. */
-function boathouseC(wall, roof, rng) {
+function boathouseC(wall, roof, rng, y0 = 0.9, down = 3.0) {
   const g = new THREE.Group();
-  const W = 9.6, D = 6.2, H = 3.4, y0 = 0.9;
-  for (const sx of [-4.4, -1.5, 1.5, 4.4]) for (const sz of [-2.8, 0, 2.8]) g.add(mesh(GEO.piling, MAT.piling, 1.2, 3.0, 1.2, sx, y0 - 1.5, sz));
+  const W = 9.6, D = 6.2, H = 3.4;
+  for (const sx of [-4.4, -1.5, 1.5, 4.4]) for (const sz of [-2.8, 0, 2.8]) g.add(mesh(GEO.piling, MAT.piling, 1.2, down, 1.2, sx, y0 - down / 2, sz));
   g.add(box(MAT.plank, W + 1.0, 0.2, D + 0.8, 0, y0, 0));
   g.add(box(wall, W, H, D, 0, y0 + H / 2, 0));
   // Board seams and a band of trim.
@@ -466,7 +524,7 @@ function gasPumps(g, x, y, z) {
 }
 
 /** An ice cream stand with a striped awning and a great cone on the roof. */
-function iceCreamStand(g, x, y, z, ry) {
+function iceCreamStand(g, x, y, z, ry, down = 2.5) {
   const s = new THREE.Group();
   s.add(box(MAT.cream, 2.4, 2.3, 1.9, 0, 1.15, 0));
   s.add(box(MAT.pink, 2.5, 0.16, 2.0, 0, 2.3, 0));
@@ -484,6 +542,9 @@ function iceCreamStand(g, x, y, z, ry) {
   // A bin and a chalkboard.
   s.add(mesh(GEO.cyl, MAT.steel, 0.5, 0.7, 0.5, 1.6, 0.35, 0.9));
   s.add(box(MAT.dark, 0.7, 0.9, 0.06, -1.7, 0.6, 0.9, 0.3));
+  // Its own little deck, on posts down to whatever is under it.
+  s.add(box(MAT.plank, 4.4, 0.16, 3.4, 0, -0.08, 0.4));
+  for (const sx of [-1.9, 1.9]) for (const sz of [-1.0, 1.9]) s.add(mesh(GEO.post, MAT.piling, 1.4, down, 1.4, sx, -down / 2, sz));
   s.position.set(x, y, z); s.rotation.y = ry;
   g.add(s);
 }
@@ -528,67 +589,120 @@ function nameSign(g, name, x, y, z, ry, w = 3.2) {
 function parkDraft(length) { return 0.4 + length * 0.05; }
 
 /**
- * Where the stock boats lie: small ones alongside the fingers off the main
- * pier, bigger ones moored further out. Each candidate is checked for water
- * under the whole hull. Returns { x, z, heading, buoy } in world space, or
- * null when nothing floats.
+ * Deal the stock out over the lot, deterministically: small hulls to the
+ * small slips, middling ones to the medium slips, anything left or too big
+ * to the moorings in a line beyond the head. Each slot is checked for water
+ * under the hull; a slip with no water is passed over. Returns a list of
+ * { key, spec, ax, az, heading, mooring } in the marina's frame (x across
+ * the main pier, z out along it; a hull's forward is its local -z).
  */
-function parkingFor(dock, length, halfBeam, used) {
+function dealSlots(dock) {
   const dx = Math.sin(dock.angle), dz = Math.cos(dock.angle), rx = dz, rz = -dx;
-  const L = dock.pierLen;
-  const cands = [];
-  if (length <= 9) for (const s of [1, -1]) cands.push({ ax: s * (3.6 + halfBeam * 0.4), az: L * 0.55 + length * 0.05, buoy: false });
-  if (length <= 15) for (const s of [1, -1]) cands.push({ ax: s * (6.8 + halfBeam * 0.5), az: L + length * 0.25 + 1, buoy: true });
-  for (const s of [1, -1]) for (const out of [6, 12, 18]) cands.push({ ax: s * (5 + halfBeam + length * 0.18), az: L + out + length * 0.6, buoy: true });
-  const need = CONFIG.MIN_NAV_DEPTH + parkDraft(length);
-  // The first candidate with water under the whole hull wins; failing that
-  // the one with the most water, as long as the hull is afloat at all — a
-  // boat for sale in a creek marina lies where it can, not nowhere.
-  let best = null, bestScore = -Infinity;
-  for (const c of cands) {
-    if (used.some((u) => Math.hypot(u.ax - c.ax, u.az - c.az) < (u.len + length) * 0.5 + 2)) continue;
-    const x = dock.x + dx * c.az + rx * c.ax, z = dock.z + dz * c.az + rz * c.ax;
-    let worst = Infinity;
+  const depthAt = (ax, az) => waterDepth(dock.x + dx * az + rx * ax, dock.z + dz * az + rz * ax);
+  const floats = (ax, az, along, len, beam) => {
+    // `along` is the hull's axis in the marina frame.
+    const need = CONFIG.MIN_NAV_DEPTH + parkDraft(len);
+    const px = -along[1], pz = along[0];
     for (const t of [-0.5, -0.25, 0, 0.25, 0.5]) for (const b of [-1, 0, 1]) {
-      const px = x + dx * length * t + rx * halfBeam * b * 1.3, pz = z + dz * length * t + rz * halfBeam * b * 1.3;
-      worst = Math.min(worst, waterDepth(px, pz) - need);
+      if (depthAt(ax + along[0] * len * t + px * beam * b, az + along[1] * len * t + pz * beam * b) < need) return false;
     }
-    if (worst > bestScore) { bestScore = worst; best = { x, z, c }; }
-    if (worst >= 0) break;
+    return true;
+  };
+  const specs = (dock.stock || []).map((key) => ({ key, spec: resolveBoat(key) }));
+  specs.sort((a, b) => b.spec.length - a.spec.length);      // the big ones first, they are choosy
+  const slips = [];
+  for (const row of dock.rows || []) {
+    const finger = row.small ? SMALL_FINGER : MED_FINGER, pitch = row.small ? SMALL_PITCH : MED_PITCH;
+    for (const side of row.sides) if (row.blocked !== side) slips.push({ side, z: row.z, finger, pitch, max: row.small ? SMALL_MAX : MED_MAX, taken: false });
   }
-  if (!best || bestScore < -need + 0.35) return null;
-  used.push({ ax: best.c.ax, az: best.c.az, len: length });
-  // In the marina group's own frame: x across the pier, z out along it.
-  return { ax: best.c.ax, az: best.c.az, buoy: best.c.buoy };
+  const out = [];
+  const moored = [];
+  for (const { key, spec } of specs) {
+    const len = spec.length, beam = len * 0.17;
+    let placed = false;
+    for (const sl of slips) {
+      if (sl.taken || len > sl.max) continue;
+      // Lying along the finger, bow to the main pier, half a slip off it.
+      const ax = sl.side * (PIER_W / 2 + 0.7 + len / 2), az = sl.z + sl.pitch * 0.5 + 0.1;
+      if (!floats(ax, az, [sl.side, 0], len, beam)) continue;
+      sl.taken = true;
+      out.push({ key, spec, ax, az, heading: sl.side * Math.PI / 2, mooring: null });
+      placed = true;
+      break;
+    }
+    if (!placed) moored.push({ key, spec });
+  }
+  // Moorings: a line across, beyond the head, the centre lane left clear for
+  // whoever is coming in. Each boat lies along the pier, bow out, on a rope
+  // to a buoy ahead of it.
+  const L = dock.pierLen;
+  const lane = [9, -9, 18, -18, 27, -27, 36, -36];
+  let li = 0;
+  for (const { key, spec } of moored) {
+    const len = spec.length, beam = len * 0.17;
+    let done = false;
+    while (li < lane.length && !done) {
+      const ax = lane[li++];
+      for (const extra of [0, 6, 12]) {
+        const az = L + 6 + extra + len / 2;
+        if (!floats(ax, az, [0, 1], len, beam)) continue;
+        out.push({ key, spec, ax, az, heading: Math.PI, mooring: { ax, az: az + len / 2 + 3.5, bowZ: az + len / 2 } });
+        done = true;
+        break;
+      }
+    }
+  }
+  return out;
 }
 
-/** Load and park the marina's stock boats round its docks (asynchronous). */
+/** Load and park the marina's stock boats over the lot (asynchronous). */
 function parkStock(dock, g, alive) {
-  const used = [];
-  const keys = dock.stock || [];
-  keys.forEach(async (key) => {
-    const spec = resolveBoat(key);
-    let hull;
-    try { hull = (await loadHull(spec.hullId)).clone(true); } catch { return; }
-    if (!alive.on) return;
-    await applySkin(hull, spec);
-    if (!alive.on) return;
-    const box3 = new THREE.Box3().setFromObject(hull);
-    const halfBeam = (box3.max.x - box3.min.x) / 2, length = box3.max.z - box3.min.z;
-    const park = parkingFor(dock, length, halfBeam, used);
-    if (!park) return;
-    const holder = new THREE.Group();
-    holder.add(hull);
-    hull.position.y = stationsFor(spec.hullId)?.lift ?? 0;
-    // Bow to open water: the hull's forward is local -z, the water is +z here.
-    holder.position.set(park.ax, CONFIG.WATER_LEVEL, park.az);
-    holder.rotation.y = Math.PI;
-    holder.userData.stock = key;
-    g.add(holder);
-    if (park.buoy) {
-      const b = new THREE.Mesh(GEO.buoy, MAT.buoy); b.scale.setScalar(1.6); b.position.set(park.ax, 0.22, park.az + length / 2 + 2.5); g.add(b);
-    }
-  });
+  for (const slot of dealSlots(dock)) {
+    (async () => {
+      let hull;
+      try { hull = (await loadHull(slot.spec.hullId)).clone(true); } catch { return; }
+      if (!alive.on) return;
+      await applySkin(hull, slot.spec);
+      if (!alive.on) return;
+      const holder = new THREE.Group();
+      holder.add(hull);
+      hull.position.y = stationsFor(slot.spec.hullId)?.lift ?? 0;
+      holder.position.set(slot.ax, CONFIG.WATER_LEVEL, slot.az);
+      holder.rotation.y = slot.heading;
+      holder.userData.stock = slot.key;
+      g.add(holder);
+      if (slot.mooring) {
+        const m = slot.mooring;
+        const b = new THREE.Mesh(GEO.buoy, MAT.buoy); b.scale.setScalar(1.7); b.position.set(m.ax, 0.2, m.az); g.add(b);
+        g.add(mesh(GEO.post, MAT.dark, 0.5, 1.0, 0.5, m.ax, 0.6, m.az));           // the buoy's staff
+        // The rope, from the bow down to the buoy.
+        const x0 = m.ax, y0 = 0.7, z0 = m.bowZ - 0.3, x1 = m.ax, y1 = 0.25, z1 = m.az;
+        const len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+        const rope = mesh(GEO.post, MAT.crate, 0.45, len, 0.45, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+        rope.rotation.set(Math.atan2(z1 - z0, y1 - y0), 0, 0);
+        rope.castShadow = false;
+        g.add(rope);
+      }
+    })();
+  }
+}
+
+/**
+ * Where a building can stand: the ground under its footprint, in the
+ * marina's frame. `ok` when it can sit on the land on posts (its floor a
+ * hand above the highest point, its posts down to the lowest); otherwise
+ * it goes out over the water on a platform instead.
+ */
+function groundUnder(dock, cx, cz, w, d, ry) {
+  const dx = Math.sin(dock.angle), dz = Math.cos(dock.angle), rx = dz, rz = -dx;
+  let hi = -Infinity, lo = Infinity;
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    const lx = i * w / 2, lz = j * d / 2;
+    const ax = cx + lx * Math.cos(ry) + lz * Math.sin(ry), az = cz - lx * Math.sin(ry) + lz * Math.cos(ry);
+    const h = terrainHeight(dock.x + dx * az + rx * ax, dock.z + dz * az + rz * ax);
+    hi = Math.max(hi, h); lo = Math.min(lo, h);
+  }
+  return { hi, lo, ok: hi <= 3.4 && hi - lo <= 2.8 };
 }
 
 function buildDock(dock) {
@@ -600,42 +714,72 @@ function buildDock(dock) {
   const kind = Math.floor(rng() * 3);
 
   // The main pier, from the shore (z=0) out over the water (+z local).
-  const deck = box(MAT.plank, 2.8, 0.18, L, 0, 0.42, L / 2);
+  const deck = box(MAT.plank, PIER_W, 0.18, L, 0, 0.42, L / 2);
   deck.receiveShadow = true; g.add(deck);
-  for (let i = 1; i < Math.floor(L / 0.9); i++) g.add(box(MAT.plankDark, 2.82, 0.04, 0.07, 0, 0.52, i * 0.9));
+  for (let i = 1; i < Math.floor(L / 0.9); i++) g.add(box(MAT.plankDark, PIER_W + 0.02, 0.04, 0.07, 0, 0.52, i * 0.9));
   for (let i = 0; i <= Math.floor(L / 2.2); i++) for (const sx of [-1.3, 1.3]) g.add(mesh(GEO.piling, MAT.piling, 1, 2.8, 1, sx, -0.9, 0.6 + i * 2.2));
-  // Fingers off either side, where the small boats lie, with cleats and fenders.
-  for (const s of [1, -1]) {
-    const fz = L * 0.55 - 1.5;
-    g.add(box(MAT.plank, 2.4, 0.16, 1.1, s * 2.6, 0.4, fz));
-    g.add(mesh(GEO.piling, MAT.piling, 0.8, 2.6, 0.8, s * 3.7, -0.9, fz));
-    for (const z of [fz - 0.3, fz + 0.3]) g.add(box(MAT.steel, 0.3, 0.08, 0.1, s * 3.5, 0.52, z));
-    for (const z of [1.4, L * 0.55 + 1.6, L - 1.2]) g.add(mesh(GEO.torus, MAT.tyre, 0.9, 0.9, 0.9, s * 1.45, 0.25, z, 0, Math.PI / 2, 0));
-    for (let i = 0; i < 3; i++) g.add(mesh(GEO.post, MAT.piling, 1, 2.4, 1, s * 4.6, 0.2, 1.6 + i * 2.6));
+  // The lot: a finger off each side of every row, with pilings, cleats and a
+  // fender, the slip beside it marked with a post at its outer end.
+  for (const row of dock.rows || []) {
+    const finger = row.small ? SMALL_FINGER : MED_FINGER, pitch = row.small ? SMALL_PITCH : MED_PITCH;
+    for (const s of row.sides) {
+      if (row.blocked === s) continue;
+      const x0 = s * (PIER_W / 2 + finger / 2);
+      g.add(box(MAT.plank, finger, 0.16, 1.1, x0, 0.4, row.z));
+      for (let i = 1; i < Math.floor(finger / 0.9); i++) g.add(box(MAT.plankDark, 0.07, 0.04, 1.12, s * (PIER_W / 2 + i * 0.9), 0.5, row.z));
+      for (const t of [0.35, 0.95]) g.add(mesh(GEO.piling, MAT.piling, 0.8, 2.6, 0.8, s * (PIER_W / 2 + finger * t), -0.9, row.z + 0.5));
+      for (const t of [0.3, 0.7]) g.add(box(MAT.steel, 0.3, 0.08, 0.12, s * (PIER_W / 2 + finger * t), 0.52, row.z + 0.45));
+      g.add(mesh(GEO.torus, MAT.tyre, 0.8, 0.8, 0.8, s * (PIER_W / 2 + finger * 0.5), 0.25, row.z + 0.62, Math.PI / 2, 0, 0));
+      g.add(mesh(GEO.post, MAT.piling, 1, 2.4, 1, s * (PIER_W / 2 + finger + 0.4), 0.2, row.z + pitch - 0.3));
+    }
+    for (const s of row.sides) g.add(mesh(GEO.torus, MAT.tyre, 0.9, 0.9, 0.9, s * 1.45, 0.25, row.z + pitch * 0.5, 0, Math.PI / 2, 0));
   }
   for (const sx of [-1.45, 1.45]) for (const dz of [-1.2, 0.3]) { const b = new THREE.Mesh(GEO.buoy, MAT.buoy); b.position.set(sx, 0.16, L + dz); g.add(b); }
   lampPost(g, -1.2, 0.5, L - 0.6); lampPost(g, 1.2, 0.5, 1.2);
-  railing(g, -1.4, 0.2, -1.4, L * 0.45, 0.5); railing(g, 1.4, 0.2, 1.4, L * 0.45, 0.5);
+  if (L > 16) lampPost(g, -1.2, 0.5, L * 0.5);
+  railing(g, -1.4, 0.2, -1.4, 3.6, 0.5); railing(g, 1.4, 0.2, 1.4, 3.6, 0.5);
 
-  // The pumps at the head of the pier, the ice cream stand on the shore
-  // beside the planking, the boathouse behind, the name at the gate.
+  // The fuel dock at the head, the ice cream stand and the boathouse: on
+  // the shore if the ground allows, otherwise out over the water on their
+  // own platforms off the pier, so nothing is ever buried in a bank.
   gasPumps(g, 0, 0.5, L - 2.6);
-  iceCreamStand(g, 4.2, 0.6, -1.4, -0.4);
-  const house = (kind === 0 ? boathouseA : kind === 1 ? boathouseB : boathouseC)(wall, roof, rng);
-  house.position.set(kind === 2 ? -5.4 : -4.4, 0, kind === 2 ? -3.2 : -4.2);
-  house.rotation.y = kind === 2 ? 0.25 : 0.12;
+  const hx = kind === 2 ? -5.4 : -4.4, hz = kind === 2 ? -3.2 : -4.2, hry = kind === 2 ? 0.25 : 0.12;
+  const hw = kind === 2 ? 10.6 : 8.2, hd = kind === 2 ? 7.0 : 8.0;
+  const ground = groundUnder(dock, hx, hz, hw, hd, hry);
+  let house;
+  if (ground.ok) {
+    const y0 = Math.max(0.6, ground.hi + 0.25);
+    house = (kind === 0 ? boathouseA : kind === 1 ? boathouseB : boathouseC)(wall, roof, rng, y0, y0 - ground.lo + 1.0);
+    house.position.set(hx, 0, hz); house.rotation.y = hry;
+    g.add(box(MAT.plank, 1.6, 0.14, 4.4, -2.4, Math.max(0.5, y0 - 0.4), -0.8, 0.55));   // the walkway
+  } else {
+    // Over the water beside the shore end of the pier, on a platform.
+    const side = -1;
+    const px = side * (PIER_W / 2 + hw / 2 + 0.6), pz = 1.0 + hd / 2;
+    house = (kind === 0 ? boathouseA : kind === 1 ? boathouseB : boathouseC)(wall, roof, rng, 0.6, 3.2);
+    house.position.set(px, 0, pz); house.rotation.y = 0;
+    g.add(box(MAT.plank, hw + 1.6, 0.16, hd + 1.6, px, 0.42, pz));
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) g.add(mesh(GEO.piling, MAT.piling, 1.1, 3.0, 1.1, px + i * hw / 2, -1.1, pz + j * hd / 2));
+    // The slips on that side would run into it: the lot starts past it.
+    for (const row of dock.rows || []) if (row.z < pz + hd / 2 + 1) row.blocked = side;
+  }
   g.add(house);
-  // A walkway from the pier to the house.
-  g.add(box(MAT.plank, 1.6, 0.14, 4.4, -2.4, 0.5, -0.8, 0.55));
-  // Flag over the yard.
-  g.add(mesh(GEO.post, MAT.trim, 1, 6.5, 1, 3.6, 3.25, -4.2));
-  g.add(mesh(GEO.box, MAT.flag, 1.4, 0.8, 0.02, 4.35, 6.1, -4.2));
+  const icy = groundUnder(dock, 4.4, -1.6, 4.6, 3.6, -0.4);
+  if (icy.ok) iceCreamStand(g, 4.4, Math.max(0.5, icy.hi + 0.1), -1.6, -0.4, icy.hi - icy.lo + 1.4);
+  else {
+    // On a platform off the pier's shore end, over the water.
+    iceCreamStand(g, PIER_W / 2 + 2.8, 0.5, 2.4, Math.PI / 2, 2.6);
+  }
+  // Flag over the yard, the name at the gate: at the ground's own height.
+  const fh = Math.max(0.3, terrainHeight(dock.x + Math.cos(dock.angle) * 3.6 - Math.sin(dock.angle) * 4.2, dock.z - Math.sin(dock.angle) * 3.6 - Math.cos(dock.angle) * 4.2));
+  g.add(mesh(GEO.post, MAT.trim, 1, 6.5, 1, 3.6, fh + 3.25, -4.2));
+  g.add(mesh(GEO.box, MAT.flag, 1.4, 0.8, 0.02, 4.35, fh + 6.1, -4.2));
   nameSign(g, dock.name, 1.9, 0.42, 0.7, 0.15);
 
   g.position.set(dock.x, 0, dock.z);
   g.rotation.y = dock.angle;
 
-  // The boats for sale, tied up round the docks.
+  // The boats for sale, dealt over the lot.
   const alive = { on: true };
   g.userData.alive = alive;
   parkStock(dock, g, alive);

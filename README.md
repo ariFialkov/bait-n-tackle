@@ -282,18 +282,31 @@ Every marina is a yard (`docks.js`): a boathouse in one of three builds —
 a working boathouse with its bay open to the water, dormer and life ring;
 an A-frame lodge with a glass front, chimney and veranda; a long boat-yard
 shed with a corrugated roof, a sliding door, a hoist arm and a water tank —
-in its own paint, with a pier of lamps, cleats, tyre fenders and fingers,
-gas pumps under a canopy at the head, an ice cream stand with a striped
-awning and a great cone on the roof, a flag, and the marina's name on a
-board at the gate. The names are not respectable (Master Baiters, The Wet
+in its own paint, with a pier of lamps, cleats and tyre fenders, gas pumps
+under a canopy at the head, an ice cream stand with a striped awning and a
+great cone on the roof, a flag, and the marina's name on a board at the
+gate. The buildings stand on the ground on posts, their floors a hand
+above the highest point under them; where the bank is too high or too
+steep for that they go out over the water instead, on their own platforms
+off the pier, so nothing is ever buried in a hillside.
+
+The harbour is laid out like a car park: the main pier runs out from the
+shore and rows of fingers stand off it on both sides, a slip beside each
+finger, the rows nearest the shore for the small boats and the rows
+further out for the middling ones. Each row is placed at the first water
+deep enough for it, on whichever sides have the depth, so a creek marina
+gets a short lot and a lake marina the whole thing. Big marinas (two in
+five) have more rows. Anything too big for a slip — a paddleboat, a
+seiner, a steamboat — lies at a mooring in a line beyond the head, on a
+rope to a buoy, the centre lane left clear for whoever is coming in. The names are not respectable (Master Baiters, The Wet
 Spot, Hooker's Landing, Cod Piece Harbour, Moist Marina …); most come off a
 lattice of the chunk so neighbours never share one, the rest take the word
 of the basin they stand in (Cardwell Crack Yacht Club, Deep Cardwell
 Landing).
 
-Each marina carries its **own stock**: two to four boats, no two of the
-same hull, rolled once from its seed so they are always the same, lying at
-its fingers and moorings as real hulls in their paint. The roll leans hard
+Each marina carries its **own stock**: three to five boats at a small
+marina, five to nine at a big harbour, rolled once from its seed so they
+are always the same and dealt over the lot as real hulls in their paint. The roll leans hard
 toward cheap hulls and Standard paint, so a Signature steamboat is out
 there but you have to find the yard that carries it. Only what is on the
 docks can be bought there. Anything you already own can be taken from any
