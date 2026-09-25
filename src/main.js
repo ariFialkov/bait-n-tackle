@@ -61,6 +61,7 @@ sun.shadow.camera.right = sun.shadow.camera.top = 55;
 sun.shadow.camera.near = 20;
 sun.shadow.camera.far = 200;
 sun.shadow.bias = -0.0015;
+sun.shadow.normalBias = 0.03;   // against acne crawling over the props as the map moves
 scene.add(sun);
 scene.add(sun.target);
 const ambientLight = new THREE.AmbientLight(0xcfe6f0, 0.75);
@@ -86,6 +87,29 @@ labels.sync(lake.landmarks);
 const climate = new Climate(scene, sun, ambientLight, hemiLight);
 const minimap = new Minimap(document.getElementById('minimap'));
 const _sunDir = new THREE.Vector3();
+
+/**
+ * The shadow frustum follows the boat, and a frustum that slides by a
+ * fraction of a shadow-map texel a frame makes every shadow edge shimmer
+ * as the boat moves. So it moves in whole texels: the light's position and
+ * target are shifted together, across the light's view, onto the texel
+ * grid. Costs a few vector operations; changes nothing else.
+ */
+const _sRight = new THREE.Vector3(), _sUp = new THREE.Vector3(), _sDir = new THREE.Vector3(), _sShift = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+function snapShadowFrustum() {
+  const cam = sun.shadow.camera;
+  const texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
+  _sDir.subVectors(sun.target.position, sun.position).normalize();
+  _sRight.crossVectors(_sDir, _worldUp).normalize();
+  _sUp.crossVectors(_sRight, _sDir).normalize();
+  const t = sun.target.position;
+  const lx = t.dot(_sRight), ly = t.dot(_sUp);
+  const dx = Math.round(lx / texel) * texel - lx, dy = Math.round(ly / texel) * texel - ly;
+  _sShift.copy(_sRight).multiplyScalar(dx).addScaledVector(_sUp, dy);
+  sun.position.add(_sShift);
+  sun.target.position.add(_sShift);
+}
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -474,6 +498,7 @@ function frame() {
   const ss = climate.sunset;
   sun.position.set(eye.x + SUN_OFFSET.x * (1 + ss * 0.7), SUN_OFFSET.y * (1 - ss * 0.68), eye.z + SUN_OFFSET.z * (1 + ss * 0.7));
   sun.target.position.set(eye.x, 0, eye.z);
+  snapShadowFrustum();
   lake.setLight(sun.color, _sunDir.copy(sun.position).sub(sun.target.position), ss, scene.background);
   if (state === 'play') minimap.update(eye.x, eye.z, (helm === tender ? tender : boat).heading, lake.docks);
   tick('minimap');

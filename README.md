@@ -686,7 +686,10 @@ the fog, before it can be seen:
 * **The water's noise is a texture**: the fragment shader read five
   hash-noise evaluations a pixel over most of the screen; it now reads a
   baked 256² value-noise tile once per call, the same noise at the same
-  frequencies. Shadows use plain PCF.
+  frequencies. Shadows use plain PCF, and the shadow frustum that follows
+  the boat moves in whole shadow-map texels (the light and its target are
+  snapped together across the light's view), so shadow edges do not
+  shimmer as the boat moves; a small normal bias keeps acne off the props.
 * **Resolution follows the frame rate.** A phone is drawn at no more than
   1.5× its screen, a desktop at 2×; if the frames run long the picture is
   drawn a notch smaller (down to 0.6 of that), and climbs back when they
