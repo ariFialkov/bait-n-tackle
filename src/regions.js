@@ -170,35 +170,126 @@ const FR = ['du Loup', 'du Héron', 'des Brumes', 'du Cerf', 'du Castor', 'de la
 
 function pick(rng, list) { return list[Math.floor(rng() * list.length) % list.length]; }
 
+// --- basins: the neighbourhoods that share a name ---------------------------
+//
+// A name is memorable when it belongs to a place, not a cell: the waters
+// of one neighbourhood — the lake, the falls above it, the creek running
+// in, the bay it opens on — share a word, and the kind of water tells them
+// apart: Juniper Lake, Juniper Falls, Upper Juniper Creek, Juniper Bay.
+// Basins are a coarse jittered lattice over the cells, three cells across;
+// every cell belongs to the basin whose site is nearest. The basin's word
+// comes off a lattice of the basin's coordinates, so no two neighbouring
+// basins share one. All of it is seeded: the same country every load.
+const BASIN = 3;
+const basinCache = new Map();
+function basinSite(bx, bz) {
+  const rng = mulberry32((hash2(bx, bz, S + 823) * 4294967295) >>> 0);
+  return { bx, bz, x: (bx + 0.5 + (rng() - 0.5) * 0.9) * BASIN, z: (bz + 0.5 + (rng() - 0.5) * 0.9) * BASIN };
+}
+/** The basin (bx, bz) a cell belongs to. */
+export function basinOf(cx, cz) {
+  const k = cellKey(cx, cz);
+  let b = basinCache.get(k);
+  if (b) return b;
+  const px = cx + 0.5, pz = cz + 0.5;
+  const bx0 = Math.floor(px / BASIN), bz0 = Math.floor(pz / BASIN);
+  let best = null, bd = Infinity;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const st = basinSite(bx0 + dx, bz0 + dz);
+    const d = (st.x - px) ** 2 + (st.z - pz) ** 2;
+    if (d < bd) { bd = d; best = st; }
+  }
+  b = { bx: best.bx, bz: best.bz };
+  basinCache.set(k, b);
+  return b;
+}
+/** The basin's shared word. */
+export function basinWord(bx, bz) {
+  const lat = ((bx % 1000) + 1000) * 1 + ((bz % 1000) + 1000) * 9;
+  return FIRST[lat % FIRST.length];
+}
+// The cells of a basin, grouped by biome, so waters of one kind in one
+// basin can be told apart (Upper / Lower / Little ...). Built once a basin.
+const basinCells = new Map();
+function cellsOfBasin(bx, bz) {
+  const k = cellKey(bx, bz);
+  let m = basinCells.get(k);
+  if (m) return m;
+  m = new Map();
+  const c0x = bx * BASIN - 2, c0z = bz * BASIN - 2;
+  for (let cz = c0z; cz < c0z + BASIN + 4; cz++) for (let cx = c0x; cx < c0x + BASIN + 4; cx++) {
+    const b = basinOf(cx, cz);
+    if (b.bx !== bx || b.bz !== bz) continue;
+    const r = cellRegion(cx, cz);
+    const key = kindKey(r);
+    if (!m.has(key)) m.set(key, []);
+    m.get(key).push(r);
+  }
+  // North to south, then west to east: 'Upper' is the northern one.
+  for (const list of m.values()) list.sort((a, b) => a.cz - b.cz || a.cx - b.cx);
+  basinCells.set(k, m);
+  return m;
+}
 /**
- * A name for a region of this biome. The first word comes off a lattice of
- * the cell's coordinates rather than a roll, so no two cells within a wide
- * neighbourhood can share one (the same first word recurs only many cells
- * apart, and then usually with a different kind and adjective).
+ * The kind of water a cell's name will call it — 'Lake', 'Narrows', or the
+ * French 'Lac' — rolled from its seed exactly as regionName rolls it. Two
+ * cells of one basin with the same kind get ranked apart.
+ */
+function kindKey(r) {
+  const rng = mulberry32((r.seed ^ 0x5bd1e995) >>> 0);
+  const b = r.biome;
+  const kind = pick(rng, b.names);
+  if (b.fr && FR_KIND[r.type] && rng() < b.fr) return 'fr:' + FR_KIND[r.type];
+  return kind;
+}
+const RANKS = ['Upper', 'Lower', 'Little', 'Far', 'North', 'South', 'East', 'West', 'Old', 'Great', 'Inner', 'Outer'];
+const FR_KIND = { lake: 'Lac', pond: 'Étang', river: 'Rivière', falls: 'Chutes', beaver: 'Ruisseau' };
+
+/**
+ * A name for the region of biome `type` whose site is in cell (cx, cz):
+ * the basin's word plus the kind of water, and, when the basin holds more
+ * than one water of this kind, a rank (Upper, Lower, Little ...) so each
+ * is its own place. The odd cold-country name comes out in French.
  */
 export function regionName(type, seed, cx = 0, cz = 0) {
   const rng = mulberry32(seed);
   const b = BIOMES[type];
-  const lat = ((cx % 1000) + 1000) * 1 + ((cz % 1000) + 1000) * 9;
-  if (b.fr && rng() < b.fr) return `Lac ${FR[lat % FR.length]}`;
-  const first = FIRST[lat % FIRST.length];
+  const basin = basinOf(cx, cz);
+  const word = basinWord(basin.bx, basin.bz);
   const kind = pick(rng, b.names);
-  const adj = rng() < 0.22 ? pick(rng, ADJ) + ' ' : '';
-  if (type === 'ocean') return `${first} ${kind}`;
-  return `${adj}${first} ${kind}`;
+  const french = !!(b.fr && FR_KIND[type] && rng() < b.fr);
+  if (type === 'ocean') return `${word} ${kind}`;     // the sea is one place
+  const same = cellsOfBasin(basin.bx, basin.bz).get(french ? 'fr:' + FR_KIND[type] : kind) || [];
+  const rank = same.findIndex((r) => r.cx === cx && r.cz === cz);
+  const adj = same.length > 1 && rank >= 0 ? RANKS[rank % RANKS.length] + ' ' : '';
+  if (french) {
+    const fk = FR_KIND[type];
+    // Petit Lac Juniper, Lac Juniper: the rank goes in front in French too.
+    const fadj = adj ? (rank === 0 ? 'Grand ' : rank === 1 ? 'Petit ' : 'Vieux ') : '';
+    return `${fadj}${fk} ${word.replace(/'s$/, '')}`;
+  }
+  return `${adj}${word} ${kind}`;
 }
 
-/** A name for a landmark of a kind: 'peak' | 'hill' | 'beach' | 'rock' | 'dam' | 'falls' | 'point'. */
-export function landmarkName(kind, seed) {
+/**
+ * A name for a landmark of a kind — 'peak' | 'hill' | 'beach' | 'rock' |
+ * 'dam' | 'falls' | 'point' — in the basin of cell (cx, cz), so Mount Juniper
+ * stands over Juniper Lake. The odd one takes its own word instead, so a
+ * basin with three beaches is not three Juniper Beaches.
+ */
+export function landmarkName(kind, seed, cx = 0, cz = 0) {
   const rng = mulberry32(seed);
-  const first = pick(rng, FIRST);
+  const basin = basinOf(cx, cz);
+  const own = rng() < 0.3;
+  const first = own ? pick(rng, FIRST) : basinWord(basin.bx, basin.bz);
+  const adj = !own || rng() < 0.5 ? '' : pick(rng, ADJ) + ' ';
   switch (kind) {
     case 'peak': return `Mount ${first.replace(/'s$/, '')}`;
-    case 'hill': return `${first} Hill`;
-    case 'beach': return `${first} Beach`;
-    case 'rock': return rng() < 0.5 ? `${first} Rock` : `${first} Island`;
+    case 'hill': return `${adj}${first} Hill`;
+    case 'beach': return `${adj}${first} Beach`;
+    case 'rock': return rng() < 0.5 ? `${adj}${first} Rock` : `${adj}${first} Island`;
     case 'dam': return `${first} Dam`;
-    case 'falls': return `${first} Falls`;
+    case 'falls': return `${adj}${first} Falls`;
     case 'point': return rng() < 0.5 ? `${first} Point` : `${first} Head`;
     default: return first;
   }
@@ -255,9 +346,12 @@ export function cellRegion(cx, cz) {
   r = {
     cx, cz, x, z, type, seed,
     biome: BIOMES[type],
-    name: regionName(type, seed ^ 0x5bd1e995, cx, cz),
     temp: temperature(x, z),
     flow: null,       // filled in by terrain.js for the running water
+    // Named lazily: a name looks at the other waters of its basin, whose
+    // cells have to exist first.
+    _name: null,
+    get name() { if (this._name === null) this._name = regionName(this.type, this.seed ^ 0x5bd1e995, this.cx, this.cz); return this._name; },
   };
   cells.set(k, r);
   return r;

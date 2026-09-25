@@ -235,7 +235,7 @@ class HotspotFX {
 }
 
 // --- Water surface: big transparent plane with animated shader waves ---
-const WATER_SEG = 80;
+const WATER_SEG = 104;
 
 function makeWater() {
   const geo = new THREE.PlaneGeometry(CONFIG.CHUNK_SIZE * 9, CONFIG.CHUNK_SIZE * 9, WATER_SEG, WATER_SEG);
@@ -253,6 +253,9 @@ function makeWater() {
     uniforms: {
       uTime: { value: 0 },
       uSky: { value: new THREE.Color(0xcfe9f4) },
+      uSun: { value: new THREE.Color(0xfff4e0) },
+      uSunDir: { value: new THREE.Vector3(0.4, 0.7, 0.3).normalize() },
+      uSunset: { value: 0 },
     },
     vertexShader: /* glsl */`
       uniform float uTime;
@@ -260,14 +263,25 @@ function makeWater() {
       attribute float aChop, aMurk, aDepth;
       varying vec3 vWorld, vShallow, vDeep;
       varying float vWave, vChop, vMurk, vDepth, vCrest;
+      varying vec2 vGrad;
       void main() {
         vec4 wp = modelMatrix * vec4(position, 1.0);
         float w = sin(wp.x * 0.35 + uTime * 1.1) * 0.05
                 + sin(wp.z * 0.28 - uTime * 0.9) * 0.05
                 + sin((wp.x + wp.z) * 0.12 + uTime * 0.6) * 0.07;
-        // Open water carries a swell on top, rolling in toward the land.
-        float swell = sin(wp.x * 0.09 - uTime * 0.75 + sin(wp.z * 0.05) * 1.5) * 0.36
-                    + sin((wp.x * 0.7 + wp.z * 0.3) * 0.05 - uTime * 0.5) * 0.22;
+        // Open water carries a swell: two trains of waves crossing, with
+        // peaked crests and long troughs (a sine raised to a power), the
+        // surface pulled toward each crest so the faces steepen (Gerstner),
+        // and a slope handed to the fragment shader to light the faces.
+        vec2 d1 = normalize(vec2(0.86, 0.5)), d2 = normalize(vec2(-0.35, 0.94));
+        float k1 = 0.075, k2 = 0.115;
+        float ph1 = dot(wp.xz, d1) * k1 - uTime * 0.95 + sin(wp.z * 0.02) * 1.2;
+        float ph2 = dot(wp.xz, d2) * k2 - uTime * 1.25 + sin(wp.x * 0.03) * 0.9;
+        float s1 = pow(0.5 + 0.5 * sin(ph1), 1.8) * 2.0 - 1.0;
+        float s2 = pow(0.5 + 0.5 * sin(ph2), 1.8) * 2.0 - 1.0;
+        float swell = s1 * 0.6 + s2 * 0.36;
+        wp.xz -= (d1 * cos(ph1) * 0.32 + d2 * cos(ph2) * 0.2) * aChop;
+        vGrad = (d1 * cos(ph1) * 0.6 * k1 * 1.8 + d2 * cos(ph2) * 0.36 * k2 * 1.8) * aChop;
         w = w * (1.0 + aChop * 2.0) + swell * aChop;
         wp.y += w;
         vWave = w; vCrest = swell;
@@ -277,9 +291,11 @@ function makeWater() {
       }`,
     fragmentShader: /* glsl */`
       uniform float uTime;
-      uniform vec3 uSky;
+      uniform vec3 uSky, uSun, uSunDir;
+      uniform float uSunset;
       varying vec3 vWorld, vShallow, vDeep;
       varying float vWave, vChop, vMurk, vDepth, vCrest;
+      varying vec2 vGrad;
       float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
       float vnoise(vec2 p) {
         vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -293,16 +309,27 @@ function makeWater() {
         vec3 col = mix(vDeep, vShallow, 0.5 + vWave * 2.2 / (1.0 + vChop * 2.0));
         col = mix(col, uSky, sparkle * 0.2);
         vec3 viewDir = normalize(cameraPosition - vWorld);
+        // The swell's faces: lit toward the sun, shaded away from it, with
+        // the sun's glitter down the faces that catch it. Rough water only.
+        vec3 N = normalize(vec3(-vGrad.x, 1.0, -vGrad.y));
+        float ndl = dot(N, uSunDir);
+        col *= 1.0 + (ndl - 0.7) * 0.9 * vChop;
+        float spec = pow(max(dot(reflect(-uSunDir, N), viewDir), 0.0), 48.0);
+        col += uSun * spec * (0.25 + 0.55 * uSunset) * vChop;
         float fres = pow(1.0 - abs(viewDir.y), 2.0);
         col = mix(col, uSky, fres * 0.45);
+        // At sunset the whole surface takes the sky's warmth: the water
+        // holds the pink of the sky, more of it the flatter the view.
+        vec3 warm = mix(col * vec3(0.82, 0.74, 0.98), uSky * 0.92, fres * 0.75);
+        col = mix(col, warm, uSunset * 0.7);
         // Whitecaps: the crests of the swell break where the water is rough.
         float n = vnoise(vWorld.xz * 0.45 + vec2(uTime * 0.25, -uTime * 0.15));
         float n2 = vnoise(vWorld.xz * 1.8 - vec2(uTime * 0.6, uTime * 0.3));
-        float cap = smoothstep(0.28, 0.52, vCrest) * smoothstep(0.45, 0.75, n * 0.7 + n2 * 0.45) * vChop;
+        float cap = smoothstep(0.42, 0.8, vCrest) * smoothstep(0.42, 0.75, n * 0.7 + n2 * 0.45) * vChop;
         // Surf: waves breaking on the shore, more of it the rougher the water.
         float pulse = 0.5 + 0.5 * sin(uTime * 1.6 + vWorld.x * 0.12 + vWorld.z * 0.08 + n * 4.0);
         float surf = smoothstep(1.5, 0.0, vDepth) * smoothstep(0.35, 0.8, n2 * 0.6 + pulse * 0.55) * (0.25 + vChop * 0.75);
-        col = mix(col, vec3(1.0), clamp(cap * 0.95 + surf * 0.8, 0.0, 1.0));
+        col = mix(col, mix(vec3(1.0), uSky, uSunset * 0.35), clamp(cap * 0.95 + surf * 0.8, 0.0, 1.0));
         float alpha = 0.55 + fres * 0.2 + vMurk * 0.3 + cap * 0.35 + surf * 0.3;
         gl_FragColor = vec4(col, min(alpha, 0.98));
       }`,
@@ -330,6 +357,7 @@ export class Lake {
     this.onLandmarksChanged = null;
     this.waterTile = null;
     this._cur = { x: 0, z: 0 };
+    this._white = new THREE.Color(0xffffff);
     this._climate = { sky: new THREE.Color(), fog: new THREE.Color(), sun: new THREE.Color(), near: 90, far: 220, sunI: 2.4, amb: 0.75, precip: 0, snow: 0 };
   }
 
@@ -377,6 +405,15 @@ export class Lake {
       this.water.position.z = ccz * size;
       this.refreshWater(ccx * size, ccz * size);
     }
+  }
+
+  /** The light on the water: the sun's colour and direction and how far into sunset. */
+  setLight(sunColor, sunDir, sunset, sky) {
+    const u = this.water.material.uniforms;
+    if (sky) u.uSky.value.copy(sky).lerp(this._white, 0.25);
+    u.uSun.value.copy(sunColor);
+    u.uSunDir.value.copy(sunDir).normalize();
+    u.uSunset.value = sunset;
   }
 
   /** Colour, chop, murk and depth per water vertex from what lies under it. */
@@ -498,8 +535,12 @@ export class Lake {
     const w = Math.sin(x * 0.35 + t * 1.1) * 0.05
       + Math.sin(z * 0.28 - t * 0.9) * 0.05
       + Math.sin((x + z) * 0.12 + t * 0.6) * 0.07;
-    const swell = Math.sin(x * 0.09 - t * 0.75 + Math.sin(z * 0.05) * 1.5) * 0.36
-      + Math.sin((x * 0.7 + z * 0.3) * 0.05 - t * 0.5) * 0.22;
+    // The same two crossing wave trains the surface shader raises.
+    const ph1 = (x * 0.8646 + z * 0.5027) * 0.075 - t * 0.95 + Math.sin(z * 0.02) * 1.2;
+    const ph2 = (x * -0.3491 + z * 0.9371) * 0.115 - t * 1.25 + Math.sin(x * 0.03) * 0.9;
+    const s1 = Math.pow(0.5 + 0.5 * Math.sin(ph1), 1.8) * 2 - 1;
+    const s2 = Math.pow(0.5 + 0.5 * Math.sin(ph2), 1.8) * 2 - 1;
+    const swell = s1 * 0.6 + s2 * 0.36;
     return w * (1 + chop * 2) + swell * chop;
   }
 }

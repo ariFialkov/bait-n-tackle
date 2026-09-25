@@ -184,7 +184,8 @@ can take, and once in four finished right across and blocking the creek
 (which is which re-rolls every twenty minutes, each dam on its own clock),
 with a stick lodge in the water off one end — creeks carry several, rivers
 and ponds the odd one. Rapids are a strait, the channel narrowed, boulders along both edges
-funnelling the stream and more standing in it, each with a boat's wake of
+funnelling the stream and plenty more standing in it (never two mid-stream
+rocks so close a hull cannot pass between them), each with a boat's wake of
 white water tearing off it downstream (see *Wake*, below), rushing. The coast gets sea stacks standing out of the
 swell. The props (`props.js`) are instanced per chunk from lists decided
 once per chunk (`scatter.js`), and the **solid** ones — rocks, boulders,
@@ -212,9 +213,28 @@ The one water plane is re-coloured **per vertex** from the regions under it
 whenever it steps, with its own chop, murk and depth: a lagoon is turquoise,
 a marsh is brown and half opaque, and where the water is rough the swell
 rolls in and **breaks white on its crests** and on every shore, hardest on
-the coast. Sky, fog, the colour and strength of the sun, and what is falling
+the coast. The open sea's swell is two trains of waves crossing, with
+peaked crests and long troughs, the surface pulled toward each crest so
+the faces steepen, and the faces lit toward the sun and shaded away from
+it with the sun's glitter down them, so the sea has height rather than a
+rippling colour; the hull rides the same two trains. Sky, fog, the colour and strength of the sun, and what is falling
 (rain over the marshes, snow in falls country) are the regions' too
 (`climate.js`), eased toward as you cross from one to the next.
+
+**Sunset.** Five minutes in every twenty, by the wall clock (minutes 15
+to 19 of each third of the hour), the light goes down: the sky and the haze
+turn pink and orange, the sun drops low and orange and the shadows run
+long, the ambient light warms, and the water takes the sky's colour at a
+grazing angle with the sun's glitter down its faces. It eases in and out
+over half a minute, rolls round on its own with no switch and no HUD, and
+is the same for everyone at the same moment.
+
+**The minimap.** A small round map in the top-left corner: the country
+round the boat at five metres a pixel, north up, water shaded by depth and
+salt, the shore, the land rising to snow, the marinas as dots and the boat
+an arrow in the middle. It is painted from the same terrain the world is
+built from, a tile a frame as new ground comes into range, and keeps what
+it has painted (`minimap.js`).
 
 **The sea.** To the east the whole freshwater system runs out into the
 ocean: across a band of deltas and bays the water turns brackish, and beyond
@@ -227,12 +247,21 @@ is decided by the water it is caught in; the payout it is drawn to fit is
 not — the water changes the fish, never the money. The Fishopedia lists all
 120 and filters by water.
 
-**Names.** Every region is named (Heron Lake, Lac du Cerf, Widow's Creek,
-Farrow Delta, Broken Reach …), the first word off a lattice of the cell's
-coordinates so no two waters within a wide neighbourhood share one, and the name fades in, centred and out of the
+**Names.** Every region is named, and the names belong to places rather
+than cells: the country is divided into **basins**, neighbourhoods three
+cells across on a jittered lattice, and every water in a basin shares its
+word — Juniper Lake, Juniper Falls, Juniper Creek, Juniper Bay — with the
+kind of water telling them apart. Two waters of one kind in one basin are
+ranked apart (Upper Juniper Lake, Lower Juniper Lake, Little …), so no two
+waters in a basin share a name, and neighbouring basins never share a word.
+The odd cold-country name comes out in French (Lac Juniper, Petit Étang
+Rowan, Chutes Rowan). The whole country is generated from one fixed seed,
+so every place has the same name and the same shape on every load, wherever
+you happen to start. The name fades in, centred and out of the
 way, as you come well onto it, with the kind of water under it. Landmarks
 worth a name get one on a pin, the way a maps app marks them — Mount X,
-X Hill, X Beach, X Rock or Island, X Point, X Dam, X Falls — an HTML pill
+X Hill, X Beach, X Rock or Island, X Point, X Dam, X Falls, mostly with the
+basin's word (Mount Juniper stands over Juniper Lake) — an HTML pill
 like the rest of the HUD, held over its point in the world by projecting
 it every frame, fading in as the landmark comes into view and out again as
 it leaves (`labels.js`).
@@ -529,7 +558,8 @@ src/
   nav.js       where a hull may float: depth plus nothing solid in the way; the random start
   currents.js  the moving water: channel flow, rapids, eddies, and the streaks that show it
   props.js     the props drawn by biome, the brush spring, waterfalls, white water, dams, stacks
-  climate.js   sky, fog, sun and precipitation eased toward the regions round the boat
+  climate.js   sky, fog, sun and precipitation eased toward the regions round the boat, and the sunset
+  minimap.js   the round map in the corner
   labels.js    the landmark pins in the world
   lake.js      infinite chunked water and country, the per-region water shader, hotspots
   boat.js      boat mesh, trawl net, and the working machinery on it

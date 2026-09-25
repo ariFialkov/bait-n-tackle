@@ -651,6 +651,22 @@ html, body {
 #finder-marina .finder-arrow { color: #7fd8ff; }
 .finder-text b { color: #fff; }
 
+/* ---------- Minimap ---------- */
+#minimap {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  top: max(92px, calc(env(safe-area-inset-top) + 88px));
+  width: 132px; height: 132px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  background: rgba(8, 40, 56, 0.6);
+  pointer-events: none;
+}
+@media (max-width: 640px) {
+  #minimap { width: 96px; height: 96px; top: max(84px, calc(env(safe-area-inset-top) + 80px)); }
+}
+
 /* ---------- Sonar ---------- */
 #sonar {
   position: absolute;

@@ -19,6 +19,7 @@ import { separateHulls } from './hullphysics.js';
 import { CrewDirector } from './deckcrew.js';
 import { SPECIES } from './fishdata.js';
 import { Climate } from './climate.js';
+import { Minimap } from './minimap.js';
 import { Labels } from './labels.js';
 import { findStart } from './nav.js';
 import { regionBlend, BIOMES } from './regions.js';
@@ -71,6 +72,8 @@ const labels = new Labels(document.getElementById('labels'), camera);
 lake.onLandmarksChanged = (list) => labels.sync(list);
 labels.sync(lake.landmarks);
 const climate = new Climate(scene, sun, ambientLight, hemiLight);
+const minimap = new Minimap(document.getElementById('minimap'));
+const _sunDir = new THREE.Vector3();
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -349,9 +352,13 @@ function frame() {
   labels.update(eye.x, eye.z, state === 'play');
   rig.update(dt, t, (helm === tender ? tender : boat).group.position);
 
-  // Keep the sun (and its shadow frustum) centered on the boat.
-  sun.position.set(eye.x + SUN_OFFSET.x, SUN_OFFSET.y, eye.z + SUN_OFFSET.z);
+  // Keep the sun (and its shadow frustum) centered on the boat. At sunset
+  // it sits low, and the shadows run long.
+  const ss = climate.sunset;
+  sun.position.set(eye.x + SUN_OFFSET.x * (1 + ss * 0.7), SUN_OFFSET.y * (1 - ss * 0.68), eye.z + SUN_OFFSET.z * (1 + ss * 0.7));
   sun.target.position.set(eye.x, 0, eye.z);
+  lake.setLight(sun.color, _sunDir.copy(sun.position).sub(sun.target.position), ss, scene.background);
+  if (state === 'play') minimap.update(eye.x, eye.z, (helm === tender ? tender : boat).heading, lake.docks);
 
   hud.setWallet(player.balance, rtp.netRound());
   hud.setTenderChip(tender);
@@ -372,7 +379,7 @@ frame();
 // Debug/test handle (harmless in production).
 window.BNT = {
   hud, rtp, fishing, boat, tender, crew, player, dex, marina, docks, lake, rig, SPECIES,
-  equipBoat, refreshShipPanel, separateHulls, labels, climate, start, BIOMES,
+  equipBoat, refreshShipPanel, separateHulls, labels, climate, minimap, start, BIOMES,
   get helm() { return helm; },
   get region() { return lastRegion; },
 };

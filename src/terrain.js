@@ -241,7 +241,7 @@ export function cellFeatures(cx, cz) {
       };
       fall.rocks = fallsRocks(fall);
       f.falls.push(fall); f.bumps.push(fall);
-      f.landmarks.push({ kind: 'falls', x: lx + g.nx * 4, z: lz + g.nz * 4, name: landmarkName('falls', fall.seed) });
+      f.landmarks.push({ kind: 'falls', x: lx + g.nx * 4, z: lz + g.nz * 4, name: landmarkName('falls', fall.seed, cx, cz) });
       f.hotspots.push({ x: fall.pool.x, z: fall.pool.z, strength: 1.3, phase: rng() * Math.PI * 2, lureIdx: Math.floor(rng() * 8) });
     }
   }
@@ -272,7 +272,7 @@ export function cellFeatures(cx, cz) {
       dam.open = damOpen(dam.seed);
       dam.gap = dam.open ? Math.max(8, Math.min(13, dam.len * 0.38)) : 0;
       f.dams.push(dam); f.bumps.push(dam);
-      f.landmarks.push({ kind: 'dam', x, z, name: landmarkName('dam', dam.seed) });
+      f.landmarks.push({ kind: 'dam', x, z, name: landmarkName('dam', dam.seed, cx, cz) });
       // The lodge: a dome of sticks in the water off one end of the dam.
       for (let j = 0; j < 16; j++) {
         const side = rng() < 0.5 ? 1 : -1;
@@ -288,17 +288,20 @@ export function cellFeatures(cx, cz) {
   }
 
   if (type === 'rapids') {
-    // Boulders along the strait's edges funnel the water, and a few stand
-    // mid-stream for it to break round.
-    for (let i = 0; i < 520 && f.boulders.length < 40; i++) {
+    // Boulders along the strait's edges funnel the water, and plenty stand
+    // mid-stream for it to break round — enough to make the run rough, but
+    // never two mid-stream rocks so close that a hull cannot get between
+    // them, so there is always a line through.
+    for (let i = 0; i < 900 && f.boulders.length < 64; i++) {
       const p = pt();
       const h = baseHeight(p.x, p.z);
       if (!inCell(p.x, p.z)) continue;
       const edge = h < -0.3 && h > -2.2;
-      const mid = h <= -2.2 && h > -12 && rng() < 0.3;
+      const mid = h <= -2.2 && h > -12 && rng() < 0.45;
       if (!edge && !mid) continue;
-      if (f.boulders.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < 4)) continue;
-      f.boulders.push({ x: p.x, z: p.z, h, s: (mid ? 1.1 : 0.8) + rng() * 1.1, r: rng() * Math.PI * 2 });
+      if (f.boulders.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < 3.4)) continue;
+      if (mid && f.boulders.some((o) => o.mid && Math.hypot(o.x - p.x, o.z - p.z) < 7)) continue;
+      f.boulders.push({ x: p.x, z: p.z, h, mid, s: (mid ? 1.0 : 0.75) + rng() * 1.1, r: rng() * Math.PI * 2 });
     }
   }
 
@@ -335,7 +338,7 @@ export function cellFeatures(cx, cz) {
   for (const g of grid) if ((!top || g.h > top.h) && inCell(g.x, g.z)) top = g;
   if (top && top.h >= 5 && rng() < 0.8) {
     const kind = top.h >= 9 ? 'peak' : 'hill';
-    f.landmarks.push({ kind, x: top.x, z: top.z, name: landmarkName(kind, (rng() * 1e9) | 0) });
+    f.landmarks.push({ kind, x: top.x, z: top.z, name: landmarkName(kind, (rng() * 1e9) | 0, cx, cz) });
   }
   if (rng() < 0.65) {
     let beach = null, bestN = 0;
@@ -347,13 +350,13 @@ export function cellFeatures(cx, cz) {
       for (const o of grid) if (o !== g && Math.abs(o.x - g.x) <= step * 1.5 && Math.abs(o.z - g.z) <= step * 1.5 && o.h > 0.05 && o.h < 0.9) n++;
       if (n > bestN) { bestN = n; beach = g; }
     }
-    if (beach && bestN >= 3) f.landmarks.push({ kind: 'beach', x: beach.x, z: beach.z, name: landmarkName('beach', (rng() * 1e9) | 0) });
+    if (beach && bestN >= 3) f.landmarks.push({ kind: 'beach', x: beach.x, z: beach.z, name: landmarkName('beach', (rng() * 1e9) | 0, cx, cz) });
   }
   if (rng() < 0.6) {
     for (const g of grid) {
       if (g.h < 0.4 || g.h > 4 || !inCell(g.x, g.z)) continue;
       if (ring(g.x, g.z, 14, (h) => h < -0.3) === 8) {
-        f.landmarks.push({ kind: 'rock', x: g.x, z: g.z, name: landmarkName('rock', (rng() * 1e9) | 0) });
+        f.landmarks.push({ kind: 'rock', x: g.x, z: g.z, name: landmarkName('rock', (rng() * 1e9) | 0, cx, cz) });
         break;
       }
     }
@@ -363,7 +366,7 @@ export function cellFeatures(cx, cz) {
       if (g.h < 0.5 || g.h > 6 || !inCell(g.x, g.z)) continue;
       const wet = ring(g.x, g.z, 18, (h) => h < -0.3);
       if (wet >= 5 && wet <= 7) {
-        f.landmarks.push({ kind: 'point', x: g.x, z: g.z, name: landmarkName('point', (rng() * 1e9) | 0) });
+        f.landmarks.push({ kind: 'point', x: g.x, z: g.z, name: landmarkName('point', (rng() * 1e9) | 0, cx, cz) });
         break;
       }
     }
