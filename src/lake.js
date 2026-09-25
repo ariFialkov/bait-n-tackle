@@ -246,6 +246,7 @@ function makeWater() {
   geo.setAttribute('aChop', new THREE.BufferAttribute(new Float32Array(n), 1));
   geo.setAttribute('aMurk', new THREE.BufferAttribute(new Float32Array(n), 1));
   geo.setAttribute('aDepth', new THREE.BufferAttribute(new Float32Array(n), 1));
+  geo.setAttribute('aSalt', new THREE.BufferAttribute(new Float32Array(n), 1));
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -260,9 +261,9 @@ function makeWater() {
     vertexShader: /* glsl */`
       uniform float uTime;
       attribute vec3 aShallow, aDeep;
-      attribute float aChop, aMurk, aDepth;
+      attribute float aChop, aMurk, aDepth, aSalt;
       varying vec3 vWorld, vShallow, vDeep;
-      varying float vWave, vChop, vMurk, vDepth, vCrest;
+      varying float vWave, vChop, vMurk, vDepth, vCrest, vSalt;
       varying vec2 vGrad;
       void main() {
         vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -286,7 +287,7 @@ function makeWater() {
         wp.y += w;
         vWave = w; vCrest = swell;
         vWorld = wp.xyz;
-        vShallow = aShallow; vDeep = aDeep; vChop = aChop; vMurk = aMurk; vDepth = aDepth;
+        vShallow = aShallow; vDeep = aDeep; vChop = aChop; vMurk = aMurk; vDepth = aDepth; vSalt = aSalt;
         gl_Position = projectionMatrix * viewMatrix * wp;
       }`,
     fragmentShader: /* glsl */`
@@ -294,7 +295,7 @@ function makeWater() {
       uniform vec3 uSky, uSun, uSunDir;
       uniform float uSunset;
       varying vec3 vWorld, vShallow, vDeep;
-      varying float vWave, vChop, vMurk, vDepth, vCrest;
+      varying float vWave, vChop, vMurk, vDepth, vCrest, vSalt;
       varying vec2 vGrad;
       float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
       float vnoise(vec2 p) {
@@ -317,7 +318,9 @@ function makeWater() {
         // Chop: small water heaped between the swells, so the surface is
         // never a smooth face.
         float bump = vnoise(vWorld.xz * 0.9 + vec2(uTime * 0.35, -uTime * 0.2)) + vnoise(vWorld.xz * 2.6 - vec2(uTime * 0.5, uTime * 0.4)) * 0.5;
-        col *= 1.0 + (bump - 0.75) * 0.32 * vChop;
+        // The sea alone: fresh water keeps its calm face so the eddies show.
+        float sea = smoothstep(0.45, 0.95, vSalt);
+        col *= 1.0 + (bump - 0.75) * 0.32 * vChop * sea;
         float fres = pow(1.0 - abs(viewDir.y), 2.0);
         col = mix(col, uSky, fres * 0.45);
         // At sunset the whole surface takes the sky's warmth: the water
@@ -335,7 +338,7 @@ function makeWater() {
         float streak = vnoise(vec2(p1.x * 0.32 - uTime * 0.25, p1.y * 2.4 + n * 2.0));
         float cap = smoothstep(0.55, 0.9, vCrest) * smoothstep(0.62, 0.86, n2 * 0.55 + streak * 0.6) * vChop * 0.7;
         float ph = p1.x * 0.075 - uTime * 0.42 + sin(vWorld.z * 0.02) * 1.2;
-        float lines = smoothstep(0.955, 0.996, sin(ph * 13.0 + n * 1.4)) * smoothstep(0.28, 0.5, n) * (0.6 + 0.4 * n2) * vChop;
+        float lines = smoothstep(0.955, 0.996, sin(ph * 13.0 + n * 1.4)) * smoothstep(0.28, 0.5, n) * (0.6 + 0.4 * n2) * vChop * sea;
         cap = min(1.0, cap + lines * 0.95);
         // Surf: waves breaking on the shore, more of it the rougher the water.
         float pulse = 0.5 + 0.5 * sin(uTime * 1.6 + vWorld.x * 0.12 + vWorld.z * 0.08 + n * 4.0);
@@ -432,7 +435,7 @@ export class Lake {
     const geo = this.water.geometry;
     const pos = geo.attributes.position;
     const sh = geo.attributes.aShallow, dp = geo.attributes.aDeep;
-    const chop = geo.attributes.aChop, murk = geo.attributes.aMurk, depth = geo.attributes.aDepth;
+    const chop = geo.attributes.aChop, murk = geo.attributes.aMurk, depth = geo.attributes.aDepth, salt = geo.attributes.aSalt;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i) + ox, z = pos.getZ(i) + oz;
       const bl = regionBlend(x, z);
@@ -451,10 +454,11 @@ export class Lake {
       dp.setXYZ(i, d.r, d.g, d.b);
       chop.setX(i, Math.max(A.chop * wa + B.chop * wb, s));
       murk.setX(i, (A.murk * wa + B.murk * wb) * (1 - s));
+      salt.setX(i, s);
       const h = terrainHeight(x, z);
       depth.setX(i, h < 0 ? -h : 0);
     }
-    sh.needsUpdate = dp.needsUpdate = chop.needsUpdate = murk.needsUpdate = depth.needsUpdate = true;
+    sh.needsUpdate = dp.needsUpdate = chop.needsUpdate = murk.needsUpdate = depth.needsUpdate = salt.needsUpdate = true;
   }
 
   nearestHotspot(x, z) {
