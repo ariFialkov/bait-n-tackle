@@ -280,7 +280,7 @@ function updateDocks(dt) {
   if (here === lastDock || dockCooldown > 0) return;
   lastDock = here;
 
-  marina.show();
+  marina.show(here);
   dockCooldown = 1.5;
 }
 

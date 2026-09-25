@@ -1000,6 +1000,10 @@ html, body {
 }
 
 /* ---------- Marina: hull sections + skin rows ---------- */
+.marina-stock { border-color: rgba(255, 209, 102, 0.35); background: rgba(255, 209, 102, 0.05); }
+.marina-guide .hull-line { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+.marina-guide .hull-line b { color: #fff; font-size: 1rem; }
+.marina-guide .hull-blurb { margin-bottom: 0; }
 #marina-grid { display: block; }
 .hull-section {
   border: 1px solid rgba(255, 255, 255, 0.09);

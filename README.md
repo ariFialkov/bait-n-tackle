@@ -233,8 +233,8 @@ is the same for everyone at the same moment.
 
 **The minimap.** A small round map in the top-left corner: the country
 round the boat at five metres a pixel, north up, water shaded by depth and
-salt, the shore, the land rising to snow, the marinas as dots and the boat
-an arrow in the middle. It is painted from the same terrain the world is
+salt, the shore, the land rising to snow, the marinas as dots, the names
+of the waters at their sites, and the boat an arrow in the middle. It is painted from the same terrain the world is
 built from, a tile a frame as new ground comes into range, and keeps what
 it has painted (`minimap.js`).
 
@@ -274,8 +274,31 @@ it leaves (`labels.js`).
 
 **Marinas** generate deterministically along the shoreline as the river
 streams in. Pull up to one and the boat store opens; the HUD keeps a
-non-intrusive compass chip pointing at the nearest. A marina is somewhere you
-choose to go, never a chore — catches pay themselves out at the rail.
+non-intrusive compass chip pointing at the nearest, by name. A marina is
+somewhere you choose to go, never a chore — catches pay themselves out at
+the rail.
+
+Every marina is a yard (`docks.js`): a boathouse in one of three builds —
+a working boathouse with its bay open to the water, dormer and life ring;
+an A-frame lodge with a glass front, chimney and veranda; a long boat-yard
+shed with a corrugated roof, a sliding door, a hoist arm and a water tank —
+in its own paint, with a pier of lamps, cleats, tyre fenders and fingers,
+gas pumps under a canopy at the head, an ice cream stand with a striped
+awning and a great cone on the roof, a flag, and the marina's name on a
+board at the gate. The names are not respectable (Master Baiters, The Wet
+Spot, Hooker's Landing, Cod Piece Harbour, Moist Marina …); most come off a
+lattice of the chunk so neighbours never share one, the rest take the word
+of the basin they stand in (Cardwell Crack Yacht Club, Deep Cardwell
+Landing).
+
+Each marina carries its **own stock**: two to four boats, no two of the
+same hull, rolled once from its seed so they are always the same, lying at
+its fingers and moorings as real hulls in their paint. The roll leans hard
+toward cheap hulls and Standard paint, so a Signature steamboat is out
+there but you have to find the yard that carries it. Only what is on the
+docks can be bought there. Anything you already own can be taken from any
+marina — policy is that a boat is shipped between yards at once, for
+nothing — so the store shows what is for sale here, then your fleet.
 
 Nine hulls, increasingly grand, each unlocking mechanics rather than odds.
 Every hull is sold as **four skins** — same model and same mechanics, but
@@ -548,7 +571,7 @@ src/
   boats.js     the nine-hull catalog: stats, unlocks, rod mounts
   hullshapes.js procedural hulls for boats with no modelled GLB
   player.js    cash and the owned/equipped boat (persisted)
-  docks.js     shoreline marinas, generated per chunk
+  docks.js     shoreline marinas: names, stock, yards, parked boats, generated per chunk
   marina.js    the boat store UI
   skins.js     the 54 purchasable skins: names, paint, style, prices, spread
   skinner.js   repaints a hull's neutral texture for the skin it is wearing

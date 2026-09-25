@@ -362,6 +362,9 @@ export class HUD {
       el.querySelector('.finder-arrow').style.transform = arrowRot(ang);
       el.querySelector('.finder-text b').textContent =
         atDock ? 'here' : `${Math.round(entry.dist)}m`;
+      // The marina's own name on the chip, once it has one.
+      const nameEl = el.querySelector('.finder-name');
+      if (nameEl && d.name && nameEl.textContent !== d.name) nameEl.textContent = d.name;
     };
     one(this.el.finderMarina, marina, marina && marina.dist < 9);
   }

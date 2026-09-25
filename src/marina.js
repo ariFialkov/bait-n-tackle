@@ -34,7 +34,9 @@ export class Marina {
     this.el = $('marina');
     this.grid = $('marina-grid');
     this.cashEl = $('marina-cash');
+    this.titleEl = $('marina-title');
     this.open = false;
+    this.dock = null;
 
     // Stat ranges across every skin in the game, so the pips mean something.
     // Handling is the hull's REAL yaw rate, not its agility rating: a long
@@ -53,7 +55,9 @@ export class Marina {
     });
   }
 
-  show() {
+  /** Open the store of a marina (`dock` carries its name and stock). */
+  show(dock = null) {
+    this.dock = dock;
     this.open = true;
     this.el.classList.remove('hidden');
     this.render();
@@ -67,34 +71,59 @@ export class Marina {
   render() {
     const p = this.player;
     this.cashEl.textContent = money(p.balance);
+    if (this.titleEl) this.titleEl.textContent = this.dock ? `⚓ ${this.dock.name}` : '⚓ Marina';
     this.grid.innerHTML = '';
 
-    for (const { hull, skins } of fleetCatalog()) {
-      const ownsAny = skins.some((s) => p.has(s.key));
-      const section = document.createElement('section');
-      section.className = 'hull-section' + (ownsAny ? '' : ' unowned');
+    // Every skin of the fleet, keyed, for the two lists below.
+    const bySkin = new Map();
+    const catalog = fleetCatalog();
+    for (const { hull, skins } of catalog) for (const sk of skins) bySkin.set(sk.key, { hull, skin: sk });
 
-      const feats = featureList(hull);
-      section.innerHTML =
-        `<header class="hull-head">` +
-          `<h3>${hull.name}</h3>` +
-          `<span class="hull-tag">${hull.tagline}</span>` +
-          `<span class="hull-spec">${hull.rods} rod${hull.rods > 1 ? 's' : ''}</span>` +
-        `</header>` +
-        (feats.length
-          ? `<div class="boat-feats">${feats.map((f) => `<span>${f}</span>`).join('')}</div>`
-          : '') +
-        `<p class="hull-blurb">${hull.blurb}</p>`;
+    // What this marina has on its docks. Only these can be bought here; a
+    // rarer boat means finding the marina that carries it.
+    const stock = (this.dock?.stock || []).map((k) => bySkin.get(k)).filter(Boolean);
+    const shop = document.createElement('section');
+    shop.className = 'hull-section marina-stock';
+    shop.innerHTML =
+      `<header class="hull-head"><h3>For sale here</h3>` +
+      `<span class="hull-tag">${stock.length ? `${stock.length} boat${stock.length > 1 ? 's' : ''} on the docks` : 'nothing on the docks'}</span></header>` +
+      `<p class="hull-blurb">Each marina carries its own few boats. The rarer the paint and the bigger the hull, the fewer yards you will find it at.</p>`;
+    const srow = document.createElement('div');
+    srow.className = 'skin-row';
+    for (const { hull, skin } of stock) srow.appendChild(this.skinCard(hull, skin, true));
+    shop.appendChild(srow);
+    this.grid.appendChild(shop);
 
-      const row = document.createElement('div');
-      row.className = 'skin-row';
-      for (const skin of skins) row.appendChild(this.skinCard(hull, skin));
-      section.appendChild(row);
-      this.grid.appendChild(section);
-    }
+    // Everything the player owns, wherever it was bought: the marinas ship a
+    // boat between them on the spot, so any of them can be taken from here.
+    const owned = [...bySkin.values()].filter(({ skin }) => p.has(skin.key));
+    const fleet = document.createElement('section');
+    fleet.className = 'hull-section marina-fleet';
+    fleet.innerHTML =
+      `<header class="hull-head"><h3>Your fleet</h3>` +
+      `<span class="hull-tag">${owned.length} boat${owned.length > 1 ? 's' : ''}</span>` +
+      `<span class="hull-spec">shipped between marinas, free</span></header>` +
+      `<p class="hull-blurb">Marina policy: any boat you own is brought round to whichever yard you are standing in, at once, for nothing. Pick one and it is alongside.</p>`;
+    const frow = document.createElement('div');
+    frow.className = 'skin-row';
+    for (const { hull, skin } of owned) frow.appendChild(this.skinCard(hull, skin, false));
+    fleet.appendChild(frow);
+    this.grid.appendChild(fleet);
+
+    // The hulls themselves, for reading about what each unlocks.
+    const guide = document.createElement('section');
+    guide.className = 'hull-section marina-guide';
+    guide.innerHTML = `<header class="hull-head"><h3>The fleet</h3><span class="hull-tag">what each hull unlocks</span></header>` +
+      catalog.map(({ hull }) => {
+        const feats = featureList(hull);
+        return `<div class="hull-line"><b>${hull.name}</b> <span class="hull-spec">${hull.rods} rod${hull.rods > 1 ? 's' : ''}</span>` +
+          (feats.length ? `<div class="boat-feats">${feats.map((f) => `<span>${f}</span>`).join('')}</div>` : '') +
+          `<p class="hull-blurb">${hull.blurb}</p></div>`;
+      }).join('');
+    this.grid.appendChild(guide);
   }
 
-  skinCard(hull, skin) {
+  skinCard(hull, skin, forSale) {
     const p = this.player;
     const owned = p.has(skin.key);
     const equipped = p.boatId === skin.key;
@@ -109,8 +138,8 @@ export class Marina {
         (equipped ? `<span class="boat-flag">SAILING</span>`
           : owned ? `<span class="boat-flag owned">OWNED</span>` : '') +
       `</div>` +
-      `<div class="skin-rarity">${skin.rarityName}</div>` +
-      `<div class="boat-name">${skin.name}</div>` +
+      `<div class="skin-rarity">${skin.rarityName} · ${hull.name}</div>` +
+      `<div class="boat-name">${skin.name} ${hull.name}</div>` +
       `<div class="boat-stats">` +
         `<div class="bs"><span>Speed</span><em>${pips(skin.maxSpeed, this.range.speed[1], this.range.speed[0] - 1)}</em></div>` +
         `<div class="bs"><span>Handling</span><em>${pips(hullYawRate(skin.turn, hull.length), this.range.turn[1], this.range.turn[0] - 0.2)}</em></div>` +

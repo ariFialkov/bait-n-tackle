@@ -13,6 +13,11 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { terrainHeight, waterDepth } from './lake.js';
 import { hash2, mulberry32 } from './noise.js';
+import { basinOf, basinWord } from './regions.js';
+import { BOATS, fleetCatalog, resolveBoat } from './boats.js';
+import { loadHull } from './boat.js';
+import { applySkin } from './skinner.js';
+import { stationsFor } from './stations.js';
 
 const S = CONFIG.SEED;
 export const DOCK_RADIUS = 8;        // how close you must be to trigger
@@ -62,13 +67,16 @@ export function chunkDocks(cx, cz) {
     if (rng() < 0.62) return [];
     if (rng() < 0.20) return [];      // and thin the rest by a fifth
 
-    return [{
-      x, z,
+    const dock = {
+      x, z, cx, cz,
       headX: hx, headZ: hz,
       angle: Math.atan2(dx, dz),
       pierLen,
       key: `${cx}|${cz}`,
-    }];
+    };
+    dock.name = marinaName(dock);
+    dock.stock = marinaStock(dock);
+    return [dock];
   }
   return [];
 }
@@ -162,107 +170,475 @@ export function berthFor(dock, halfBeam, length) {
   return best;
 }
 
+
+// --- names ---------------------------------------------------------------
+//
+// Every marina has a name, and none of them are respectable. Most come off
+// a lattice of the chunk's coordinates so neighbours never share one; the
+// rest take the word of the basin they stand in, so the joke is local.
+const PUNS = [
+  'Master Baiters', 'The Wet Spot', 'Rod & Reel Job', "Hooker's Landing", 'Big Bass Hole',
+  'Salty Crack Marina', "Dick's Halibut Hut", 'Cod Piece Harbour', 'The Chum Bucket', 'Reel Estate',
+  'Fish & Ships', 'The Rusty Anchor', 'Bass Ackwards', 'Sofa King Fishy', 'Pier Pressure',
+  'Dock Holiday', 'Wharf Rats Boat Yard', "Seamen's Rest", "Barnacle Bill's", 'Moby Dock',
+  'Dock Ness Marina', 'Bait Me', 'Crappie Corner', 'The Knot Inn', "Wet Willy's",
+  'Bottoms Up Boats', 'Two Rods Deep', 'The Sloppy Slip', 'Pole Position', 'Hard Aground',
+  'Blow Hole Harbour', 'Muff Diver Marina', "Fanny's Wharf", 'Long Dong Landing', 'Poop Deck Pier',
+  'Half Aft Marina', "Jerkbait Jack's", "Skinny Dipper's", "Pike's Peek", 'Wet Dreams Marina',
+  'The Salty Seaman', 'Gone Fishin', 'Slippery Slip', "Old Dick's", "Crabby Patty's",
+  'Bait & Switch', 'Rock Bottom Boats', 'Shallow Hal\'s', 'The Stern Talking-To', 'Bass to Mouth',
+  'Wide Berth Marina', 'Knot Guilty', 'Nauti Buoys', 'Pier Reviewed', 'Ship Faced',
+  "Hooker's Cove Marina", 'Whale Oil Beef Hooked', 'The Dirty Dinghy', 'Loose Moorings', 'Moist Marina',
+];
+const LOCAL = [
+  '{W} Bottoms Marina', '{W} Hole Boat Yard', 'The {W} Wet Spot', "{W} Boys' Bait Shack", '{W} Crack Yacht Club',
+  '{W} Nether Regions', 'Deep {W} Landing', '{W} Backwater Boats', "{W} Seamen's Club", 'The {W} Slip',
+];
+export function marinaName(dock) {
+  const rng = mulberry32((hash2(dock.cx, dock.cz, S + 421) * 1e9) | 0);
+  const lat = ((dock.cx % 1000) + 1000) * 1 + ((dock.cz % 1000) + 1000) * 7;
+  if (rng() < 0.35) {
+    const cell = Math.floor(dock.x / 240), cellz = Math.floor(dock.z / 240);
+    const b = basinOf(cell, cellz);
+    const w = basinWord(b.bx, b.bz).replace(/'s$/, '');
+    return LOCAL[lat % LOCAL.length].replace('{W}', w);
+  }
+  return PUNS[lat % PUNS.length];
+}
+
+// --- stock ---------------------------------------------------------------
+//
+// Each marina sells a few boats of its own — two to four skins, no two of
+// the same hull — rolled once from its seed, so a marina always has the
+// same boats on its docks. The roll leans hard toward cheap hulls and
+// Standard paint: a Signature steamboat is out there, but you have to
+// find the marina that carries it. What you buy changes how you get about,
+// never a bet.
+const RARITY_W = [1, 0.42, 0.15, 0.045];
+export function marinaStock(dock) {
+  const rng = mulberry32((hash2(dock.cx, dock.cz, S + 431) * 1e9) | 0);
+  const n = 2 + Math.floor(rng() * 3);
+  const pool = [];
+  fleetCatalog().forEach(({ hull, skins }, hi) => {
+    for (const sk of skins) if (sk.price > 0) pool.push({ key: sk.key, hull: hull.id, w: RARITY_W[sk.rarity] / Math.pow(1 + hi, 1.35) });
+  });
+  const out = [];
+  for (let k = 0; k < n && pool.length; k++) {
+    let total = 0;
+    for (const c of pool) total += c.w;
+    let r = rng() * total, pick = pool[pool.length - 1];
+    for (const c of pool) { r -= c.w; if (r <= 0) { pick = c; break; } }
+    out.push(pick.key);
+    // One of each hull on the docks.
+    for (let i = pool.length - 1; i >= 0; i--) if (pool[i].hull === pick.hull) pool.splice(i, 1);
+  }
+  return out;
+}
+
 // --- meshes --------------------------------------------------------------
 
 const MAT = {
   plank: new THREE.MeshLambertMaterial({ color: 0xa97f4e }),
   plankDark: new THREE.MeshLambertMaterial({ color: 0x7d5b36 }),
   piling: new THREE.MeshLambertMaterial({ color: 0x5f4629 }),
-  marinaWall: new THREE.MeshLambertMaterial({ color: 0xdfeaf2 }),
-  marinaRoof: new THREE.MeshLambertMaterial({ color: 0x3f8fd0 }),
   trim: new THREE.MeshLambertMaterial({ color: 0xf6f1e4 }),
   buoy: new THREE.MeshLambertMaterial({ color: 0xe8b23a }),
+  glass: new THREE.MeshLambertMaterial({ color: 0x2b4a63 }),
+  dark: new THREE.MeshLambertMaterial({ color: 0x2a2a2e }),
+  steel: new THREE.MeshLambertMaterial({ color: 0x9aa4ad }),
+  red: new THREE.MeshLambertMaterial({ color: 0xd6413a }),
+  white: new THREE.MeshLambertMaterial({ color: 0xf4f4f0 }),
+  tyre: new THREE.MeshLambertMaterial({ color: 0x1e1e20 }),
+  lamp: new THREE.MeshLambertMaterial({ color: 0xfff1b0, emissive: 0xffe08a, emissiveIntensity: 0.6 }),
+  pump: new THREE.MeshLambertMaterial({ color: 0xe0362f }),
+  pumpTop: new THREE.MeshLambertMaterial({ color: 0xf5f0e6 }),
+  cream: new THREE.MeshLambertMaterial({ color: 0xfff3d6 }),
+  pink: new THREE.MeshLambertMaterial({ color: 0xf28bb3 }),
+  mint: new THREE.MeshLambertMaterial({ color: 0x9fe3c5 }),
+  cone: new THREE.MeshLambertMaterial({ color: 0xd9a05b }),
+  barrel: new THREE.MeshLambertMaterial({ color: 0x4d6b8f }),
+  crate: new THREE.MeshLambertMaterial({ color: 0xb08a55 }),
+  flag: new THREE.MeshLambertMaterial({ color: 0xe8483f, side: THREE.DoubleSide }),
+  brick: new THREE.MeshLambertMaterial({ color: 0x8a4a3a }),
+  ring: new THREE.MeshLambertMaterial({ color: 0xf0f0f0 }),
 };
+// Each marina wears its own paint.
+const WALLS = [0xdfeaf2, 0xb8433a, 0x3f8f8a, 0x6f8fa8, 0xe6c85a, 0x7a5c48, 0xf1e6cf];
+const ROOFS = [0x3f8fd0, 0x7b2d2a, 0x2f6b46, 0x3a3f46, 0x9c5a2c, 0x27587a];
 
 const GEO = {
-  plank: new THREE.BoxGeometry(1, 1, 1),
+  box: new THREE.BoxGeometry(1, 1, 1),
   piling: new THREE.CylinderGeometry(0.16, 0.19, 1, 6),
-  roof: new THREE.ConeGeometry(1, 1, 4),
   buoy: new THREE.SphereGeometry(0.22, 8, 6),
   post: new THREE.CylinderGeometry(0.08, 0.08, 1, 5),
-  sign: new THREE.BoxGeometry(1.5, 0.75, 0.08),
+  cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+  cone: new THREE.ConeGeometry(0.5, 1, 10),
+  ball: new THREE.SphereGeometry(0.5, 10, 8),
+  torus: new THREE.TorusGeometry(0.42, 0.13, 6, 12),
+  scoop: new THREE.SphereGeometry(0.5, 10, 8),
 };
 
-function box(geo, mat, w, h, d, x, y, z) {
+function mesh(geo, mat, sx, sy, sz, x, y, z, rx = 0, ry = 0, rz = 0) {
   const m = new THREE.Mesh(geo, mat);
-  m.scale.set(w, h, d);
+  m.scale.set(sx, sy, sz);
   m.position.set(x, y, z);
+  m.rotation.set(rx, ry, rz);
   m.castShadow = true;
   return m;
+}
+const box = (mat, w, h, d, x, y, z, ry = 0) => mesh(GEO.box, mat, w, h, d, x, y, z, 0, ry, 0);
+
+/** A gable roof over a footprint (w across, d deep), pitched along x. */
+function gableRoof(mat, w, d, x, y, z, rise = 1.4, over = 0.5) {
+  const g = new THREE.Group();
+  const half = w / 2 + over;
+  const slope = Math.hypot(half, rise);
+  const ang = Math.atan2(rise, half);
+  for (const s of [1, -1]) {
+    const m = mesh(GEO.box, mat, slope, 0.16, d + over * 2, s * half / 2, rise / 2, 0, 0, 0, -s * ang);
+    m.receiveShadow = true;
+    g.add(m);
+  }
+  g.add(mesh(GEO.box, MAT.dark, 0.3, 0.2, d + over * 2 + 0.1, 0, rise, 0));          // ridge cap
+  g.position.set(x, y, z);
+  return g;
+}
+
+/** A window: dark glass in a pale frame, on the face of a wall. */
+function windowOn(g, x, y, z, w = 0.9, h = 0.8, ry = 0) {
+  const f = box(MAT.trim, w + 0.14, h + 0.14, 0.08, x, y, z, ry); g.add(f);
+  const p = box(MAT.glass, w, h, 0.1, x, y, z, ry); g.add(p);
+  g.add(box(MAT.trim, 0.06, h, 0.12, x, y, z, ry));                // mullion
+}
+
+/** A lamp on a post, lit. */
+function lampPost(g, x, y, z, h = 2.4) {
+  g.add(mesh(GEO.post, MAT.dark, 1, h, 1, x, y + h / 2, z));
+  g.add(box(MAT.dark, 0.34, 0.06, 0.34, x, y + h, z));
+  g.add(mesh(GEO.box, MAT.lamp, 0.24, 0.3, 0.24, x, y + h - 0.2, z));
+  g.add(mesh(GEO.cone, MAT.dark, 0.7, 0.28, 0.7, x, y + h + 0.1, z));
+}
+
+function railing(g, x0, z0, x1, z1, y, step = 1.1) {
+  const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / step));
+  const ang = Math.atan2(x1 - x0, z1 - z0);
+  for (let i = 0; i <= n; i++) { const t = i / n; g.add(mesh(GEO.post, MAT.trim, 0.9, 1.0, 0.9, x0 + (x1 - x0) * t, y + 0.5, z0 + (z1 - z0) * t)); }
+  g.add(box(MAT.trim, 0.1, 0.08, len, (x0 + x1) / 2, y + 1.0, (z0 + z1) / 2, ang));
+  g.add(box(MAT.trim, 0.06, 0.05, len, (x0 + x1) / 2, y + 0.55, (z0 + z1) / 2, ang));
+}
+
+// --- boathouses: three kinds, so the coast is not one shack repeated ---
+
+/** A working boathouse: gable roof, big bay open to the water, dormer, life ring. */
+function boathouseA(wall, roof, rng) {
+  const g = new THREE.Group();
+  const W = 7.2, D = 7.0, H = 3.2, y0 = 1.1;
+  // Stands on pilings, the floor a hand above the highest ground.
+  for (const sx of [-3.2, 0, 3.2]) for (const sz of [-3.0, 0, 3.0]) g.add(mesh(GEO.piling, MAT.piling, 1.3, 3.2, 1.3, sx, y0 - 1.6, sz));
+  g.add(box(MAT.plank, W + 0.6, 0.2, D + 0.6, 0, y0, 0));
+  // Walls: back, two sides, and the front split round the bay.
+  g.add(box(wall, W, H, 0.24, 0, y0 + H / 2, -D / 2));
+  for (const sx of [-1, 1]) g.add(box(wall, 0.24, H, D, sx * W / 2, y0 + H / 2, 0));
+  const bay = 3.4;
+  for (const sx of [-1, 1]) g.add(box(wall, (W - bay) / 2, H, 0.24, sx * (bay / 2 + (W - bay) / 4), y0 + H / 2, D / 2));
+  g.add(box(wall, bay + 0.3, 0.7, 0.26, 0, y0 + H - 0.35, D / 2));         // lintel over the bay
+  g.add(box(MAT.trim, bay + 0.4, 0.14, 0.3, 0, y0 + H - 0.7, D / 2));
+  for (const sx of [-1, 1]) g.add(box(MAT.trim, 0.16, H - 0.7, 0.3, sx * bay / 2, y0 + (H - 0.7) / 2, D / 2));
+  // Doors folded back either side of the bay.
+  for (const sx of [-1, 1]) g.add(box(MAT.plankDark, 0.1, H - 0.9, 1.5, sx * (bay / 2 + 0.1), y0 + (H - 0.9) / 2, D / 2 + 0.8));
+  // Windows down each side and a round one over the bay.
+  for (const sx of [-1, 1]) for (const z of [-1.8, 0.4]) windowOn(g, sx * (W / 2 + 0.02), y0 + 1.9, z, 0.9, 0.8, Math.PI / 2);
+  g.add(mesh(GEO.cyl, MAT.trim, 0.9, 0.12, 0.9, 0, y0 + H + 0.45, D / 2 + 0.02, Math.PI / 2, 0, 0));
+  g.add(mesh(GEO.cyl, MAT.glass, 0.7, 0.16, 0.7, 0, y0 + H + 0.45, D / 2 + 0.02, Math.PI / 2, 0, 0));
+  // Gable ends and the roof.
+  const rise = 1.9;
+  for (const sz of [-1, 1]) {
+    const gable = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4, 1, false, Math.PI / 4), wall);
+    gable.scale.set(W / 2 * 1.414, rise, 0.24 * 1.414); gable.position.set(0, y0 + H + rise / 2, sz * D / 2);
+    gable.castShadow = true; g.add(gable);
+  }
+  const r = gableRoof(roof, W, D, 0, y0 + H, 0, rise, 0.55); g.add(r);
+  // A dormer on one slope, a stovepipe on the other.
+  g.add(box(wall, 1.4, 1.0, 1.2, -1.6, y0 + H + 1.2, -1.2));
+  g.add(gableRoof(roof, 1.4, 1.2, -1.6, y0 + H + 1.7, -1.2, 0.5, 0.2));
+  windowOn(g, -1.6, y0 + H + 1.2, -0.58, 0.6, 0.5);
+  g.add(mesh(GEO.cyl, MAT.dark, 0.36, 1.4, 0.36, 2.2, y0 + H + 1.6, 1.4));
+  // Life ring by the door, a ladder to the water, a rope coil.
+  g.add(mesh(GEO.torus, MAT.ring, 1, 1, 1, W / 2 + 0.05, y0 + 1.5, 2.6, 0, Math.PI / 2, 0));
+  g.add(mesh(GEO.torus, MAT.red, 0.5, 1, 0.5, W / 2 + 0.08, y0 + 1.5, 2.6, 0, Math.PI / 2, 0));
+  for (const sx of [-0.35, 0.35]) g.add(mesh(GEO.post, MAT.steel, 0.7, 2.6, 0.7, W / 2 + 0.5 + sx * 0, y0 - 0.9, 1.0 + sx));
+  for (let i = 0; i < 5; i++) g.add(box(MAT.steel, 0.06, 0.06, 0.8, W / 2 + 0.5, y0 - 2.0 + i * 0.5, 1.0));
+  for (let i = 0; i < 3; i++) g.add(mesh(GEO.torus, MAT.plankDark, 0.9, 0.5, 0.9, 2.6, y0 + 0.12 + i * 0.1, 2.5, Math.PI / 2, 0, 0));
+  return g;
+}
+
+/** An A-frame lodge: two great roof planes to the deck, a glass front, chimney, veranda. */
+function boathouseB(wall, roof, rng) {
+  const g = new THREE.Group();
+  const W = 7.6, D = 7.4, y0 = 1.0, rise = 4.6;
+  for (const sx of [-3.4, 0, 3.4]) for (const sz of [-3.2, 0, 3.2]) g.add(mesh(GEO.piling, MAT.piling, 1.3, 3.0, 1.3, sx, y0 - 1.5, sz));
+  g.add(box(MAT.plank, W + 2.4, 0.2, D + 2.6, 0, y0, 0.6));       // deck all round
+  // The two roof slopes run to the deck.
+  const half = W / 2, slope = Math.hypot(half, rise), ang = Math.atan2(rise, half);
+  for (const s of [1, -1]) {
+    const m = mesh(GEO.box, roof, slope, 0.22, D + 0.8, s * half / 2, y0 + rise / 2, 0, 0, 0, -s * ang);
+    m.receiveShadow = true; g.add(m);
+    // Shingle courses: thin bands down the slope.
+    for (let i = 1; i < 6; i++) g.add(mesh(GEO.box, MAT.dark, 0.05, 0.05, D + 0.9, s * half * (i / 6) / 1, y0 + rise * (1 - i / 6) + 0.12, 0, 0, 0, -s * ang));
+  }
+  g.add(mesh(GEO.box, MAT.dark, 0.34, 0.24, D + 1.0, 0, y0 + rise + 0.05, 0));
+  // Front and back gables: the front is glass in a timber grid, the back is wall.
+  for (const sz of [1, -1]) {
+    const gable = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 4, 1, false, Math.PI / 4), sz > 0 ? MAT.glass : wall);
+    gable.scale.set(half * 0.94 * 1.414, rise * 0.96, 0.2 * 1.414); gable.position.set(0, y0 + rise * 0.48, sz * (D / 2 - 0.1));
+    gable.castShadow = true; g.add(gable);
+  }
+  for (let i = 1; i < 4; i++) g.add(box(MAT.trim, W * (1 - i / 4.2), 0.08, 0.3, 0, y0 + rise * i / 4, D / 2));
+  for (const sx of [-1.2, 0, 1.2]) g.add(box(MAT.trim, 0.08, rise * (1 - Math.abs(sx) / half) * 0.9, 0.3, sx, y0 + rise * (1 - Math.abs(sx) / half) * 0.45, D / 2));
+  // Door in the glass, a chimney of brick, a veranda rail.
+  g.add(box(MAT.plankDark, 1.0, 2.1, 0.16, 0.8, y0 + 1.05, D / 2 + 0.1));
+  g.add(box(MAT.brick, 0.9, rise + 1.2, 0.9, half - 1.4, y0 + (rise + 1.2) / 2, -1.2));
+  g.add(box(MAT.dark, 1.1, 0.16, 1.1, half - 1.4, y0 + rise + 1.25, -1.2));
+  railing(g, -half - 1.2, D / 2 + 1.9, half + 1.2, D / 2 + 1.9, y0);
+  railing(g, half + 1.2, D / 2 + 1.9, half + 1.2, -D / 2 - 1.0, y0);
+  // Deck furniture: two chairs and a table, a flower box, firewood.
+  for (const sx of [-2.4, -1.4]) { g.add(box(MAT.plankDark, 0.5, 0.06, 0.5, sx, y0 + 0.45, D / 2 + 1.1)); g.add(box(MAT.plankDark, 0.5, 0.5, 0.06, sx, y0 + 0.7, D / 2 + 0.85)); }
+  g.add(mesh(GEO.cyl, MAT.plankDark, 0.7, 0.06, 0.7, -1.9, y0 + 0.6, D / 2 + 1.1)); g.add(mesh(GEO.post, MAT.plankDark, 1, 0.6, 1, -1.9, y0 + 0.3, D / 2 + 1.1));
+  g.add(box(MAT.plankDark, 1.6, 0.4, 0.5, 2.6, y0 + 0.3, D / 2 + 1.5)); for (let i = 0; i < 5; i++) g.add(mesh(GEO.ball, MAT.pink, 0.26, 0.26, 0.26, 2.0 + i * 0.3, y0 + 0.6, D / 2 + 1.5));
+  for (let i = 0; i < 6; i++) g.add(mesh(GEO.cyl, MAT.plankDark, 0.22, 0.8, 0.22, -half - 0.6, y0 + 0.2 + (i % 3) * 0.2, -1.5 + Math.floor(i / 3) * 0.3 + (i % 3) * 0.05, Math.PI / 2, 0, 0));
+  return g;
+}
+
+/** A long shed of a boat yard: corrugated roof, sliding door, hoist arm, barrels, a water tank. */
+function boathouseC(wall, roof, rng) {
+  const g = new THREE.Group();
+  const W = 9.6, D = 6.2, H = 3.4, y0 = 0.9;
+  for (const sx of [-4.4, -1.5, 1.5, 4.4]) for (const sz of [-2.8, 0, 2.8]) g.add(mesh(GEO.piling, MAT.piling, 1.2, 3.0, 1.2, sx, y0 - 1.5, sz));
+  g.add(box(MAT.plank, W + 1.0, 0.2, D + 0.8, 0, y0, 0));
+  g.add(box(wall, W, H, D, 0, y0 + H / 2, 0));
+  // Board seams and a band of trim.
+  for (let i = 1; i < 8; i++) g.add(box(MAT.dark, 0.04, H, D + 0.06, -W / 2 + i * W / 8, y0 + H / 2, 0));
+  g.add(box(MAT.trim, W + 0.1, 0.18, D + 0.1, 0, y0 + H - 0.3, 0));
+  // A shallow roof of corrugated ridges, sloping back.
+  const rr = new THREE.Group();
+  const pitch = 0.09;
+  rr.add(box(roof, W + 1.2, 0.14, D + 1.2, 0, 0, 0));
+  for (let i = 0; i < 22; i++) rr.add(box(roof, 0.12, 0.1, D + 1.2, -W / 2 - 0.5 + i * (W + 1.0) / 21, 0.09, 0));
+  rr.rotation.x = pitch; rr.position.set(0, y0 + H + 0.25, 0); g.add(rr);
+  // Sliding door on the water side, slid half open, and a wicket door.
+  g.add(box(MAT.plankDark, 3.6, H - 0.5, 0.14, -1.2, y0 + (H - 0.5) / 2, D / 2 + 0.16));
+  g.add(box(MAT.steel, W * 0.8, 0.12, 0.3, -0.4, y0 + H - 0.4, D / 2 + 0.2));
+  g.add(box(MAT.glass, 3.2, H - 0.7, 0.12, 1.9, y0 + (H - 0.7) / 2, D / 2 + 0.01));   // the open bay: dark inside
+  g.add(box(MAT.plankDark, 0.9, 2.0, 0.12, -W / 2 + 1.0, y0 + 1.0, D / 2 + 0.08));
+  for (const x of [-3.2, 3.2]) windowOn(g, x, y0 + 2.3, -D / 2 - 0.02, 1.4, 0.7);
+  for (const sx of [-1, 1]) windowOn(g, sx * (W / 2 + 0.02), y0 + 2.3, 0, 1.6, 0.7, Math.PI / 2);
+  // A hoist arm off the corner with a hook, a water tank on legs, barrels and crates.
+  g.add(mesh(GEO.post, MAT.steel, 1.6, 5.0, 1.6, W / 2 + 0.8, y0 + 2.5, D / 2 - 0.4));
+  g.add(box(MAT.steel, 0.16, 0.16, 4.2, W / 2 + 0.8, y0 + 4.9, D / 2 + 1.5));
+  g.add(box(MAT.steel, 0.1, 0.1, 2.6, W / 2 + 0.8, y0 + 4.2, D / 2 + 0.6, 0, 0, 0)); 
+  g.add(mesh(GEO.post, MAT.dark, 0.4, 2.0, 0.4, W / 2 + 0.8, y0 + 3.9, D / 2 + 3.4));
+  g.add(mesh(GEO.torus, MAT.steel, 0.5, 0.5, 0.5, W / 2 + 0.8, y0 + 2.8, D / 2 + 3.4));
+  for (const [x, z] of [[-3.6, -2.2], [-3.0, -2.4], [-3.3, -1.7]]) g.add(mesh(GEO.cyl, MAT.barrel, 0.7, 1.0, 0.7, x - W / 2 - 0.4 + 3.6, y0 + 0.5, z + D / 2 + 3.0));
+  for (const [x, z, s] of [[2.6, 2.4, 0.8], [3.4, 2.5, 0.6], [2.9, 3.2, 0.7]]) g.add(box(MAT.crate, s, s, s, x - W / 2, y0 + s / 2, z + D / 2 - 0.5, 0.4));
+  g.add(mesh(GEO.cyl, MAT.steel, 1.8, 1.6, 1.8, -W / 2 + 1.2, y0 + H + 1.4, -1.2));
+  for (const sx of [-0.6, 0.6]) for (const sz of [-0.6, 0.6]) g.add(mesh(GEO.post, MAT.steel, 0.7, 1.4, 0.7, -W / 2 + 1.2 + sx, y0 + H + 0.6, -1.2 + sz));
+  return g;
+}
+
+/** Two pumps under a little canopy at the head of the pier. */
+function gasPumps(g, x, y, z) {
+  const s = new THREE.Group();
+  for (const sx of [-0.7, 0.7]) {
+    s.add(box(MAT.pump, 0.6, 1.5, 0.42, sx, 0.75, 0));
+    s.add(box(MAT.pumpTop, 0.62, 0.34, 0.44, sx, 1.35, 0));
+    s.add(box(MAT.dark, 0.36, 0.2, 0.05, sx, 1.35, 0.23));            // the dial
+    s.add(box(MAT.dark, 0.16, 0.5, 0.12, sx + 0.24, 0.95, 0.26));     // nozzle in its cradle
+    s.add(mesh(GEO.post, MAT.dark, 0.5, 0.9, 0.5, sx + 0.33, 0.9, 0.12, 0, 0, 0.35));   // the hose
+  }
+  s.add(box(MAT.steel, 2.6, 0.1, 1.6, 0, 0.05, 0));                     // the island
+  for (const sx of [-1.1, 1.1]) s.add(mesh(GEO.post, MAT.steel, 1.2, 2.9, 1.2, sx, 1.45, -0.6));
+  s.add(box(MAT.white, 3.2, 0.14, 2.2, 0, 2.95, -0.2));                 // canopy
+  s.add(box(MAT.red, 3.2, 0.3, 0.08, 0, 2.8, 0.9));
+  s.add(box(MAT.white, 1.2, 0.5, 0.06, 0, 3.4, -0.2));                  // "GAS" board
+  s.add(box(MAT.red, 0.9, 0.16, 0.08, 0, 3.4, -0.16));
+  s.position.set(x, y, z);
+  g.add(s);
+}
+
+/** An ice cream stand with a striped awning and a great cone on the roof. */
+function iceCreamStand(g, x, y, z, ry) {
+  const s = new THREE.Group();
+  s.add(box(MAT.cream, 2.4, 2.3, 1.9, 0, 1.15, 0));
+  s.add(box(MAT.pink, 2.5, 0.16, 2.0, 0, 2.3, 0));
+  s.add(box(MAT.dark, 1.8, 0.9, 0.06, 0, 1.6, 0.97));                   // the hatch
+  s.add(box(MAT.plankDark, 2.2, 0.1, 0.5, 0, 1.1, 1.15));               // counter
+  // Striped awning over the hatch.
+  for (let i = 0; i < 6; i++) s.add(mesh(GEO.box, i % 2 ? MAT.pink : MAT.white, 0.42, 0.06, 1.1, -1.05 + i * 0.42, 2.25, 1.35, -0.35, 0, 0));
+  for (const sx of [-1.1, 1.1]) s.add(mesh(GEO.post, MAT.steel, 0.6, 1.2, 0.6, sx, 1.7, 1.85));
+  // The sign: a cone with three scoops.
+  s.add(mesh(GEO.cone, MAT.cone, 0.7, 1.0, 0.7, 0, 2.85, 0, Math.PI, 0, 0));
+  s.add(mesh(GEO.scoop, MAT.pink, 0.72, 0.72, 0.72, 0, 3.5, 0));
+  s.add(mesh(GEO.scoop, MAT.mint, 0.62, 0.62, 0.62, 0.2, 3.95, 0.1));
+  s.add(mesh(GEO.scoop, MAT.cream, 0.54, 0.54, 0.54, -0.15, 4.3, -0.05));
+  s.add(mesh(GEO.ball, MAT.red, 0.16, 0.16, 0.16, -0.15, 4.6, -0.05));
+  // A bin and a chalkboard.
+  s.add(mesh(GEO.cyl, MAT.steel, 0.5, 0.7, 0.5, 1.6, 0.35, 0.9));
+  s.add(box(MAT.dark, 0.7, 0.9, 0.06, -1.7, 0.6, 0.9, 0.3));
+  s.position.set(x, y, z); s.rotation.y = ry;
+  g.add(s);
+}
+
+/** The marina's name on a board, painted once per name. */
+const signTex = new Map();
+function nameTexture(name) {
+  let t = signTex.get(name);
+  if (t) return t;
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f6f1e4'; ctx.fillRect(0, 0, 512, 128);
+  ctx.fillStyle = '#1f4f73'; ctx.fillRect(8, 8, 496, 112);
+  ctx.fillStyle = '#f6f1e4';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  let size = 54;
+  ctx.font = `bold ${size}px Georgia, serif`;
+  while (ctx.measureText(name).width > 470 && size > 22) { size -= 3; ctx.font = `bold ${size}px Georgia, serif`; }
+  ctx.fillText(name, 256, 60);
+  ctx.fillStyle = '#ffd166'; ctx.fillRect(40, 100, 432, 4);
+  t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  signTex.set(name, t);
+  return t;
+}
+
+function nameSign(g, name, x, y, z, ry, w = 3.2) {
+  const s = new THREE.Group();
+  for (const sx of [-w / 2 + 0.2, w / 2 - 0.2]) s.add(mesh(GEO.post, MAT.piling, 1.2, 2.6, 1.2, sx, 1.3, 0));
+  const board = new THREE.Mesh(GEO.box, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, new THREE.MeshLambertMaterial({ map: nameTexture(name) }), MAT.dark]);
+  board.scale.set(w, w / 4, 0.1); board.position.set(0, 2.55, 0); board.castShadow = true;
+  s.add(board);
+  s.add(box(MAT.trim, w + 0.1, 0.1, 0.14, 0, 2.55 + w / 8 + 0.02, 0));
+  s.add(box(MAT.trim, w + 0.1, 0.1, 0.14, 0, 2.55 - w / 8 - 0.02, 0));
+  s.position.set(x, y, z); s.rotation.y = ry;
+  g.add(s);
+}
+
+// --- parked stock ---------------------------------------------------------
+
+/** Draft a parked hull wants under it, by length. */
+function parkDraft(length) { return 0.4 + length * 0.05; }
+
+/**
+ * Where the stock boats lie: small ones alongside the fingers off the main
+ * pier, bigger ones moored further out. Each candidate is checked for water
+ * under the whole hull. Returns { x, z, heading, buoy } in world space, or
+ * null when nothing floats.
+ */
+function parkingFor(dock, length, halfBeam, used) {
+  const dx = Math.sin(dock.angle), dz = Math.cos(dock.angle), rx = dz, rz = -dx;
+  const L = dock.pierLen;
+  const cands = [];
+  if (length <= 9) for (const s of [1, -1]) cands.push({ ax: s * (3.6 + halfBeam * 0.4), az: L * 0.55 + length * 0.05, buoy: false });
+  if (length <= 15) for (const s of [1, -1]) cands.push({ ax: s * (6.8 + halfBeam * 0.5), az: L + length * 0.25 + 1, buoy: true });
+  for (const s of [1, -1]) for (const out of [6, 12, 18]) cands.push({ ax: s * (5 + halfBeam + length * 0.18), az: L + out + length * 0.6, buoy: true });
+  const need = CONFIG.MIN_NAV_DEPTH + parkDraft(length);
+  // The first candidate with water under the whole hull wins; failing that
+  // the one with the most water, as long as the hull is afloat at all — a
+  // boat for sale in a creek marina lies where it can, not nowhere.
+  let best = null, bestScore = -Infinity;
+  for (const c of cands) {
+    if (used.some((u) => Math.hypot(u.ax - c.ax, u.az - c.az) < (u.len + length) * 0.5 + 2)) continue;
+    const x = dock.x + dx * c.az + rx * c.ax, z = dock.z + dz * c.az + rz * c.ax;
+    let worst = Infinity;
+    for (const t of [-0.5, -0.25, 0, 0.25, 0.5]) for (const b of [-1, 0, 1]) {
+      const px = x + dx * length * t + rx * halfBeam * b * 1.3, pz = z + dz * length * t + rz * halfBeam * b * 1.3;
+      worst = Math.min(worst, waterDepth(px, pz) - need);
+    }
+    if (worst > bestScore) { bestScore = worst; best = { x, z, c }; }
+    if (worst >= 0) break;
+  }
+  if (!best || bestScore < -need + 0.35) return null;
+  used.push({ ax: best.c.ax, az: best.c.az, len: length });
+  // In the marina group's own frame: x across the pier, z out along it.
+  return { ax: best.c.ax, az: best.c.az, buoy: best.c.buoy };
+}
+
+/** Load and park the marina's stock boats round its docks (asynchronous). */
+function parkStock(dock, g, alive) {
+  const used = [];
+  const keys = dock.stock || [];
+  keys.forEach(async (key) => {
+    const spec = resolveBoat(key);
+    let hull;
+    try { hull = (await loadHull(spec.hullId)).clone(true); } catch { return; }
+    if (!alive.on) return;
+    await applySkin(hull, spec);
+    if (!alive.on) return;
+    const box3 = new THREE.Box3().setFromObject(hull);
+    const halfBeam = (box3.max.x - box3.min.x) / 2, length = box3.max.z - box3.min.z;
+    const park = parkingFor(dock, length, halfBeam, used);
+    if (!park) return;
+    const holder = new THREE.Group();
+    holder.add(hull);
+    hull.position.y = stationsFor(spec.hullId)?.lift ?? 0;
+    // Bow to open water: the hull's forward is local -z, the water is +z here.
+    holder.position.set(park.ax, CONFIG.WATER_LEVEL, park.az);
+    holder.rotation.y = Math.PI;
+    holder.userData.stock = key;
+    g.add(holder);
+    if (park.buoy) {
+      const b = new THREE.Mesh(GEO.buoy, MAT.buoy); b.scale.setScalar(1.6); b.position.set(park.ax, 0.22, park.az + length / 2 + 2.5); g.add(b);
+    }
+  });
 }
 
 function buildDock(dock) {
   const g = new THREE.Group();
+  const rng = mulberry32((hash2(dock.cx, dock.cz, S + 443) * 1e9) | 0);
   const L = dock.pierLen;
+  const wall = new THREE.MeshLambertMaterial({ color: WALLS[Math.floor(rng() * WALLS.length)] });
+  const roof = new THREE.MeshLambertMaterial({ color: ROOFS[Math.floor(rng() * ROOFS.length)] });
+  const kind = Math.floor(rng() * 3);
 
-  // Pier deck, running from shore (z=0) out over the water (+z local).
-  const deck = box(GEO.plank, MAT.plank, 2.6, 0.18, L, 0, 0.42, L / 2);
-  deck.receiveShadow = true;
-  g.add(deck);
-  // Plank seams
-  for (let i = 1; i < Math.floor(L / 1.2); i++) {
-    g.add(box(GEO.plank, MAT.plankDark, 2.62, 0.04, 0.09, 0, 0.52, i * 1.2));
+  // The main pier, from the shore (z=0) out over the water (+z local).
+  const deck = box(MAT.plank, 2.8, 0.18, L, 0, 0.42, L / 2);
+  deck.receiveShadow = true; g.add(deck);
+  for (let i = 1; i < Math.floor(L / 0.9); i++) g.add(box(MAT.plankDark, 2.82, 0.04, 0.07, 0, 0.52, i * 0.9));
+  for (let i = 0; i <= Math.floor(L / 2.2); i++) for (const sx of [-1.3, 1.3]) g.add(mesh(GEO.piling, MAT.piling, 1, 2.8, 1, sx, -0.9, 0.6 + i * 2.2));
+  // Fingers off either side, where the small boats lie, with cleats and fenders.
+  for (const s of [1, -1]) {
+    const fz = L * 0.55 - 1.5;
+    g.add(box(MAT.plank, 2.4, 0.16, 1.1, s * 2.6, 0.4, fz));
+    g.add(mesh(GEO.piling, MAT.piling, 0.8, 2.6, 0.8, s * 3.7, -0.9, fz));
+    for (const z of [fz - 0.3, fz + 0.3]) g.add(box(MAT.steel, 0.3, 0.08, 0.1, s * 3.5, 0.52, z));
+    for (const z of [1.4, L * 0.55 + 1.6, L - 1.2]) g.add(mesh(GEO.torus, MAT.tyre, 0.9, 0.9, 0.9, s * 1.45, 0.25, z, 0, Math.PI / 2, 0));
+    for (let i = 0; i < 3; i++) g.add(mesh(GEO.post, MAT.piling, 1, 2.4, 1, s * 4.6, 0.2, 1.6 + i * 2.6));
   }
-  // Pilings down each side
-  for (let i = 0; i <= Math.floor(L / 2.2); i++) {
-    for (const sx of [-1.18, 1.18]) {
-      const p = new THREE.Mesh(GEO.piling, MAT.piling);
-      p.scale.set(1, 2.6, 1);
-      p.position.set(sx, -0.9, 0.6 + i * 2.2);
-      p.castShadow = true;
-      g.add(p);
-    }
-  }
-  // Bumper buoys at the head, where a boat ties up
-  for (const sx of [-1.35, 1.35]) {
-    for (const dz of [-1.2, 0.3]) {
-      const b = new THREE.Mesh(GEO.buoy, MAT.buoy);
-      b.position.set(sx, 0.16, L + dz);
-      g.add(b);
-    }
-  }
+  for (const sx of [-1.45, 1.45]) for (const dz of [-1.2, 0.3]) { const b = new THREE.Mesh(GEO.buoy, MAT.buoy); b.position.set(sx, 0.16, L + dz); g.add(b); }
+  lampPost(g, -1.2, 0.5, L - 0.6); lampPost(g, 1.2, 0.5, 1.2);
+  railing(g, -1.4, 0.2, -1.4, L * 0.45, 0.5); railing(g, 1.4, 0.2, 1.4, L * 0.45, 0.5);
 
-  // Shack on the shore end
-  const shack = new THREE.Group();
-  shack.add(box(GEO.plank, MAT.marinaWall, 4.2, 2.5, 3.4, 0, 1.75, 0));
-  const r = new THREE.Mesh(GEO.roof, MAT.marinaRoof);
-  r.scale.set(3.5, 1.5, 2.9);
-  r.rotation.y = Math.PI / 4;
-  r.position.y = 3.75;
-  r.castShadow = true;
-  shack.add(r);
-  shack.add(box(GEO.plank, MAT.trim, 4.4, 0.16, 3.6, 0, 3.0, 0));
-  shack.position.set(0, 0.1, -2.1);
-  g.add(shack);
-
-  // Empty berths alongside, marked out with posts
-  for (const sx of [-2.5, 2.5]) {
-    for (let i = 0; i < 3; i++) {
-      const p = new THREE.Mesh(GEO.post, MAT.piling);
-      p.scale.set(1, 2.4, 1);
-      p.position.set(sx, 0.2, 1.6 + i * 2.4);
-      g.add(p);
-    }
-  }
-
-  // Sign on two posts at the shore end of the pier
-  const sign = new THREE.Group();
-  for (const sx of [-0.62, 0.62]) {
-    const p = new THREE.Mesh(GEO.post, MAT.piling);
-    p.scale.set(1, 2.2, 1);
-    p.position.set(sx, 1.1, 0);
-    sign.add(p);
-  }
-  const board = new THREE.Mesh(GEO.sign, MAT.marinaRoof);
-  board.position.y = 2.25;
-  board.castShadow = true;
-  sign.add(board);
-  sign.add(box(GEO.plank, MAT.trim, 1.3, 0.12, 0.1, 0, 2.45, 0.06));
-  sign.position.set(0, 0.42, 0.9);
-  g.add(sign);
+  // The pumps at the head of the pier, the ice cream stand on the shore
+  // beside the planking, the boathouse behind, the name at the gate.
+  gasPumps(g, 0, 0.5, L - 2.6);
+  iceCreamStand(g, 4.2, 0.6, -1.4, -0.4);
+  const house = (kind === 0 ? boathouseA : kind === 1 ? boathouseB : boathouseC)(wall, roof, rng);
+  house.position.set(kind === 2 ? -5.4 : -4.4, 0, kind === 2 ? -3.2 : -4.2);
+  house.rotation.y = kind === 2 ? 0.25 : 0.12;
+  g.add(house);
+  // A walkway from the pier to the house.
+  g.add(box(MAT.plank, 1.6, 0.14, 4.4, -2.4, 0.5, -0.8, 0.55));
+  // Flag over the yard.
+  g.add(mesh(GEO.post, MAT.trim, 1, 6.5, 1, 3.6, 3.25, -4.2));
+  g.add(mesh(GEO.box, MAT.flag, 1.4, 0.8, 0.02, 4.35, 6.1, -4.2));
+  nameSign(g, dock.name, 1.9, 0.42, 0.7, 0.15);
 
   g.position.set(dock.x, 0, dock.z);
   g.rotation.y = dock.angle;
+
+  // The boats for sale, tied up round the docks.
+  const alive = { on: true };
+  g.userData.alive = alive;
+  parkStock(dock, g, alive);
   return g;
 }
 
@@ -289,7 +665,7 @@ export class Docks {
     for (const [d, mesh] of this.active) {
       if (!docks.includes(d)) {
         this.group.remove(mesh);
-        mesh.traverse((o) => { if (o.isMesh && o.geometry.dispose && !GEO[o.name]) { /* shared geo */ } });
+        if (mesh.userData.alive) mesh.userData.alive.on = false;
         this.active.delete(d);
       }
     }

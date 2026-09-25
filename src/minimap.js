@@ -6,7 +6,7 @@
 // Navigation only: nothing here touches a bet.
 
 import { terrainHeight } from './terrain.js';
-import { salinity } from './regions.js';
+import { salinity, cellRegion, CELL } from './regions.js';
 
 const MPP = 5;            // metres per map pixel
 const TILE = 48;          // pixels a side (240 m)
@@ -104,6 +104,21 @@ export class Minimap {
       ctx.fillStyle = '#ffd166';
       ctx.beginPath(); ctx.arc(sx, sz, 2.6, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    // The names of the waters in view, at their sites.
+    ctx.font = 'bold 8px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(8, 30, 44, 0.85)'; ctx.fillStyle = '#ffffff';
+    const c0x = Math.floor((x - reach) / CELL), c1x = Math.floor((x + reach) / CELL);
+    const c0z = Math.floor((z - reach) / CELL), c1z = Math.floor((z + reach) / CELL);
+    for (let cz = c0z; cz <= c1z; cz++) for (let cx = c0x; cx <= c1x; cx++) {
+      const r = cellRegion(cx, cz);
+      const sx = half + (r.x - x) / MPP, sz = half + (r.z - z) / MPP;
+      if (Math.hypot(sx - half, sz - half) > half - 10) continue;
+      const words = r.name.split(' ');
+      // Two lines when the name is long, so it fits the disc.
+      const lines = words.length > 2 ? [words.slice(0, -1).join(' '), words[words.length - 1]] : [r.name];
+      lines.forEach((ln, i) => { const ly = sz + (i - (lines.length - 1) / 2) * 9; ctx.strokeText(ln, sx, ly); ctx.fillText(ln, sx, ly); });
     }
     // The boat: an arrow the way the bow points. Forward is (-sin h, -cos h).
     const ang = Math.atan2(-Math.cos(heading), -Math.sin(heading));

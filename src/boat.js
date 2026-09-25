@@ -40,7 +40,7 @@ const smooth = (k) => k * k * (3 - 2 * k);
 const loader = new GLTFLoader();
 const modelCache = new Map();   // hullId -> Promise<THREE.Object3D>
 
-function loadHull(hullId) {
+export function loadHull(hullId) {
   if (!modelCache.has(hullId)) {
     modelCache.set(hullId, loader.loadAsync(boatModelURL(hullId)).then((gltf) => {
       const root = gltf.scene;
