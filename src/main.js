@@ -159,6 +159,8 @@ boat.onBoatChanged = (spec) => hud.setBoat(spec);
 equipBoat(player.boatId);
 
 const marina = new Marina(player, (key) => { docks.sold(key); return equipBoat(key, true); });
+// Stock turned over while the store is open at that marina: show the new boats.
+docks.onRestock = (dock) => { if (marina.open && marina.dock === dock) marina.render(); };
 
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);

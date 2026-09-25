@@ -326,8 +326,12 @@ of the basin they stand in (Cardwell Crack Yacht Club, Deep Cardwell
 Landing).
 
 Each marina carries its **own stock**: three to five boats at a small
-marina, five to nine at a big harbour, rolled once from its seed so they
-are always the same and dealt over the lot as real hulls in their paint. The roll leans hard
+marina, five to nine at a big harbour, rolled from its seed and the
+six-hour slot of the wall clock, so the stock is fixed between rolls and
+the same for everyone, and **turns over every six hours** — the old boats
+leave the docks and the new ones take their slips, even while you watch;
+the store says how long until the next roll. The stock is dealt over the
+lot as real hulls in their paint. The roll leans hard
 toward cheap hulls and Standard paint, so a Signature steamboat is out
 there but you have to find the yard that carries it. Only what is on the
 docks can be bought there. Anything you already own can be taken from any

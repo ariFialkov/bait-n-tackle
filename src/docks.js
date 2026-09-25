@@ -122,7 +122,8 @@ function placeDock(cx, cz) {
     };
     layoutHarbour(dock);
     dock.name = marinaName(dock);
-    dock.stock = marinaStock(dock);
+    dock.stockEpoch = stockEpoch();
+    dock.stock = marinaStock(dock, dock.stockEpoch);
     return [dock];
   }
   return [];
@@ -372,8 +373,16 @@ export function marinaName(dock) {
 // find the marina that carries it. What you buy changes how you get about,
 // never a bet.
 const RARITY_W = [1, 0.42, 0.15, 0.045];
-export function marinaStock(dock) {
-  const rng = mulberry32((hash2(dock.cx, dock.cz, S + 431) * 1e9) | 0);
+// The stock turns over every six hours by the wall clock: a new roll for
+// every marina at once, the same for everyone. Between rolls it is fixed.
+export const STOCK_PERIOD_MS = 6 * 3600 * 1000;
+let epochOverride = null;                 // tests pin the clock
+export function stockEpoch(now = Date.now()) { return epochOverride ?? Math.floor(now / STOCK_PERIOD_MS); }
+export function setStockEpoch(e) { epochOverride = e; }
+/** Milliseconds until the next roll. */
+export function stockTurnsIn(now = Date.now()) { return STOCK_PERIOD_MS - (now % STOCK_PERIOD_MS); }
+export function marinaStock(dock, epoch = stockEpoch()) {
+  const rng = mulberry32((hash2(dock.cx + epoch * 7919, dock.cz - epoch * 104729, S + 431) * 1e9) | 0);
   // A big harbour carries five to nine boats, a small one three to five.
   const n = dock.big ? 5 + Math.floor(rng() * 5) : 3 + Math.floor(rng() * 3);
   const pool = [];
@@ -908,6 +917,14 @@ export class Docks {
    * they are the less — and swing back to their berths on a spring.
    */
   update(dt, vessels) {
+    // The six-hour roll: once the clock turns, every marina in view gets
+    // its new stock, the old boats gone from the docks and the new ones in.
+    this.clockAcc = (this.clockAcc || 0) + dt;
+    if (this.clockAcc > 1) {
+      this.clockAcc = 0;
+      const e = stockEpoch();
+      for (const [d, mesh] of this.active) if (d.stockEpoch !== e) this.restock(d, mesh, e);
+    }
     if (!this.parked.length || !vessels) return;
     for (let i = this.parked.length - 1; i >= 0; i--) {
       const p = this.parked[i];
@@ -940,6 +957,20 @@ export class Docks {
     p.holder.position.x = wx * dz - wz * dx;
     p.holder.position.z = wx * dx + wz * dz;
     p.holder.rotation.y = p.heading - d.angle;
+  }
+
+  /** A marina's stock has turned over: new boats on the docks. */
+  restock(dock, mesh, epoch) {
+    dock.stockEpoch = epoch;
+    dock.stock = marinaStock(dock, epoch);
+    for (let i = this.parked.length - 1; i >= 0; i--) {
+      const p = this.parked[i];
+      if (p.dock !== dock) continue;
+      p.group.remove(p.holder);
+      this.parked.splice(i, 1);
+    }
+    parkStock(dock, mesh, mesh.userData.alive, this);
+    if (this.onRestock) this.onRestock(dock);
   }
 
   /** A boat was bought: it leaves the docks it was lying at. */

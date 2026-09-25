@@ -9,8 +9,15 @@
 import { fleetCatalog, boatPortraitURL, featureList, BOATS } from './boats.js';
 import { hullSkins } from './skins.js';
 import { hullYawRate } from './hullphysics.js';
+import { stockTurnsIn } from './docks.js';
 
 const $ = (id) => document.getElementById(id);
+
+/** "5h 12m" until the stock turns over. */
+function turnsIn() {
+  const m = Math.ceil(stockTurnsIn() / 60000);
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+}
 
 function money(v) {
   if (v >= 1e6) return '$' + (v / 1e6).toFixed(v >= 1e7 ? 0 : 2).replace(/\.00$/, '') + 'M';
@@ -91,8 +98,9 @@ export class Marina {
     shop.className = 'hull-section marina-stock';
     shop.innerHTML =
       `<header class="hull-head"><h3>For sale here</h3>` +
-      `<span class="hull-tag">${stock.length ? `${stock.length} boat${stock.length > 1 ? 's' : ''} on the docks` : 'nothing on the docks'}</span></header>` +
-      `<p class="hull-blurb">Each marina carries its own few boats. The rarer the paint and the bigger the hull, the fewer yards you will find it at.</p>`;
+      `<span class="hull-tag">${stock.length ? `${stock.length} boat${stock.length > 1 ? 's' : ''} on the docks` : 'nothing on the docks'}</span>` +
+      `<span class="hull-spec">new stock in ${turnsIn()}</span></header>` +
+      `<p class="hull-blurb">Each marina carries its own few boats and turns them over every six hours. The rarer the paint and the bigger the hull, the fewer yards you will find it at.</p>`;
     const srow = document.createElement('div');
     srow.className = 'skin-row';
     for (const { hull, skin } of stock) srow.appendChild(this.skinCard(hull, skin, true));
