@@ -234,8 +234,8 @@ is the same for everyone at the same moment.
 **Icons.** Every button, chip and gear row wears a stroke icon from one
 family (`icons.js`): a 26-unit box, round-capped strokes, no fill, drawn
 like the auto reel glyph — sail, book, net, rod, pot, gear, anchor, sonar,
-the lures, nets and pots, the landmark kinds. No emoji anywhere, so the
-HUD looks the same on every platform. Taking a boat at a marina shows a
+the lures, nets and pots, the landmark kinds. The one emoji kept is the
+bold red exclamation mark of a bite, which nothing drawn can beat. Taking a boat at a marina shows a
 spinner by the close button while the hull loads and is built, and the
 close button waits until the boat is alongside.
 

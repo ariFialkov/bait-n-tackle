@@ -14,7 +14,6 @@ const ICONS = {
   anchor: P(`<circle cx="13" cy="5" r="2.2"/><path d="M13 7.2 V22"/><path d="M8 11 H18"/><path d="M4.5 15 a8.5 8.5 0 0 0 17 0"/><path d="M4.5 15 l2.5 -1.5"/><path d="M21.5 15 l-2.5 -1.5"/>`),
   arrow: P(`<path d="M4 13 H21"/><path d="M15 7 L21 13 L15 19"/>`),
   sonar: P(`<path d="M4.5 13 a8.5 8.5 0 0 1 17 0"/><path d="M8 13 a5 5 0 0 1 10 0"/><circle cx="13" cy="13" r="1.6"/><path d="M13 14.5 V22"/><path d="M8.5 22 h9"/>`),
-  bite: P(`<path d="M13 4 V15"/><circle cx="13" cy="20.5" r="1.4" fill="currentColor"/>`),
   rod: P(`<path d="M4 22 L18 5"/><path d="M18 5 C21 3.5 22.5 6 21 8"/><path d="M21 8 V15 a2.8 2.8 0 0 1 -5.6 0"/><circle cx="7.5" cy="18.5" r="1.9"/>`),
   net: P(`<path d="M4 6 H22"/><path d="M4 6 C4 16 7 21 13 22 C19 21 22 16 22 6"/><path d="M8.5 6 C8.5 14 10.5 19 13 21"/><path d="M17.5 6 C17.5 14 15.5 19 13 21"/><path d="M4.8 11.5 H21.2"/><path d="M6.5 16.5 H19.5"/>`),
   pot: P(`<rect x="4" y="9" width="18" height="12" rx="2"/><path d="M4 13 H22"/><path d="M4 17 H22"/><path d="M9 9 V21"/><path d="M13 9 V21"/><path d="M17 9 V21"/><path d="M9 9 C9 5.5 17 5.5 17 9"/><path d="M13 3.5 V6"/>`),

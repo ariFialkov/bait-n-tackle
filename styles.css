@@ -1069,7 +1069,6 @@ svg.ico.inl { width: 1em; height: 1em; margin-right: 0.3em; vertical-align: -0.1
 .sonar-lure { display: inline-flex; align-items: center; gap: 0.35em; }
 .sonar-lure svg.ico { width: 0.95em; height: 0.95em; color: #a9c9d8; }
 .lm-icon svg.ico { width: 0.9rem; height: 0.9rem; vertical-align: -0.2em; }
-#bite svg.ico { width: 3.4rem; height: 3.4rem; color: #ffd166; stroke-width: 2.6; }
 .tc-icon svg.ico { width: 1.05rem; height: 1.05rem; }
 
 /* The marina, while a boat is being built: a spinner by the close button. */
