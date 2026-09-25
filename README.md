@@ -288,8 +288,19 @@ cruise between spots along routes planned round the land (A* over a grid
 of the navigable water, pulled straight where it can be), stop to fish —
 cast, wait, hook something, fight it in — and call in at the marinas.
 They are **solid**: a hull runs into one as it runs into the tender, the
-shove shared by size, and they steer clear of the player. They come and
-go as the player moves, so there are always a few about.
+shove shared by size, and they steer clear of the player.
+
+They come as **encounters**, not a standing crowd: every four or five
+minutes (sooner if the player has been alone a while) one is put on the
+water where the player will come across it — crossing their path from
+one side to the other a boat-length or two off the beam, moored ahead of
+them fishing, or bound for a marina near them — and goes on living after
+that, wandering, fishing and calling at marinas, until it is left far
+behind. At most three are alive at once. A boat's cost scales with its
+distance: near the player it runs in full; further off it is stepped a
+few times a second without its wake and smoke and throws no shadow; its
+feelers over the water ahead are cast a few times a second rather than
+every frame.
 
 Passing one, it may **call across** with a side bet, and a card comes up
 with fourteen seconds to answer:

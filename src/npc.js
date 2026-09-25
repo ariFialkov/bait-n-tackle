@@ -33,8 +33,16 @@ const NAMES = [
   'Trout Tammy', 'Pickerel Pam', 'Sunfish Sam', 'Lefty', 'The Colonel', 'Barb', 'Hank the Tank',
   'Minnow Min', 'Captain Deb', 'Walleye Walt', 'Sturgeon Sue', 'Cousin Ray', 'Nettie', 'Slim',
 ];
-const FLEET_N = 5;               // boats about the player at a time
-const SPAWN_MIN = 140, SPAWN_MAX = 380, DESPAWN = 720;
+// Boats come as ENCOUNTERS, not a standing crowd: every four or five
+// minutes one is put on the water where the player will come across it —
+// crossing their path, moored ahead of them fishing, or bound for a
+// marina — and it goes on living after that until it is left far behind.
+const MAX_ALIVE = 3;
+const ENCOUNTER_MIN = 200, ENCOUNTER_MAX = 300;   // seconds between them
+const FIRST_MIN = 45, FIRST_MAX = 100;
+const LONELY_S = 200;            // nobody within 400 m for this long: send one early
+const DESPAWN = 540;             // metres: a boat this far behind is let go
+const LOD_NEAR = 140, LOD_FAR = 300;
 const OFFER_RANGE = 26;          // metres: passing this close, a boat may call across
 const OFFER_COOLDOWN = 75;       // seconds before the same boat offers again
 const GLOBAL_COOLDOWN = 40;      // ... or any boat does
@@ -156,6 +164,9 @@ class Fisherman {
     this.throttle = 1;
     this.lastOffer = -1e9;
     this.stuck = 0;
+    this.age = 0;
+    this.lod = 0; this.acc = 0; this.shadowed = true;
+    this.helmCache = null; this.helmT = 0;
     this.label = nameSprite(name);
     this.label.visible = false;
     fleet.scene.add(this.label);
@@ -210,18 +221,27 @@ class Fisherman {
     const n = this.route[this.wp];
     let dx = n.x - b.pos.x, dz = n.z - b.pos.z;
     const d = Math.hypot(dx, dz);
-    if (d < (this.wp === this.route.length - 1 ? 4 : 7)) { this.wp++; return this.helm(dt); }
+    if (d < (this.wp === this.route.length - 1 ? 4 : 7)) { this.wp++; this.helmCache = null; return this.helm(dt); }
     dx /= d; dz /= d;
     // Feelers: if the way ahead is foul, swing the wanted heading off it.
-    const look = 8 + b.speed * 1.5;
-    let best = null, bestScore = -Infinity;
-    for (const off of [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1]) {
-      const ca = Math.cos(off), sa = Math.sin(off);
-      const ux = dx * ca - dz * sa, uz = dx * sa + dz * ca;
-      let clear = 1;
-      for (const dd of [look * 0.4, look * 0.75, look]) if (!isNavigable(b.pos.x + ux * dd, b.pos.z + uz * dd) || waterDepth(b.pos.x + ux * dd, b.pos.z + uz * dd) < 0.9) { clear = dd / look - 0.34; break; }
-      const score = clear - Math.abs(off) * 0.25;
-      if (score > bestScore) { bestScore = score; best = { x: ux, z: uz, clear }; }
+    // They are cast a few times a second, not every frame — the water does
+    // not change that fast, and each probe costs a terrain lookup.
+    this.helmT += dt;
+    let best, bestScore;
+    if (this.helmCache && this.helmT < 0.25) { best = this.helmCache.best; bestScore = this.helmCache.score; }
+    else {
+      this.helmT = 0;
+      const look = 8 + b.speed * 1.5;
+      best = null; bestScore = -Infinity;
+      for (const off of [0, 0.4, -0.4, 0.85, -0.85, 1.3, -1.3]) {
+        const ca = Math.cos(off), sa = Math.sin(off);
+        const ux = dx * ca - dz * sa, uz = dx * sa + dz * ca;
+        let clear = 1;
+        for (const dd of [look * 0.5, look]) if (!isNavigable(b.pos.x + ux * dd, b.pos.z + uz * dd) || waterDepth(b.pos.x + ux * dd, b.pos.z + uz * dd) < 0.9) { clear = dd / look - 0.5; break; }
+        const score = clear - Math.abs(off) * 0.25;
+        if (score > bestScore) { bestScore = score; best = { x: ux, z: uz, clear }; }
+      }
+      this.helmCache = { best, score: bestScore };
     }
     // Slow down for a turn or a tight spot; crawl when boxed in.
     let thr = this.throttle * (bestScore > 0.6 ? 1 : 0.5);
@@ -351,7 +371,8 @@ export class NpcFleet {
     this.boats = [];
     this.vessels = [];             // the player's hulls, for steering clear and collisions
     this.rng = mulberry32((Date.now() & 0xffffff) >>> 0);
-    this.spawnAcc = 0;
+    this.nextEncounter = FIRST_MIN + this.rng() * (FIRST_MAX - FIRST_MIN);
+    this.lonely = 0;
     this.usedNames = new Set();
     this._tip = new THREE.Vector3();
     this.challenge = null;         // the live side bet
@@ -363,27 +384,103 @@ export class NpcFleet {
     fishing.onCatch = (c) => this.playerCaught(c);
   }
 
-  // --- spawning ---
-  spawnOne(px, pz) {
+  // --- spawning: encounters ---
+  /** A hull and a name for a new boat: cheap hulls mostly, the odd big one. */
+  newBoat(x, z, heading) {
     const rng = this.rng;
-    for (let i = 0; i < 40; i++) {
-      const a = rng() * Math.PI * 2, d = SPAWN_MIN + rng() * (SPAWN_MAX - SPAWN_MIN);
-      const x = px + Math.cos(a) * d, z = pz + Math.sin(a) * d;
-      if (waterDepth(x, z) < 2.5 || !isNavigable(x, z) || !isStill(x, z)) continue;
+    const cat = fleetCatalog();
+    const hi = Math.min(cat.length - 1, Math.floor(Math.pow(rng(), 2.2) * cat.length));
+    const skins = cat[hi].skins;
+    const key = skins[Math.floor(rng() * skins.length)].key;
+    let name = NAMES[Math.floor(rng() * NAMES.length)];
+    for (let n = 0; this.usedNames.has(name) && n < 30; n++) name = NAMES[Math.floor(rng() * NAMES.length)];
+    this.usedNames.add(name);
+    const f = new Fisherman(this, name, key, x, z, heading);
+    this.boats.push(f);
+    return f;
+  }
+
+  /** Open, still water at about `dist` from (px, pz) in direction `a`, give or take. */
+  spotAt(px, pz, a, dist, spread = 0.5) {
+    const rng = this.rng;
+    for (let i = 0; i < 28; i++) {
+      const ang = a + (rng() - 0.5) * 2 * spread, d = dist * (0.65 + rng() * 0.7);
+      const x = px + Math.cos(ang) * d, z = pz + Math.sin(ang) * d;
+      if (waterDepth(x, z) < 1.8 || !isNavigable(x, z)) continue;
       let ok = true;
-      for (let k = 0; k < 8 && ok; k++) { const ang = k / 8 * Math.PI * 2; if (!isNavigable(x + Math.cos(ang) * 9, z + Math.sin(ang) * 9)) ok = false; }
-      if (!ok) continue;
-      // Cheap hulls mostly, the odd big one.
-      const cat = fleetCatalog();
-      const hi = Math.min(cat.length - 1, Math.floor(Math.pow(rng(), 2.2) * cat.length));
-      const skins = cat[hi].skins;
-      const key = skins[Math.floor(rng() * skins.length)].key;
-      let name = NAMES[Math.floor(rng() * NAMES.length)];
-      for (let n = 0; this.usedNames.has(name) && n < 30; n++) name = NAMES[Math.floor(rng() * NAMES.length)];
-      this.usedNames.add(name);
-      const f = new Fisherman(this, name, key, x, z, rng() * Math.PI * 2);
-      this.boats.push(f);
+      for (let k = 0; k < 8 && ok; k++) { const t = k / 8 * Math.PI * 2; if (!isNavigable(x + Math.cos(t) * 8, z + Math.sin(t) * 8)) ok = false; }
+      if (ok) return { x, z };
+    }
+    return null;
+  }
+
+  /**
+   * Put a boat on the water where the player will come across it. `kind`:
+   *   passing — crosses the player's path from one side to the other;
+   *   moored  — anchored ahead of the player, fishing;
+   *   marina  — bound for a marina near the player.
+   * Returns the boat, or null when the water round here has no room for it.
+   */
+  spawnEncounter(kind = null) {
+    const me = this.vessels[0]; if (!me || this.boats.length >= MAX_ALIVE) return null;
+    const rng = this.rng;
+    const px = me.pos.x, pz = me.pos.z;
+    const heading = Math.atan2(-Math.sin(me.heading), -Math.cos(me.heading));   // the way the player points, as an angle over x/z
+    const moving = me.speed > 1;
+    if (!kind) { const r = rng(); kind = r < 0.45 ? 'passing' : r < 0.75 ? 'moored' : 'marina'; }
+    if (kind === 'marina') {
+      const near = this.docks.nearest(px, pz);
+      if (!near.dock || near.dist > 420) kind = rng() < 0.5 ? 'passing' : 'moored';
+    }
+    if (kind === 'passing') {
+      // In from somewhere, past the player a boat-length or two off the
+      // beam, and on out somewhere else — along whatever water there is,
+      // so a creek gets a boat coming down it and a lake one crossing it.
+      const side = rng() < 0.5 ? 1 : -1;
+      const P = this.spotAt(px, pz, heading + Math.PI / 2 * side, 14, 0.3) || { x: px, z: pz };
+      for (let i = 0; i < 6; i++) {
+        const S = this.spotAt(px, pz, rng() * Math.PI * 2, 240, Math.PI);
+        if (!S) continue;
+        const r1 = planRoute(S.x, S.z, P.x, P.z, 80);
+        if (!r1) continue;
+        const inA = Math.atan2(S.z - pz, S.x - px);
+        for (let j = 0; j < 6; j++) {
+          const G = this.spotAt(px, pz, rng() * Math.PI * 2, 240, Math.PI);
+          if (!G) continue;
+          const outA = Math.atan2(G.z - pz, G.x - px);
+          if (Math.abs(wrapAngle(outA - inA)) < 1.2) continue;      // not straight back the way it came
+          const r2 = planRoute(P.x, P.z, G.x, G.z, 80);
+          if (!r2) continue;
+          const f = this.newBoat(S.x, S.z, Math.atan2(r1[1].x - S.x, r1[1].z - S.z) + Math.PI);
+          f.route = r1.concat(r2.slice(1)); f.wp = 1; f.target = G; f.state = 'cruise'; f.throttle = 0.6 + rng() * 0.4;
+          f.encounter = 'passing';
+          return f;
+        }
+      }
+      kind = 'moored';
+    }
+    if (kind === 'moored') {
+      // Ahead of the player if they are under way, else anywhere round them.
+      const a = moving ? heading : rng() * Math.PI * 2;
+      const S = this.spotAt(px, pz, a, 170, moving ? 0.35 : Math.PI);
+      if (!S) return null;
+      const f = this.newBoat(S.x, S.z, rng() * Math.PI * 2);
+      f.startFishing(rng); f.timer = 60 + rng() * 120; f.encounter = 'moored';
       return f;
+    }
+    if (kind === 'marina') {
+      const d = this.docks.nearest(px, pz).dock;
+      const hx = d.headX + Math.sin(d.angle) * 9, hz = d.headZ + Math.cos(d.angle) * 9;
+      for (let i = 0; i < 8; i++) {
+        const S = this.spotAt(px, pz, rng() * Math.PI * 2, 240, Math.PI);
+        if (!S) continue;
+        const r = planRoute(S.x, S.z, hx, hz, 80);
+        if (!r) continue;
+        const f = this.newBoat(S.x, S.z, rng() * Math.PI * 2);
+        f.route = r; f.wp = 1; f.state = 'toMarina'; f.throttle = 0.6 + rng() * 0.3; f.encounter = 'marina';
+        return f;
+      }
+      return this.spawnEncounter('moored');
     }
     return null;
   }
@@ -596,13 +693,28 @@ export class NpcFleet {
     this.vessels = vessels;
     const me = vessels[0];
     if (!me) return;
-    // Keep the fleet up round the player, dropping any that have fallen far behind.
-    this.spawnAcc += dt;
+    // Boats left far behind go; boats come as encounters on a slow clock,
+    // sooner if the player has been alone for a while.
+    let nearest = Infinity;
     for (let i = this.boats.length - 1; i >= 0; i--) {
       const f = this.boats[i];
-      if (Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z) > DESPAWN && (!this.challenge || this.challenge.npc !== f)) { f.dispose(); this.usedNames.delete(f.name); this.boats.splice(i, 1); }
+      f.age += dt;
+      const d = Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z);
+      nearest = Math.min(nearest, d);
+      const inBet = this.challenge && this.challenge.npc === f;
+      if (!inBet && (d > DESPAWN || (f.age > 150 && d > 380))) { f.dispose(); this.usedNames.delete(f.name); this.boats.splice(i, 1); }
     }
-    if (this.boats.length < FLEET_N && this.spawnAcc > 1.5) { this.spawnAcc = 0; this.spawnOne(me.pos.x, me.pos.z); }
+    this.lonely = nearest < 400 ? 0 : this.lonely + dt;
+    if (active) {
+      this.nextEncounter -= dt;
+      if (this.boats.length >= MAX_ALIVE) this.nextEncounter = Math.max(this.nextEncounter, 30);
+      else if (this.nextEncounter <= 0 || this.lonely > LONELY_S) {
+        // No room on the water round here: try again shortly, not in five minutes.
+        const f = this.spawnEncounter();
+        this.nextEncounter = f ? ENCOUNTER_MIN + this.rng() * (ENCOUNTER_MAX - ENCOUNTER_MIN) : 20;
+        this.lonely = 0;
+      }
+    }
 
     if (this.offer && (this.time - (this.offer.at ?? (this.offer.at = this.time)) > 14 || !active)) this.decline();
     if (this.challenge && active) this.updateChallenge(dt, me);
@@ -610,6 +722,24 @@ export class NpcFleet {
     for (const f of this.boats) {
       if (!f.ready) continue;
       const b = f.boat;
+      // Level of detail by distance: a far boat is stepped a few times a
+      // second, without its wake and smoke, and throws no shadow.
+      const d = Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z);
+      const inBet = this.challenge && this.challenge.npc === f;
+      const lod = inBet ? 0 : d < LOD_NEAR ? 0 : d < LOD_FAR ? 1 : 2;
+      if (lod !== f.lod) {
+        f.lod = lod;
+        b.lite = lod > 0;
+        b.wake.setVisible(lod === 0);
+        b.smoke.points && (b.smoke.points.visible = lod === 0);
+        const shadow = lod === 0;
+        if (shadow !== f.shadowed) { f.shadowed = shadow; b.group.traverse((o) => { if (o.isMesh) o.castShadow = shadow; }); }
+        f.label.visible = lod < 2;
+      }
+      f.acc += dt;
+      const period = lod === 0 ? 0 : lod === 1 ? 0.05 : 0.12;
+      if (f.acc < period) continue;
+      const bdt = Math.min(f.acc, 0.2); f.acc = 0;
       let input = { x: 0, z: 0 };
       if (f.state === 'cruise') {
         if (!f.route || f.wp >= f.route.length) {
@@ -617,9 +747,9 @@ export class NpcFleet {
           if (f.route) { f.state = 'idle'; f.timer = 0; }
           else { const w = f.pickWaypoint(this.rng); if (w && f.goTo(w.x, w.z)) f.throttle = 0.55 + this.rng() * 0.45; }
         }
-        input = f.helm(dt);
+        input = f.helm(bdt);
       } else if (f.state === 'idle') {
-        f.timer += dt;
+        f.timer += bdt;
         if (f.timer > 1.5) {
           const near = this.docks.nearest(f.pos.x, f.pos.z);
           if (near.dock && near.dist < 260 && this.rng() < 0.3 && f.goTo(near.dock.headX + Math.sin(near.dock.angle) * 9, near.dock.headZ + Math.cos(near.dock.angle) * 9)) { f.state = 'toMarina'; f.throttle = 0.6; }
@@ -627,18 +757,18 @@ export class NpcFleet {
           else { const w = f.pickWaypoint(this.rng); if (w && f.goTo(w.x, w.z)) { f.state = 'cruise'; f.throttle = 0.5 + this.rng() * 0.5; } }
         }
       } else if (f.state === 'fish' || f.state === 'match') {
-        f.updateFishing(dt, t, this.rng);
+        f.updateFishing(bdt, t, this.rng);
         if (f.state === 'idle') b.anchored = false;
       } else if (f.state === 'toMarina') {
-        input = f.helm(dt);
+        input = f.helm(bdt);
         if (!f.route || f.wp >= f.route.length) { f.state = 'atMarina'; f.timer = 12 + this.rng() * 18; b.anchored = true; }
       } else if (f.state === 'atMarina') {
-        f.timer -= dt;
+        f.timer -= bdt;
         if (f.timer <= 0) { b.anchored = false; f.state = 'idle'; f.timer = 0; }
       } else if (f.state === 'race') {
-        input = f.helm(dt);
+        input = f.helm(bdt);
       }
-      b.update(dt, input, t);
+      b.update(bdt, input, t);
       // Solid against the player's hulls, and against each other.
       for (const v of vessels) separateHulls(v, b, 0.5);
       for (const o of this.boats) if (o !== f && o.ready && Math.abs(o.pos.x - b.pos.x) < 40 && Math.abs(o.pos.z - b.pos.z) < 40) separateHulls(b, o.boat, 0.5);

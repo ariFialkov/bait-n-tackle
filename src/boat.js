@@ -834,8 +834,11 @@ export class Boat {
     updateRods(this.rods, dt);
     this.updateMachinery(dt);
     if (this.crane) this.crane.update(dt);
-    this.wake.update(dt, t, this);
-    this.smoke.update(dt, t, this);
+    // A distant NPC hull runs lite: no wake or smoke to rebuild each frame.
+    if (!this.lite) {
+      this.wake.update(dt, t, this);
+      this.smoke.update(dt, t, this);
+    }
     if (this.netAnim) this.updateNetAnim(dt);
     if (this.net.active) {
       this.towPoints();
