@@ -13,9 +13,15 @@ import { currentAt } from './currents.js';
 
 const _cur = { x: 0, z: 0 };
 
+// Other solid things register here (the marinas' planking, docks.js), so
+// this module need not import them.
+const extra = [];
+export function registerObstacle(fn) { extra.push(fn); }
+
 export function isNavigable(x, z) {
   if (waterDepth(x, z) < CONFIG.MIN_NAV_DEPTH) return false;
   if (obstacleAt(x, z)) return false;
+  for (let i = 0; i < extra.length; i++) if (extra[i](x, z)) return false;
   // The boulders through a rapid.
   const f = cellFeatures(Math.floor(x / CELL), Math.floor(z / CELL));
   const b = f.boulders;

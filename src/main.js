@@ -65,7 +65,7 @@ const start = findStart();
 lake.update(0, start.x, start.z);
 const boat = new Boat(scene, lake, player);
 boat.placeAt(start.x, start.z, start.heading);
-const docks = new Docks(scene);
+const docks = new Docks(scene, player);
 lake.onDocksChanged = (list) => docks.sync(list);
 docks.sync(lake.docks);
 const labels = new Labels(document.getElementById('labels'), camera);
@@ -156,7 +156,7 @@ function refreshShipPanel() {
 boat.onBoatChanged = (spec) => hud.setBoat(spec);
 equipBoat(player.boatId);
 
-const marina = new Marina(player, (key) => { equipBoat(key, true); });
+const marina = new Marina(player, (key) => { docks.sold(key); equipBoat(key, true); });
 
 hud.onLureSelect = (i) => fishing.setLure(i);
 hud.onNetSelect = (i) => fishing.setNet(i);
@@ -337,6 +337,8 @@ function frame() {
   tender.update(dt, t, helm === tender ? move : { x: 0, z: 0 }, boat, helm === tender);
   // Two hulls, one patch of water: neither drives through the other.
   if (tender.deployed) separateHulls(boat, tender);
+  // The boats lying at a marina give way and swing back.
+  docks.update(dt, tender.deployed ? [boat, tender] : [boat]);
   const eye = helm === tender ? tender.pos : boat.pos;
   lake.update(t, eye.x, eye.z, dt, tender.deployed ? [boat, tender] : [boat]);
   ambientFish.setFocus(eye.x, eye.z);

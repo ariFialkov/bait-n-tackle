@@ -81,7 +81,8 @@ export class Marina {
 
     // What this marina has on its docks. Only these can be bought here; a
     // rarer boat means finding the marina that carries it.
-    const stock = (this.dock?.stock || []).map((k) => bySkin.get(k)).filter(Boolean);
+    // What is still on the docks: a boat bought here is gone from them.
+    const stock = (this.dock?.stock || []).filter((k) => !p.has(k)).map((k) => bySkin.get(k)).filter(Boolean);
     const shop = document.createElement('section');
     shop.className = 'hull-section marina-stock';
     shop.innerHTML =

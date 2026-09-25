@@ -298,7 +298,20 @@ deep enough for it, on whichever sides have the depth, so a creek marina
 gets a short lot and a lake marina the whole thing. Big marinas (two in
 five) have more rows. Anything too big for a slip — a paddleboat, a
 seiner, a steamboat — lies at a mooring in a line beyond the head, on a
-rope to a buoy, the centre lane left clear for whoever is coming in. The names are not respectable (Master Baiters, The Wet
+rope to a buoy, the centre lane left clear for whoever is coming in. In a
+narrow waterway, where a pier thrust out from the bank would bar the
+stream, the marina lies along the bank instead: its pier runs parallel to
+the shore a few metres out, the fingers on the water side only, and the
+channel stays open past it.
+
+The planking is **solid** — the main pier, the fingers and any platform a
+building stands on are obstacles like rocks, and a hull scrapes along them
+rather than through. The boats lying in the slips and at the moorings are
+**soft**: run into one and it gives way, the bigger it is the less (the
+two hulls share the shove by the square of their lengths, so a skiff can
+barely stir a seiner and a seiner shoulders a skiff aside), and it swings
+back to its berth on a spring, the bow nodding with the shove. A boat you
+buy is gone from the docks it was lying at, and from that marina's list. The names are not respectable (Master Baiters, The Wet
 Spot, Hooker's Landing, Cod Piece Harbour, Moist Marina …); most come off a
 lattice of the chunk so neighbours never share one, the rest take the word
 of the basin they stand in (Cardwell Crack Yacht Club, Deep Cardwell
