@@ -1137,6 +1137,12 @@ svg.ico.inl { width: 1em; height: 1em; margin-right: 0.3em; vertical-align: -0.1
 .comp-bar i { display: block; height: 100%; width: 0; background: #7dedae; border-radius: 99px; transition: width 0.25s linear; }
 .comp-row:nth-child(3) .comp-bar i { background: #ff9a5c; }
 .comp-row b { text-align: right; color: #fff; }
+.comp-board { display: none; flex-direction: column; }
+#comp.long .comp-board { display: flex; }
+#comp.long > .comp-row { display: none; }
+.comp-board .comp-row .comp-bar i { background: #9fbfcf; }
+.comp-board .comp-row.you .comp-bar i { background: #7dedae; }
+.comp-board .comp-row.you .comp-who { color: #ffd166; }
 .comp-timer { display: flex; justify-content: space-between; margin-top: 6px; color: #7da8bc; font-weight: 700; }
 /* The long haul: the place held now, and the next water on the way. */
 .comp-legs { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.12); color: #9fbfcf; font-size: 0.7rem; line-height: 1.45; }

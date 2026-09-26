@@ -208,7 +208,27 @@ export class HUD {
     el.classList.remove('hidden');
     el.querySelector('.comp-title').textContent = c.kind === 'fishing' ? `${c.species.name} match` : `${c.title} · ${c.goal.name}`;
     $('comp-npc-name').textContent = c.npc.name;
-    if (c.kind === 'fishing') {
+    el.classList.toggle('long', c.kind === 'long');
+    if (c.kind === 'long') {
+      // The leaderboard: all four boats, in order, each row its own and
+      // moved into place, so a bar stays with its boat.
+      const bd = $('comp-board');
+      if (!bd._rows || bd._rows.length !== (c.board || []).length) {
+        bd.innerHTML = ''; bd._rows = [];
+        for (const e of c.board || []) {
+          const row = document.createElement('div'); row.className = 'comp-row' + (e.you ? ' you' : '');
+          row.innerHTML = `<span class="comp-who"></span><div class="comp-bar"><i></i></div><b></b>`;
+          bd.appendChild(row); bd._rows.push(row);
+        }
+      }
+      (c.order || c.board || []).forEach((e, rank) => {
+        const row = bd._rows[(c.board || []).indexOf(e)]; if (!row) return;
+        const who = `${rank + 1}. ${e.name}`, w = `${Math.round(e.p * 100)}%`;
+        if (row._who !== who) { row._who = who; row.firstChild.textContent = who; }
+        if (row._w !== w) { row._w = w; row.querySelector('i').style.width = w; row.lastChild.textContent = w; }
+        if (row.style.order !== String(rank)) row.style.order = String(rank);
+      });
+    } else if (c.kind === 'fishing') {
       const top = Math.max(1, you, npc);
       $('comp-you').style.width = `${(you / top) * 100}%`; $('comp-npc').style.width = `${(npc / top) * 100}%`;
       $('comp-you-v').textContent = `${you.toFixed(1)} kg`; $('comp-npc-v').textContent = `${npc.toFixed(1)} kg`;

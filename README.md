@@ -338,50 +338,70 @@ seconds to answer:
   the water runs that far, and no more than three and a half where there
   is a choice. The route is the fill's own path, pulled straight, behind
   a short link from the circle. The card names the finish and the
-  distance by water; the chip points at it; and the live panel gives the
-  player's place of four as it stands and the **next water on the way**
-  with the metres to it ("2nd of 4 · next Birch River 340 m", then
-  "finish Wolf Pond 120 m"). The long haul is only proposed where the
-  water runs six hundred metres and more; a small lake gets an ordinary
-  boat instead.
+  distance by water; the chip points at it; and the live panel shows a
+  **leaderboard of all four boats** in order, each with its progress bar
+  (the player's lit), and the **next water on the way** with the metres
+  to it ("2nd of 4 · next Birch River 340 m", then "finish Wolf Pond
+  120 m"). The long haul is only proposed where the water runs six
+  hundred metres and more; a small lake gets an ordinary boat instead.
+  The finish is a spot a hull can lie at (deep, with a boat length of
+  water round it), never in a rapid or at a falls.
 
-The stake is a tenth of the wallet, to a tidy figure. Every side bet is
-an **isolated bet against the game RTP** exactly like a catch. A race,
-a run and a match are binary (`rtp.js sideBet`): the payout is drawn
-from the paytable the moment the bet is placed; it is won when that draw
-is at least the stake, and lost otherwise, with the mass a catch would
-have paid on the losing draws added to every win so the expected payout
-is RTP × stake to the cent. The long haul draws a place instead
-(`rtp.js placeBet`): the odds of first to fourth are 20 / 28 / 32 / 20
-per cent, and with the payouts above that returns 0.50 + 0.28 + 0.16 =
-0.94 of the stake, the game RTP, to the cent. The outcome is fixed
-before anything happens on the water, and what happens on the water is
-**staged to match**, with no skill in it — but it is staged as a race,
-not a procession:
+The stake runs from ten to a hundred dollars, in fives, by the kind of
+bet: a race is ten to forty, a run through the rocks twenty-five to
+seventy, the long haul fifty to a hundred, and a fishing match goes by
+the fish — a match for a species worth a couple of dollars is a tenner,
+one for a fish worth hundreds is a hundred — never more than the wallet
+holds. Every side bet is an **isolated bet against the game RTP**
+exactly like a catch. A race, a run and a match are binary
+(`rtp.js sideBet`): the payout is drawn from the paytable the moment the
+bet is placed; it is won when that draw is at least the stake, and lost
+otherwise, with the mass a catch would have paid on the losing draws
+added to every win so the expected payout is RTP × stake to the cent.
+The long haul draws a place instead (`rtp.js placeBet`): the odds of
+first to fourth are 20 / 28 / 32 / 20 per cent, and with the payouts
+above that returns 0.50 + 0.28 + 0.16 = 0.94 of the stake, the game
+RTP, to the cent. The outcome is fixed before anything happens on the
+water, and what happens on the water is **staged to match**, with no
+skill in it — but it is staged as a race, neck and neck, not a
+procession:
 
-* Until past the halfway mark **the order is open**: each other boat
-  runs about level with the player and swings either side of that on a
-  phase of its own — past the player at a peak, well back at a trough —
-  so leads change hands, boats are passed and pass back, and a bend is
-  tight. Over the third quarter the swings die away and each boat's
-  mark drifts out to its final margin, ahead or behind; from about six
-  sevenths of the way the order is the one drawn. In the long haul the
-  place changes hands a dozen times on the way.
-* A boat meant to finish **behind** the player tracks its mark and may
-  be eased right off to fall back; once the order is settling it is
-  never let past nine tenths of the way until the player is home. It is
-  the only kind of boat that is slowed.
-* A boat meant to finish **ahead** is never held under half throttle
-  while the order is open (its troughs are the player pulling away, not
-  it being reined in) and, once settling, is never slowed at all: flat
-  out, not eased for tight water, and let out past its top speed — its
-  drive raised with the cap, since drag is what sets a hull's top —
-  whenever it is short of its mark. The surges are measured against the
-  player's own speed over the ground, so a slow hull still gets past a
-  fast player.
-* A racing boat that is shoved off its route, or backs out of a corner,
-  takes the route up again from its nearest point; one hung on a bank
-  or a rock for more than a moment is put back on it at the next mark.
+* Each other boat holds a **mark in metres** ahead of or behind the
+  player: level while the order is open, drifting out to its final
+  margin (thirty to fifty metres, ahead or behind; in the long haul the
+  three spread out ahead of and behind the player's drawn place) over
+  the third quarter of the way, and in the order drawn from about six
+  sevenths on. Over the mark run two slow swings, a couple of boat
+  lengths each, one with the race and one with the clock, that die away
+  as the order settles — so the gaps open and close by a few lengths,
+  boats pass and are passed, and the places change hands often
+  (dozens of times over a long haul) and smoothly.
+* A boat's **speed is the player's own** over the ground plus a gentle
+  correction toward its mark, never more than a little over the
+  player's or over its hull's top, and only ever changed at the rate a
+  helmsman would move a throttle: no surges, no jumps. The cap is on
+  the hull's drive as well as its speed, since drag is what sets a
+  hull's top and a cap alone would change nothing.
+* A boat meant to finish behind may be eased right off, and is never
+  let over the line before the player. One meant to finish ahead is
+  never held under half its speed once the order is settling: it goes
+  on and finishes even if the player stops.
+* Race progress is measured **along the route** (a bend counts), and
+  with memory, so a route that doubles back round a spit cannot flip a
+  boat's place to the far side.
+* The boats find their own way. A route keeps to water a hull fits in
+  (a half-beam of water either side of every grid cell beside a bank),
+  keeps to the middle of a channel where there is one (cells beside a
+  bank cost more to cross), keeps out of rapids unless the event is a
+  run through them, and a pulled leg keeps a few metres off the banks.
+  At the helm a boat leans to the wider side of a channel, makes a mark
+  once past it (a mark hard against a bank need not be touched), and
+  if it makes no way for a few seconds — read from its speed over the
+  ground, not its drive, since a bank holds a hull that still has way
+  on — backs off for a couple of seconds and takes its route up again
+  from the next mark. A boat hung there for a long while whatever it
+  tried, and out of the player's sight, is put back on its route at the
+  next mark; in sight a boat is never moved.
 * In a fishing match the other basket fills, fish by fish, and a basket
   only ever fills, so the swings are one-sided: on a match the player is
   to win, the other basket closes to within a fish and falls back, never

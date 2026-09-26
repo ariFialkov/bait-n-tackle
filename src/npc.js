@@ -94,11 +94,21 @@ function nameSprite(name) {
 }
 
 /** Straight-line water between two points: navigable and deep enough all the way. */
-function clearLine(x0, z0, x1, z1, step = 3, depth = 1.2) {
+/** Water a half-beam either side of a point, for a hull to lie in. */
+function fatAt(x, z, r = 2.5) {
+  return isNavigable(x + r, z) && waterDepth(x + r, z) >= 1.0 && isNavigable(x - r, z) && waterDepth(x - r, z) >= 1.0
+    && isNavigable(x, z + r) && waterDepth(x, z + r) >= 1.0 && isNavigable(x, z - r) && waterDepth(x, z - r) >= 1.0;
+}
+
+function clearLine(x0, z0, x1, z1, step = 3, depth = 1.2, w = 0) {
   const d = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.ceil(d / step));
+  // With a width, the line is also clear `w` metres either side of itself:
+  // a route that keeps a hull's beam off the bank, not just its keel.
+  const nx = w && d ? -(z1 - z0) / d * w : 0, nz = w && d ? (x1 - x0) / d * w : 0;
   for (let i = 0; i <= n; i++) {
     const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n;
     if (!isNavigable(x, z) || waterDepth(x, z) < depth) return false;
+    if (w && (!isNavigable(x + nx, z + nz) || waterDepth(x + nx, z + nz) < depth || !isNavigable(x - nx, z - nz) || waterDepth(x - nx, z - nz) < depth)) return false;
   }
   return true;
 }
@@ -111,7 +121,8 @@ function clearLine(x0, z0, x1, z1, step = 3, depth = 1.2) {
  * way (or the box is too big for the cell size).
  */
 export const planInfo = { W: 0, H: 0, found: false, expanded: 0, cell: 0 };   // the last plan's figures (debug)
-export function* planRouteGen(ax, az, bx, bz, pad = 70, cell = 5, maxCells = 40000) {
+export function* planRouteGen(ax, az, bx, bz, pad = 70, cell = 5, maxCells = 40000, opts = {}) {
+  const fat = opts.fat !== false, rapidsCost = opts.rapids ?? 4;
   // On a world-aligned grid, so the same creek reads the same on every plan.
   const minX = Math.floor((Math.min(ax, bx) - pad) / cell) * cell, maxX = Math.max(ax, bx) + pad;
   const minZ = Math.floor((Math.min(az, bz) - pad) / cell) * cell, maxZ = Math.max(az, bz) + pad;
@@ -119,10 +130,39 @@ export function* planRouteGen(ax, az, bx, bz, pad = 70, cell = 5, maxCells = 400
   planInfo.W = W; planInfo.H = H; planInfo.found = false; planInfo.expanded = 0; planInfo.cell = cell;
   if (W * H > maxCells) return null;
   const ok = new Int8Array(W * H);          // 0 unknown, 1 water, -1 not
-  const water = (i, j) => {
+  const centre = (i, j) => {
     const k = j * W + i;
     if (!ok[k]) { const x = minX + (i + 0.5) * cell, z = minZ + (j + 0.5) * cell; ok[k] = isNavigable(x, z) && waterDepth(x, z) >= 1.0 ? 1 : -1; }
     return ok[k] > 0;
+  };
+  // A cell with a bank beside it costs more to cross: the route keeps to
+  // the middle of a channel where there is a middle to keep to.
+  const bk = new Int8Array(W * H);
+  const bank = (i, j) => {
+    const k = j * W + i;
+    if (!bk[k]) bk[k] = (i > 0 && !centre(i - 1, j)) || (i < W - 1 && !centre(i + 1, j)) || (j > 0 && !centre(i, j - 1)) || (j < H - 1 && !centre(i, j + 1)) ? 1 : -1;
+    return bk[k] > 0;
+  };
+  // Water a hull fits in: a cell beside a bank counts only if there is
+  // water a half-beam either side of its centre too.
+  // (Not at either end, where the hull already is or is to go: a boat
+  // lying by a bank still has to be able to leave it.)
+  const ft = new Int8Array(W * H);
+  const si0 = Math.floor((ax - minX) / cell), sj0 = Math.floor((az - minZ) / cell), gi0 = Math.floor((bx - minX) / cell), gj0 = Math.floor((bz - minZ) / cell);
+  const water = (i, j) => {
+    if (!fat) return centre(i, j);
+    const k = j * W + i;
+    if (!ft[k]) ft[k] = centre(i, j) && (!bank(i, j) || Math.max(Math.abs(i - si0), Math.abs(j - sj0)) <= 2 || Math.max(Math.abs(i - gi0), Math.abs(j - gj0)) <= 2 || fatAt(minX + (i + 0.5) * cell, minZ + (j + 0.5) * cell)) ? 1 : -1;
+    return ft[k] > 0;
+  };
+  // Rapids are dear to cross (a run through the rocks is its own event):
+  // a route goes round them where it can.
+  const rp = new Int8Array(W * H);
+  const rapids = (i, j) => {
+    if (rapidsCost <= 1) return false;
+    const k = j * W + i;
+    if (!rp[k]) rp[k] = regionAt(minX + (i + 0.5) * cell, minZ + (j + 0.5) * cell).type === 'rapids' ? 1 : -1;
+    return rp[k] > 0;
   };
   const si = Math.floor((ax - minX) / cell), sj = Math.floor((az - minZ) / cell);
   const gi = Math.floor((bx - minX) / cell), gj = Math.floor((bz - minZ) / cell);
@@ -153,7 +193,7 @@ export function* planRouteGen(ax, az, bx, bz, pad = 70, cell = 5, maxCells = 400
       if (closed[nk] || !water(ni, nj)) continue;
       // No cutting corners through land.
       if (di && dj && (!water(i + di, j) || !water(i, j + dj))) continue;
-      const c = g[k] + Math.hypot(di, dj);
+      const c = g[k] + Math.hypot(di, dj) * (bank(ni, nj) ? 2.2 : 1) * (rapids(ni, nj) ? rapidsCost : 1);
       if (c < g[nk]) { g[nk] = c; from[nk] = k; push(c + h(ni, nj), nk); }
     }
   }
@@ -174,10 +214,14 @@ export function* planRouteGen(ax, az, bx, bz, pad = 70, cell = 5, maxCells = 400
 function* pullGen(pts, cell) {
   const out = [pts[0]];
   const reach = Math.min(pts.length - 1, Math.max(12, Math.floor(240 / cell)));
+  // A pulled leg keeps a few metres off the banks either side, so a hull
+  // is not sent scraping round a corner; where the water is too narrow
+  // for that the grid's own points stand, which are in the middle of it.
+  const w = cell >= 6 ? 4 : 3;
   let i = 0;
   while (i < pts.length - 1) {
     let j = Math.min(pts.length - 1, i + reach), tries = 0;
-    while (j > i + 1 && !clearLine(pts[i].x, pts[i].z, pts[j].x, pts[j].z, Math.max(2.5, cell / 2), 1.0)) { j--; if ((++tries & 3) === 0) yield; }
+    while (j > i + 1 && !clearLine(pts[i].x, pts[i].z, pts[j].x, pts[j].z, Math.max(2.5, cell / 2), 1.0, w)) { j--; if ((++tries & 3) === 0) yield; }
     out.push(pts[j]); i = j;
     yield;
   }
@@ -185,54 +229,85 @@ function* pullGen(pts, cell) {
 }
 
 /** planRouteGen, run to the end now. */
-export function planRoute(ax, az, bx, bz, pad = 70, cell = 5, maxCells = 40000) {
-  const gen = planRouteGen(ax, az, bx, bz, pad, cell, maxCells);
+export function planRoute(ax, az, bx, bz, pad = 70, cell = 5, maxCells = 40000, opts = {}) {
+  const gen = planRouteGen(ax, az, bx, bz, pad, cell, maxCells, opts);
   for (;;) { const r = gen.next(); if (r.done) return r.value; }
 }
 
 /**
- * The water that connects to a point, as a generator: a breadth-first
- * flood fill over a 6 m grid inside a box `R` metres each way, yielding
- * between slices. Returns { list, trace }: the named waters reached, each
- * with the farthest point of it found ([{ r, x, z, d }], nearest first),
- * and trace(e), the grid path back from one of them to the start — the
- * route the fill itself took, so a finish it reached is one a route runs
- * to, whatever a boxed search of its own would make of the creeks.
+ * The water that connects to a point, as a generator: a shortest-path
+ * fill (Dijkstra) over a 6 m grid inside a box `R` metres each way,
+ * yielding between slices. Returns { list, trace }: the named waters
+ * reached, each with the farthest point of it found ([{ r, x, z, d }],
+ * nearest first), and trace(e), the grid path back from one of them to
+ * the start — the fill's own path, so a finish it reached is one a route
+ * runs to, whatever a boxed search of its own would make of the creeks.
  */
 function* reachGen(ax, az, R = 1600, cell = 6) {
   // The grid is laid on the world, not on the player: the same water
   // reads the same from a boat length away.
   const W = Math.ceil(2 * R / cell);
   const x0 = Math.floor((ax - R) / cell) * cell, z0 = Math.floor((az - R) / cell) * cell;
-  const ok = new Int8Array(W * W), from = new Int32Array(W * W).fill(-1);
+  const ok = new Int8Array(W * W), bk = new Int8Array(W * W), ft = new Int8Array(W * W), from = new Int32Array(W * W).fill(-1);
+  const dist = new Float32Array(W * W).fill(Infinity), closed = new Uint8Array(W * W);
   const at = (i, j) => ({ x: x0 + (i + 0.5) * cell, z: z0 + (j + 0.5) * cell });
-  const water = (i, j) => {
+  const centre = (i, j) => {
     const k = j * W + i;
     if (!ok[k]) { const p = at(i, j); ok[k] = isNavigable(p.x, p.z) && waterDepth(p.x, p.z) >= 1.0 ? 1 : -1; }
     return ok[k] > 0;
   };
+  // Water with a bank beside it costs more to cross, so the path back
+  // from anywhere keeps to the middle of its channel (a plain flood
+  // fill's would hug one side) — and counts only if a hull fits in it,
+  // a half-beam of water either side of its centre.
+  const bank = (i, j) => {
+    const k = j * W + i;
+    if (!bk[k]) bk[k] = (i > 0 && !centre(i - 1, j)) || (i < W - 1 && !centre(i + 1, j)) || (j > 0 && !centre(i, j - 1)) || (j < W - 1 && !centre(i, j + 1)) ? 1 : -1;
+    return bk[k] > 0;
+  };
   const si = Math.floor((ax - x0) / cell), sj = Math.floor((az - z0) / cell);
-  const q = [sj * W + si]; from[q[0]] = q[0]; ok[q[0]] = 1;
+  const water = (i, j) => {
+    const k = j * W + i;
+    if (!ft[k]) { const p = at(i, j); ft[k] = centre(i, j) && (!bank(i, j) || Math.max(Math.abs(i - si), Math.abs(j - sj)) <= 2 || fatAt(p.x, p.z)) ? 1 : -1; }
+    return ft[k] > 0;
+  };
+  // Rapids are dear to cross: the way round is taken where there is one.
+  const rp = new Int8Array(W * W);
+  const rapids = (i, j) => {
+    const k = j * W + i;
+    if (!rp[k]) { const p = at(i, j); rp[k] = regionAt(p.x, p.z).type === 'rapids' ? 1 : -1; }
+    return rp[k] > 0;
+  };
+  const open = [];       // a plain binary heap of [cost, k]
+  const push = (f, k) => { open.push([f, k]); let i = open.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (open[p][0] <= open[i][0]) break; [open[p], open[i]] = [open[i], open[p]]; i = p; } };
+  const pop = () => { const top = open[0], last = open.pop(); if (open.length) { open[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < open.length && open[l][0] < open[m][0]) m = l; if (r < open.length && open[r][0] < open[m][0]) m = r; if (m === i) break; [open[m], open[i]] = [open[i], open[m]]; i = m; } } return top; };
+  const sk = sj * W + si;
+  from[sk] = sk; ok[sk] = 1; ft[sk] = 1; dist[sk] = 0; push(0, sk);
   const found = new Map();
-  let n = 0, head = 0;
-  while (head < q.length && n < 300000) {
-    const k = q[head++]; n++;
+  let n = 0;
+  while (open.length && n < 300000) {
+    const [, k] = pop();
+    if (closed[k]) continue;
+    closed[k] = 1; n++;
     if ((n & 63) === 0) yield;
     const i = k % W, j = (k - i) / W;
     if ((n & 7) === 0) {
       const { x, z } = at(i, j);
       const r = regionAt(x, z), d = Math.hypot(x - ax, z - az);
       const e = found.get(r);
-      if (!e || d > e.d) found.set(r, { r, x, z, d, k });
+      // The farthest point of each water that a hull can lie at: deep
+      // enough, with a boat length of water round it.
+      if ((!e || d > e.d) && r.type !== 'rapids' && r.type !== 'falls' && waterDepth(x, z) >= 2 && !bank(i, j) && waterDepth(x + 7, z) >= 1.5 && waterDepth(x - 7, z) >= 1.5 && waterDepth(x, z + 7) >= 1.5 && waterDepth(x, z - 7) >= 1.5) found.set(r, { r, x, z, d, k });
     }
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       if (!di && !dj) continue;
       const ni = i + di, nj = j + dj;
       if (ni < 0 || nj < 0 || ni >= W || nj >= W) continue;
       const nk = nj * W + ni;
-      if (from[nk] >= 0 || !water(ni, nj)) continue;
+      if (closed[nk] || !water(ni, nj)) continue;
       if (di && dj && (!water(i + di, j) || !water(i, j + dj))) continue;
-      from[nk] = k; q.push(nk);
+      const c = dist[k] + Math.hypot(di, dj) * (bank(ni, nj) ? 2.2 : 1) * (rapids(ni, nj) ? 4 : 1);
+      if (c < dist[nk]) { dist[nk] = c; from[nk] = k; push(c, nk); }
     }
   }
   const trace = (e) => {
@@ -268,20 +343,28 @@ function pointAlong(route, s) {
   return route[route.length - 1];
 }
 
-/** How far along a polyline a point is (its nearest point on it), in metres. */
-function alongRoute(route, x, z) {
-  let best = Infinity, bestS = 0, acc = 0;
+/**
+ * How far along a polyline a point is (its nearest point on it), in
+ * metres. Given `sPrev`, the last answer, only the stretch of route from
+ * sixty metres behind it to three hundred ahead is considered (unless
+ * nothing there is within forty metres): a route that doubles back on
+ * itself round a spit would otherwise flip the answer to the far side.
+ */
+function alongRoute(route, x, z, sPrev = null) {
+  let best = Infinity, bestS = 0, acc = 0, bestAll = Infinity, bestSAll = 0;
   for (let i = 1; i < route.length; i++) {
     const a = route[i - 1], b = route[i];
-    const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+    const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz, L = Math.sqrt(L2);
     let t = L2 ? ((x - a.x) * dx + (z - a.z) * dz) / L2 : 0;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
     const px = a.x + dx * t, pz = a.z + dz * t;
     const d = (px - x) ** 2 + (pz - z) ** 2;
-    if (d < best) { best = d; bestS = acc + Math.sqrt(L2) * t; }
-    acc += Math.sqrt(L2);
+    const sHere = acc + L * t;
+    if (d < bestAll) { bestAll = d; bestSAll = sHere; }
+    if (sPrev == null || (sHere >= sPrev - 60 && sHere <= sPrev + 300)) { if (d < best) { best = d; bestS = sHere; } }
+    acc += L;
   }
-  return bestS;
+  return sPrev != null && best > 40 * 40 ? bestSAll : bestS;
 }
 
 /**
@@ -347,7 +430,7 @@ class Fisherman {
     this.target = null;
     this.throttle = 1;
     this.lastOffer = -1e9;
-    this.stuck = 0;
+    this.stuck = 0; this.escape = 0;
     this.age = 0;
     this.idle = false;             // just out on the water: never calls across
     this.group = null;             // the circling three, when one of them
@@ -387,8 +470,16 @@ class Fisherman {
 
   /** Take up a given route from its nearest point ahead. */
   rejoin(route) {
+    // The mark is the far end of the nearest leg — the next point along,
+    // not the nearest point, which may be astern.
     let best = 1, bd = Infinity;
-    for (let i = 1; i < route.length; i++) { const d = Math.hypot(route[i].x - this.pos.x, route[i].z - this.pos.z); if (d < bd) { bd = d; best = i; } }
+    for (let i = 1; i < route.length; i++) {
+      const a = route[i - 1], b = route[i], dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      let t = L2 ? ((this.pos.x - a.x) * dx + (this.pos.z - a.z) * dz) / L2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const d = Math.hypot(a.x + dx * t - this.pos.x, a.z + dz * t - this.pos.z);
+      if (d < bd) { bd = d; best = i; }
+    }
+    if (best < route.length - 1 && Math.hypot(route[best].x - this.pos.x, route[best].z - this.pos.z) < 10) best++;
     this.route = route.map((p) => ({ ...p })); this.wp = best; this.helmCache = null; this.stuck = 0;
   }
 
@@ -414,7 +505,18 @@ class Fisherman {
     const n = this.route[this.wp];
     let dx = n.x - b.pos.x, dz = n.z - b.pos.z;
     const d = Math.hypot(dx, dz);
-    if (d < (this.wp === this.route.length - 1 ? 4 : 7)) { this.wp++; this.helmCache = null; return this.helm(dt); }
+    // A mark is made within a few metres of it, or once the hull is past
+    // it along the route (a mark hard against a bank need not be touched)
+    // — or, aimed at for long and near enough, given up on.
+    const last = this.wp === this.route.length - 1;
+    const pr = this.route[this.wp - 1] || b.pos;
+    const sx = n.x - pr.x, sz = n.z - pr.z, sl = Math.hypot(sx, sz) || 1;
+    if (this.wpAt !== this.wp) { this.wpAt = this.wp; this.wpT = 0; } else this.wpT += dt;
+    // (Only a mark steered for a moment is passed this way, one a frame:
+    // a route that doubles back past the hull is not skipped wholesale.)
+    const passed = !last && d < 18 && this.wpT > 0.6 && (-dx * sx - dz * sz) / sl > 0;
+    if (d < (last ? 4 : 7)) { this.wp++; this.helmCache = null; return this.helm(dt); }
+    if (passed || (!last && this.wpT > 8 && d < 22)) { this.wp++; this.helmCache = null; this.wpAt = this.wp; this.wpT = 0; }
     dx /= d; dz /= d;
     return this.steerTo(dx, dz, dt);
   }
@@ -440,6 +542,16 @@ class Fisherman {
         const score = clear - Math.abs(off) * 0.25;
         if (score > bestScore) { bestScore = score; best = { x: ux, z: uz, clear }; }
       }
+      // In a channel, keep to the middle of it: the water either side of
+      // the way ahead is measured, and the heading leans to the wider side.
+      const px = -best.z, pz = best.x, ax = b.pos.x + best.x * 5, az = b.pos.z + best.z * 5;
+      let dl = 13, dr = 13;
+      for (const sd of [3, 6, 9, 12]) { if (dl === 13 && (!isNavigable(ax + px * sd, az + pz * sd) || waterDepth(ax + px * sd, az + pz * sd) < 0.9)) dl = sd; if (dr === 13 && (!isNavigable(ax - px * sd, az - pz * sd) || waterDepth(ax - px * sd, az - pz * sd) < 0.9)) dr = sd; }
+      if (dl + dr < 26) {
+        const lean = (dl - dr) / (dl + dr) * 0.55;
+        const ca = Math.cos(lean), sa = Math.sin(lean);
+        best = { x: best.x * ca - best.z * sa, z: best.x * sa + best.z * ca, clear: best.clear };
+      }
       this.helmCache = { best, score: bestScore };
     }
     // Slow down for a turn or a tight spot; crawl when boxed in. A boat
@@ -447,9 +559,17 @@ class Fisherman {
     // what is ahead at full throttle.
     let thr = this.throttle * (bestScore > 0.6 || this.flatOut ? 1 : 0.5);
     if (bestScore < 0.1 && !this.flatOut) thr = 0.25;
-    // A hull that has not moved in a while backs off and tries again.
-    if (b.speed < 0.3 && thr > 0.2) this.stuck += dt; else this.stuck = Math.max(0, this.stuck - dt * 2);
-    if (this.stuck > 3) { thr = -0.5; if (this.stuck > 5) { this.stuck = 0; this.route = null; } }
+    // A hull that has not moved in a while backs off and tries again: a
+    // couple of seconds astern, then the route is taken up afresh from
+    // the next mark along. (Grinding slowly along a bank counts as not
+    // moving: the mark is a share of what the hull is allowed just now.)
+    if (this.escape > 0) {
+      this.escape -= dt;
+      if (this.escape <= 0) { this.stuck = 0; this.route = null; this.helmCache = null; }
+      return { x: -best.x * 0.6, z: -best.z * 0.6 };
+    }
+    if ((this.realV ?? b.speed) < Math.min(1.2, 0.3 * b.spec.maxSpeed) && thr > 0.2) this.stuck += dt; else this.stuck = Math.max(0, this.stuck - dt * 2);
+    if (this.stuck > 3) { this.escape = 2.2; this.stuck = 0; }
     let want = { x: best.x * thr, z: best.z * thr };
     for (const v of this.fleet.vessels) want = steerClear(b, v, want, 5);
     return want;
@@ -749,7 +869,7 @@ export class NpcFleet {
     // slice a frame.
     const ccx = Math.floor(C.x / CELL), ccz = Math.floor(C.z / CELL);
     const g = this.group = { boats, center: C, r: R, basin: basinOf(ccx, ccz), phase: 0, cands: cands.slice(), scout: sc, link, plan: null, finish: null, route: null, legs: null, wait: 0, ready: false };
-    g.minL = cands.length && cands[0].d >= 900 ? 900 : 600;
+    g.minL = cands.some((e) => e.d >= 900) ? 900 : 600;
     for (const f of boats) f.group = g;
     return g;
   }
@@ -841,7 +961,14 @@ export class NpcFleet {
       if (!step.done) continue;
       const { r, e } = g.plan; g.plan = null;
       if (!step.value) continue;
-      const route = [...g.link, ...step.value.slice(1)];
+      // The trace joined behind the link — unless it passes close by the
+      // circle, when it is picked up there and the link dropped: a route
+      // that ran out to the player's old spot and back would double on
+      // itself.
+      const tr = step.value;
+      let near = -1;
+      for (let i = 0; i < tr.length; i++) if (Math.hypot(tr[i].x - g.center.x, tr[i].z - g.center.z) < 25) { near = i; break; }
+      const route = near >= 0 ? [{ x: g.center.x, z: g.center.z }, ...tr.slice(near + 1)] : [...g.link, ...tr.slice(1)];
       const L = routeLength(route);
       if (L < g.minL) continue;              // by water it must be a haul
       // ... but not an afternoon: a route beyond the cap is kept only as
@@ -909,7 +1036,7 @@ export class NpcFleet {
     if (this.time - this.lastOfferAt < 8) return;
     if (Math.hypot(g.center.x - me.pos.x, g.center.z - me.pos.z) > g.r + 26) return;
     if (!g.boats.every((f) => f.ready)) return;
-    const stake = this.stakeFor();
+    const stake = this.stakeFor('long');
     if (stake <= 0) return;
     const km = (g.L / 1000).toFixed(1);
     const lead = g.boats[0];
@@ -928,29 +1055,43 @@ export class NpcFleet {
     return 'fishing';
   }
 
-  /** A stake the player can afford: a tenth of the wallet, to a tidy figure. */
-  stakeFor() {
+  /**
+   * The stake, ten to a hundred dollars in fives, by the kind of bet: the
+   * long haul runs high, a run through the rocks in the middle, a race
+   * low; a fishing match goes by the fish — a match for a species worth
+   * a couple of dollars is a tenner, one for a fish worth hundreds is a
+   * hundred. Never more than the wallet holds; nothing under ten.
+   */
+  stakeFor(kind = 'race', species = null) {
     const b = this.player.balance;
-    if (b < 1) return 0;
-    const raw = Math.max(1, b * 0.1);
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const nice = [1, 2, 5, 10].map((m) => m * mag).filter((v) => v <= raw);
-    return Math.min(b, nice.length ? nice[nice.length - 1] : 1);
+    if (b < 10) return 0;
+    let lo = 10, hi = 40;
+    if (kind === 'long') { lo = 50; hi = 100; }
+    else if (kind === 'agility') { lo = 25; hi = 70; }
+    else if (kind === 'fishing' && species) {
+      const k = Math.max(0, Math.min(1, Math.log((species.value || 1) / 2) / Math.log(75)));
+      const mid = 10 + 90 * k;
+      lo = Math.max(10, mid * 0.7); hi = Math.min(100, mid * 1.3);
+    }
+    const s = Math.max(10, Math.min(100, Math.round((lo + this.rng() * (hi - lo)) / 5) * 5));
+    return Math.min(s, Math.floor(b / 5) * 5);
   }
 
   buildOffer(f, kind, me) { const g = this.buildOfferGen(f, kind, me); for (;;) { const r = g.next(); if (r.done) return r.value; } }
 
   *buildOfferGen(f, kind, me) {
-    const stake = this.stakeFor();
-    if (stake <= 0) return null;
     const rng = this.rng;
     if (kind === 'fishing') {
       const pool = poolFor(waterKind(me.pos.x, me.pos.z));
       const sp = speciesInTiers(1, 3, pool);
       const species = sp[Math.floor(rng() * sp.length)];
+      const stake = this.stakeFor('fishing', species);
+      if (stake <= 0) return null;
       return { npc: f, kind, stake, species, seconds: 90, title: 'Fishing match',
         text: `Most ${species.name} by weight on the rod in 90 seconds. Nothing else counts; nothing is paid. Loser buys.` };
     }
+    const stake = this.stakeFor(kind);
+    if (stake <= 0) return null;
     // A race or a run: a named water off a way, with a route to it round
     // the land. A run wants a rapid: rock along the route, and plenty of it.
     const cx = Math.floor(me.pos.x / CELL), cz = Math.floor(me.pos.z / CELL);
@@ -972,7 +1113,7 @@ export class NpcFleet {
     while (cands.length && tries++ < 5) {
       const i = kind === 'agility' ? 0 : Math.floor(rng() * cands.length);
       const { r, d, w } = cands.splice(i, 1)[0];
-      const route = yield* planRouteGen(me.pos.x, me.pos.z, w.x, w.z, 90);
+      const route = yield* planRouteGen(me.pos.x, me.pos.z, w.x, w.z, 90, 5, 40000, kind === 'agility' ? { fat: false, rapids: 1 } : {});
       if (!route) continue;
       const L = routeLength(route);
       if (L > d * 2.8) continue;
@@ -1015,9 +1156,8 @@ export class NpcFleet {
     const limit = o.kind === 'fishing' ? o.seconds : o.kind === 'long' ? Math.max(420, Math.round(routeLength(o.route) / 3.2) + 120) : 240;
     const c = this.challenge = { ...o, win: o.kind === 'long' ? r.place === 1 : r.win, place: r.place, payout: r.payout, t: 0, limit, margin: 0.08 + this.rng() * 0.08, youKg: 0, npcKg: 0, gate: 0, npcGate: 0, legAt: 0 };
     const f = o.npc;
-    // The back-and-forth: each boat swings about its final margin on its
-    // own phase before the order settles, so the leads change on the way.
-    for (const b of o.boats || [f]) b.dramaPhase = this.rng();
+    // The back-and-forth of a fishing match: the other basket swings on
+    // its own phase before the order settles.
     c.dramaPhase = this.rng();
     if (o.kind === 'fishing') {
       f.endCast(); f.state = 'match'; f.timer = 0; f.boat.anchored = false;
@@ -1029,12 +1169,16 @@ export class NpcFleet {
     } else if (o.kind === 'long') {
       for (const b of o.boats) { b.endCast(); b.state = 'race'; b.timer = 0; b.boat.anchored = false; b.group = null; b.rejoin(o.route); b.throttle = 0.3; b.target = o.goal; }
       if (o.group) { o.group.dead = true; if (this.group === o.group) this.group = null; }
-      c.margins = o.boats.map((_, i) => c.margin + i * 0.05);
+      // Final margins, in metres: the boats to finish ahead of the player's
+      // drawn place spread out ahead, the rest behind.
+      const aheadN = c.place - 1;
+      c.marginsM = o.boats.map((_, i) => i < aheadN ? 28 + i * 22 : -(28 + (i - aheadN) * 22));
       c.L = routeLength(o.route);
     } else {
       f.endCast(); f.state = 'race'; f.timer = 0; f.boat.anchored = false;
       f.route = o.route.map((p) => ({ ...p })); f.wp = 1; f.target = o.goal; f.throttle = 0.3;
-      if (o.route && !o.gates) c.L = routeLength(o.route);
+      c.marginM = 28 + this.rng() * 20;
+      c.L = routeLength(o.route);
     }
     c.d0 = Math.hypot(o.goal ? o.goal.x - me.pos.x : 0, o.goal ? o.goal.z - me.pos.z : 0) || 1;
     this.hud.setComp(c, 0, 0);
@@ -1082,7 +1226,7 @@ export class NpcFleet {
     // Along the route where there is one (a race, the long haul): a bend
     // in the water is progress too, which the straight line to the goal
     // would not show.
-    if (c.route && c.L) return Math.max(0, Math.min(1, alongRoute(c.route, me.pos.x, me.pos.z) / c.L));
+    if (c.route && c.L) { c.pAlong = alongRoute(c.route, me.pos.x, me.pos.z, c.pAlong ?? null); return Math.max(0, Math.min(1, c.pAlong / c.L)); }
     const d = Math.hypot(c.goal.x - me.pos.x, c.goal.z - me.pos.z);
     return Math.max(0, Math.min(1, 1 - d / c.d0));
   }
@@ -1091,6 +1235,7 @@ export class NpcFleet {
   releaseRacer(f) {
     f.state = 'idle'; f.timer = 0; f.route = null; f.throttle = 1; f.flatOut = false; f.endCast(); f.boat.anchored = false; f.matchSpecies = null;
     if (f.baseMax != null) { f.boat.spec.maxSpeed = f.baseMax; f.boat.spec.accel = f.baseAccel; f.baseMax = null; }
+    f.cap = null; f.ph1 = null; f.progM = null; f.escape = 0;
   }
 
   /**
@@ -1100,7 +1245,9 @@ export class NpcFleet {
    */
   static setTop(f, mult) {
     if (f.baseMax == null) { f.baseMax = f.boat.spec.maxSpeed; f.baseAccel = f.boat.spec.accel; }
-    f.boat.spec.maxSpeed = f.baseMax * mult; f.boat.spec.accel = f.baseAccel * mult;
+    // (Full drive under a cap below its own top: it gets going as it
+    // always does and the cap holds it; more drive only over its top.)
+    f.boat.spec.maxSpeed = f.baseMax * mult; f.boat.spec.accel = f.baseAccel * Math.max(1, mult);
   }
 
   finish(result, why = '') {
@@ -1137,63 +1284,62 @@ export class NpcFleet {
   static settle(p) { const k = Math.max(0, Math.min(1, (p - 0.5) / 0.36)); return k * k * (3 - 2 * k); }
 
   /**
-   * The swing a boat makes about its final margin while the order is
-   * still open: a couple of surges and fades over the race, on its own
-   * phase, so leads change hands on the way; nothing once settled.
+   * The pacing of one racing boat against the player: neck and neck. Its
+   * mark is a gap in metres ahead of (or behind) the player — level while
+   * the order is open, drifting out to its final margin as the order
+   * settles, with two slow swings over it, a couple of boat lengths each,
+   * that die away as it does — and its speed is the player's own plus a
+   * gentle correction toward the mark, never more than a little over the
+   * player's or over its hull's top, and only ever changed at a rate a
+   * boat's throttle would. So the gaps open and close by a few lengths,
+   * the places change hands smoothly and often, and nothing surges or
+   * jumps. The result was drawn when the bet was placed; a boat to finish
+   * ahead is never held under half its speed once the order is settling
+   * (it goes on and finishes even if the player stops), and one to
+   * finish behind is never let past nine tenths of the way until the
+   * player is home.
    */
-  static drama(p, phase, amp = 0.09) {
-    return Math.sin((p * 1.6 + phase) * Math.PI * 2) * amp * (1 - NpcFleet.settle(p));
-  }
-
-  /**
-   * The pacing of one racing boat against the player's progress `p`. It
-   * is held about `p + off`, where off swings with the drama while the
-   * order is open and ends at the final margin: ahead of the player on a
-   * bet the player loses to it, behind on one the player beats it. Once
-   * settled, a boat meant to finish ahead is never slowed — flat out, let
-   * out past its top speed when behind, put back on its route if hung up
-   * — and one meant to finish behind is never let past nine tenths of
-   * the way until the player is home. The result was drawn when the bet
-   * was placed; all this is the show that matches it.
-   */
-  pace(f, c, p, ahead, margin) {
+  pace(f, c, p, ahead, marginM, dt) {
     const np = f.routeProgress();
-    const creep = Math.min(0.9, c.t / c.limit * 1.1);
+    const L = c.L || 1;
     const settled = NpcFleet.settle(p);
     if (f.baseMax == null) NpcFleet.setTop(f, 1);
-    // While the order is open the boat runs about level with the player
-    // and swings either side of it — past it at a peak, well back at a
-    // trough — and as the order settles its mark drifts out to the final
-    // margin, ahead or behind.
-    const base = (ahead ? margin : -margin) * (0.15 + 0.85 * settled);
-    const off = base + NpcFleet.drama(p, f.dramaPhase || 0, 0.07 + margin * 0.3);
-    let want = Math.max(p + off, creep * 0.6);
-    if (!ahead) want = Math.min(want, settled > 0.5 ? 0.9 : 0.93);
-    const behindBy = want - np;
-    // Let out past its top speed when short of its mark — measured against
-    // the player's own speed, so a slow hull can still surge past a fast
-    // player mid-race and a boat meant to finish ahead always can.
-    const meSpeed = c.meSpeed || 0;
-    const mult = (v) => Math.max(1, v / f.baseMax);
-    if (ahead && settled > 0.5) {
-      f.throttle = 1; f.flatOut = true;
-      NpcFleet.setTop(f, behindBy > 0 ? mult(Math.max(f.baseMax * 1.7, meSpeed * (behindBy > 0.12 ? 2.4 : 1.9))) : 1);
-    } else {
-      // Tracking its mark: eased when past it, let out when short of it. A
-      // boat to finish behind may be eased right off (it has to be passed);
-      // one to finish ahead is never held under half throttle — its
-      // troughs are the player pulling away, not it being reined in.
-      f.throttle = Math.max(ahead ? 0.55 : 0, Math.min(1, 0.5 + behindBy * 8)); f.flatOut = false;
-      NpcFleet.setTop(f, behindBy > 0.02 ? mult(Math.max(f.baseMax * 1.5, meSpeed * (behindBy > 0.08 ? 2.2 : 1.7))) : 1);
-    }
-    // Hung up on a bank or a rock for more than a moment, or grinding
-    // along one and falling well behind for a while: it is put back on
-    // its route at the next mark, under way.
-    f.lagT = behindBy > 0.08 ? (f.lagT || 0) + (c.dt || 1 / 60) : 0;
-    if ((f.stuck > 2.5 || f.lagT > 6) && f.route && f.wp < f.route.length) {
-      const n = f.route[f.wp], pr = f.route[f.wp - 1] || f.pos;
-      f.boat.placeAt(n.x, n.z, Math.atan2(-(n.x - pr.x), -(n.z - pr.z)));
-      f.wp++; f.stuck = 0; f.lagT = 0; f.helmCache = null;
+    if (f.ph1 == null) { f.ph1 = this.rng() * Math.PI * 2; f.ph2 = this.rng() * Math.PI * 2; }
+    const base = (ahead ? marginM : -marginM) * (0.1 + 0.9 * settled);
+    // The long swing runs with the race (a cycle and a half over its
+    // length, whatever that is), the short one with the clock.
+    const swing = (Math.sin(p * Math.PI * 2 * 1.6 + f.ph1) * 14 + Math.sin(c.t * (Math.PI * 2 / 7) + f.ph2) * 5) * (1 - settled);
+    const wantGap = base + swing;
+    const gap = (np - p) * L;
+    const meV = c.meSpeed || 0;
+    let v = meV + Math.max(-5, Math.min(5, (wantGap - gap) * 0.6));
+    if (ahead && settled > 0.5) v = Math.max(v, f.baseMax * 0.55);
+    if (!ahead && np * L >= L - 14) v = 0;               // never over the line before the player
+    const top = Math.max(f.baseMax * 1.15, meV * 1.12);
+    v = Math.max(0, Math.min(top, v));
+    // The cap is slewed toward the wanted speed, and the drive with it
+    // (drag is what sets a hull's top, so the cap alone would change
+    // nothing): it eases off and picks up as a helmsman would.
+    const cap = f.cap ?? f.baseMax;
+    f.cap = cap + Math.max(-4 * dt, Math.min(3 * dt, v - cap));
+    NpcFleet.setTop(f, f.cap / f.baseMax);
+    f.throttle = f.cap > 0.4 ? 1 : 0;
+    f.flatOut = ahead && settled > 0.5 && gap < wantGap;
+    // Making no way for a while with the cap up (hung on a corner the
+    // feelers missed): the helm's own back-off is set going.
+    const s = np * L;
+    if (f.progM == null || s > f.progM + 4 || f.cap < 3) { f.progM = s; f.progT = 0; f.hungT = 0; }
+    else {
+      f.progT += dt; f.hungT = (f.hungT || 0) + dt;
+      if (f.progT > 5 && !(f.escape > 0)) { f.escape = 2.2; f.stuck = 0; f.progT = 0; }
+      // Hung there for a long while whatever it tried, and out of the
+      // player's sight: it is put back on its route at the next mark.
+      const me = this.vessels[0];
+      if (f.hungT > 25 && me && Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z) > 90 && f.route && f.wp < f.route.length) {
+        const n = f.route[f.wp], pr = f.route[f.wp - 1] || f.pos;
+        f.boat.placeAt(n.x, n.z, Math.atan2(-(n.x - pr.x), -(n.z - pr.z)));
+        f.wp++; f.stuck = 0; f.escape = 0; f.hungT = 0; f.progT = 0; f.helmCache = null;
+      }
     }
     // Off the route (stuck and backed out, or shoved): take it up again.
     if (!f.route || f.wp >= f.route.length) { if (np < 0.999) f.rejoin(c.route); }
@@ -1261,7 +1407,11 @@ export class NpcFleet {
       // Three boats: the ones to finish ahead of the player's drawn place
       // run ahead, the rest trail — after the swings on the way.
       let lead = 0, aheadNow = 0;
-      c.boats.forEach((b, i) => { const v = this.pace(b, c, p, i < c.place - 1, c.margins[i]); if (v > lead) { lead = v; c.leader = b; } if (v > p) aheadNow++; });
+      c.boats.forEach((b, i) => { const v = this.pace(b, c, p, i < c.place - 1, Math.abs(c.marginsM[i]), dt); if (v > lead) { lead = v; c.leader = b; } if (v > p) aheadNow++; });
+      // The leaderboard: all four, in order.
+      const board = c.board || (c.board = [{ name: 'You', you: true, p: 0 }, ...c.boats.map((b) => ({ name: b.name, you: false, p: 0, f: b }))]);
+      board[0].p = p; for (let i = 1; i < board.length; i++) board[i].p = board[i].f.routeProgress();
+      c.order = board.slice().sort((a, b) => b.p - a.p);
       np = lead;
       c.placeNow = 1 + aheadNow;
       // The next water on the way, for the panel: where the current one ends.
@@ -1271,7 +1421,7 @@ export class NpcFleet {
       const nx = c.legs[at + 1];
       c.next = nx ? { name: nx.name, dist: Math.max(0, nx.s0 - s) } : { name: c.goal.name, dist: Math.max(0, (c.L || 0) - s), finish: true };
     } else {
-      np = this.pace(f, c, p, !c.win, c.margin);
+      np = this.pace(f, c, p, !c.win, c.marginM, dt);
       npcArrived = Math.hypot(c.goal.x - f.pos.x, c.goal.z - f.pos.z) < 10 || np >= 0.999;
     }
     // The chip that points the way: the next gate, or the goal.
@@ -1417,7 +1567,11 @@ export class NpcFleet {
           input = f.steerTo(dx / dd, dz / dd, bdt);
         } else { f.state = 'idle'; }
       }
+      const px0 = b.pos.x, pz0 = b.pos.z;
       b.update(bdt, input, t);
+      // Its speed over the ground (the hull's own figure is its drive, kept
+      // even while a bank holds it): what the helm reads for being stuck.
+      f.realV = (f.realV ?? 0) + (Math.hypot(b.pos.x - px0, b.pos.z - pz0) / bdt - (f.realV ?? 0)) * Math.min(1, bdt * 4);
       // Solid against the player's hulls, and against each other.
       for (const v of vessels) separateHulls(v, b, 0.5);
       for (const o of this.boats) if (o !== f && o.ready && Math.abs(o.pos.x - b.pos.x) < 40 && Math.abs(o.pos.z - b.pos.z) < 40) separateHulls(b, o.boat, 0.5);
