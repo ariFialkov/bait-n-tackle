@@ -345,7 +345,12 @@ seconds to answer:
   120 m"). The long haul is only proposed where the water runs six
   hundred metres and more; a small lake gets an ordinary boat instead.
   The finish is a spot a hull can lie at (deep, with a boat length of
-  water round it), never in a rapid or at a falls.
+  water round it), never in a rapid or at a falls — and always in
+  **fresh water**: the sea and the brackish water along the coast are
+  dear for the scout to cross and no finish at all, and a route that
+  would still run more than a quarter of its length through them is
+  passed over, so a long haul is a run through the river systems, not a
+  straight shot down the coast.
 
 The stake runs from ten to a hundred dollars, in fives, by the kind of
 bet: a race is ten to forty, a run through the rocks twenty-five to

@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { Boat } from './boat.js';
 import { fleetCatalog } from './boats.js';
-import { isNavigable, waterDepth, waterKind } from './lake.js';
+import { isNavigable, waterDepth, waterKind, salinity } from './lake.js';
 import { separateHulls, steerClear, wrapAngle } from './hullphysics.js';
 import { HookedFish } from './hookedfish.js';
 import { speciesInTiers, poolFor } from './fishdata.js';
@@ -272,11 +272,18 @@ function* reachGen(ax, az, R = 1600, cell = 6) {
     return ft[k] > 0;
   };
   // Rapids are dear to cross: the way round is taken where there is one.
-  const rp = new Int8Array(W * W);
+  // So is salt water: the long haul is a run through the fresh water,
+  // and the sea, where it is reached at all, is reached the inland way.
+  const rp = new Int8Array(W * W), sl = new Int8Array(W * W);
   const rapids = (i, j) => {
     const k = j * W + i;
     if (!rp[k]) { const p = at(i, j); rp[k] = regionAt(p.x, p.z).type === 'rapids' ? 1 : -1; }
     return rp[k] > 0;
+  };
+  const salt = (i, j) => {
+    const k = j * W + i;
+    if (!sl[k]) { const p = at(i, j); sl[k] = salinity(p.x, p.z) >= 0.3 ? 1 : -1; }
+    return sl[k] > 0;
   };
   const open = [];       // a plain binary heap of [cost, k]
   const push = (f, k) => { open.push([f, k]); let i = open.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (open[p][0] <= open[i][0]) break; [open[p], open[i]] = [open[i], open[p]]; i = p; } };
@@ -297,7 +304,7 @@ function* reachGen(ax, az, R = 1600, cell = 6) {
       const e = found.get(r);
       // The farthest point of each water that a hull can lie at: deep
       // enough, with a boat length of water round it.
-      if ((!e || d > e.d) && r.type !== 'rapids' && r.type !== 'falls' && waterDepth(x, z) >= 2 && !bank(i, j) && waterDepth(x + 7, z) >= 1.5 && waterDepth(x - 7, z) >= 1.5 && waterDepth(x, z + 7) >= 1.5 && waterDepth(x, z - 7) >= 1.5) found.set(r, { r, x, z, d, k });
+      if ((!e || d > e.d) && r.type !== 'rapids' && r.type !== 'falls' && waterDepth(x, z) >= 2 && !bank(i, j) && waterDepth(x + 7, z) >= 1.5 && waterDepth(x - 7, z) >= 1.5 && waterDepth(x, z + 7) >= 1.5 && waterDepth(x, z - 7) >= 1.5) found.set(r, { r, x, z, d, k, salt: salt(i, j) });
     }
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       if (!di && !dj) continue;
@@ -306,7 +313,7 @@ function* reachGen(ax, az, R = 1600, cell = 6) {
       const nk = nj * W + ni;
       if (closed[nk] || !water(ni, nj)) continue;
       if (di && dj && (!water(i + di, j) || !water(i, j + dj))) continue;
-      const c = dist[k] + Math.hypot(di, dj) * (bank(ni, nj) ? 2.2 : 1) * (rapids(ni, nj) ? 4 : 1);
+      const c = dist[k] + Math.hypot(di, dj) * (bank(ni, nj) ? 2.2 : 1) * (rapids(ni, nj) ? 4 : 1) * (salt(ni, nj) ? 5 : 1);
       if (c < dist[nk]) { dist[nk] = c; from[nk] = k; push(c, nk); }
     }
   }
@@ -328,6 +335,13 @@ function waterNear(x, z, depth = 2.5) {
     if (waterDepth(px, pz) >= depth && isNavigable(px, pz)) return { x: px, z: pz };
   }
   return null;
+}
+
+/** The share of a route's length that lies in brackish or salt water. */
+function saltShare(route) {
+  const L = routeLength(route); let salt = 0, n = 0;
+  for (let s = 0; s <= L; s += 25) { const p = pointAlong(route, s); n++; if (salinity(p.x, p.z) >= 0.3) salt++; }
+  return n ? salt / n : 0;
 }
 
 function routeLength(r) { let L = 0; for (let i = 1; i < r.length; i++) L += Math.hypot(r[i].x - r[i - 1].x, r[i].z - r[i - 1].z); return L; }
@@ -512,9 +526,11 @@ class Fisherman {
     const pr = this.route[this.wp - 1] || b.pos;
     const sx = n.x - pr.x, sz = n.z - pr.z, sl = Math.hypot(sx, sz) || 1;
     if (this.wpAt !== this.wp) { this.wpAt = this.wp; this.wpT = 0; } else this.wpT += dt;
-    // (Only a mark steered for a moment is passed this way, one a frame:
-    // a route that doubles back past the hull is not skipped wholesale.)
-    const passed = !last && d < 18 && this.wpT > 0.6 && (-dx * sx - dz * sz) / sl > 0;
+    // (Only a mark steered for a moment, from on its own leg — within a
+    // hull's width or two of the line — is passed this way, one a frame:
+    // a hull circling beside a route, or a route that doubles back past
+    // the hull, does not tick off marks it never made.)
+    const passed = !last && d < 18 && this.wpT > 0.6 && (-dx * sx - dz * sz) / sl > 0 && Math.abs(dx * sz - dz * sx) / sl < 8;
     if (d < (last ? 4 : 7)) { this.wp++; this.helmCache = null; return this.helm(dt); }
     if (passed || (!last && this.wpT > 8 && d < 22)) { this.wp++; this.helmCache = null; this.wpAt = this.wp; this.wpT = 0; }
     dx /= d; dz /= d;
@@ -911,19 +927,20 @@ export class NpcFleet {
    */
   finishCandidates(g, reached) {
     const b0 = g.basin;
+    // Fresh water only: the sea and the brackish water along the coast
+    // are no finish (a run down a coast is a straight line, not a haul).
     const scored = reached.map((e) => {
       const b = basinOf(e.r.cx, e.r.cz);
       const bd = Math.max(Math.abs(b.bx - b0.bx), Math.abs(b.bz - b0.bz));
-      return { ...e, bd, sea: e.r.type === 'ocean' };
-    }).filter((e) => e.d >= 500);
-    const far = scored.filter((e) => !e.sea && e.bd >= 3 && e.bd <= 4);
-    const mid = scored.filter((e) => !e.sea && e.bd === 2);
-    const rest = scored.filter((e) => !e.sea && e.bd < 2);
-    const sea = scored.filter((e) => e.sea);
+      return { ...e, bd };
+    }).filter((e) => e.d >= 500 && !e.salt && e.r.type !== 'ocean');
+    const far = scored.filter((e) => e.bd >= 3 && e.bd <= 4);
+    const mid = scored.filter((e) => e.bd === 2);
+    const rest = scored.filter((e) => e.bd < 2);
     const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(this.rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
     // Within a tier, the farther the better, with a little chance in it.
     const order = (a) => shuffle(a).sort((x, y) => (y.d - x.d) * 0.7 + (this.rng() - 0.5) * 400);
-    return [...order(far), ...order(mid), ...order(rest), ...order(sea)].slice(0, 6);
+    return [...order(far), ...order(mid), ...order(rest)].slice(0, 6);
   }
 
   /**
@@ -971,6 +988,7 @@ export class NpcFleet {
       const route = near >= 0 ? [{ x: g.center.x, z: g.center.z }, ...tr.slice(near + 1)] : [...g.link, ...tr.slice(1)];
       const L = routeLength(route);
       if (L < g.minL) continue;              // by water it must be a haul
+      if (saltShare(route) > 0.25) continue; // ... and a haul through the fresh water, not down the coast
       // ... but not an afternoon: a route beyond the cap is kept only as
       // the last resort, the shortest of them, if nothing fits.
       if (L > LONG_MAX) { if (!g.best || L < g.best.L) g.best = { e, r, route, L }; continue; }
