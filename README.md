@@ -435,10 +435,11 @@ The dressing is a handful of plain, unlit, unshadowed meshes (the flags
 one geometry), drawn only within a couple of hundred metres; the crowd
 are the crew figures, put out one a frame and posed at a third of the
 frames while the player is near. The **card** — the tier, the rules, the
-entry fee, the purse and the field — comes up as the player draws near
-the pier and fades as they leave, and keeps coming back for two minutes
-from the first time they see it; then, or on Pass, the dressing comes
-down and the boats go their ways.
+entry fee, the purse and the field — sits at the top of the screen, clear
+of the boat, comes up within fifty metres of the pier head and fades
+past eighty, and keeps coming back for two minutes from the first time
+they see it; then, or on Pass, the dressing comes down and the boats go
+their ways. A tournament is **a minute** of fishing.
 
 * **Four tiers** by prestige (`rtp.js TOURNEY_TIERS`): a local open, a
   regional classic, a major, an iconic invitational. A bigger purse means
@@ -503,7 +504,9 @@ down and the boats go their ways.
   the place and the prize, the biggest catch, the top three, and — if
   weights went in — whether the player got away with it and how many
   places the judge's blind eye moved them, or that they were busted,
-  struck from the place claimed, and where their honest catch stood.
+  struck from the place claimed, and where their honest catch stood. A
+  podium gets a medal, a banner and confetti over the whole screen; a
+  win gets a gold card, twice the confetti, and gold in it.
 
 ### Boats and the shore
 

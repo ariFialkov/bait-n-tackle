@@ -44,7 +44,8 @@ import { lookFor } from './crewlook.js';
 const MIN_GAP_S = 480;            // seconds between tournaments at the least
 const LONG_GAP_S = 1200;          // after this long without one, the next marina is likely hosting
 const DECIDE_R = 420;             // metres: a marina is decided (and dressed) this far out
-const CARD_R = 95, CARD_OFF_R = 135;   // the card comes up this near, goes this far
+const CARD_R = 50, CARD_OFF_R = 80;    // the card comes up this near, goes this far
+const CLOCK_S = 60;               // a tournament is a minute of fishing
 const CARD_WINDOW_S = 120;        // seconds the card keeps coming back after it is first seen
 const TIER_W = { local: 45, regional: 30, major: 18, iconic: 7 };
 const FAMILY_NAMES = {
@@ -191,7 +192,7 @@ export class Tournaments {
       const prize = speciesInTiers(3, 4, pool).filter((s) => !stock.includes(s));
       if (prize.length) golden = opts.golden && opts.golden.name ? opts.golden : prize[Math.floor(rng() * prize.length)];
     }
-    const seconds = opts.seconds || (tierId === 'local' ? 150 : tierId === 'regional' ? 180 : 210);
+    const seconds = opts.seconds || CLOCK_S;
     const field = opts.field || tier.field;
     return { dock, key: dockKey(dock), tierId, tier, fee, prizes: tier.mult.map((m) => fee * m), rules, hull, stock, target, counts, golden, seconds, field, title: `${tier.name} · ${dock.name}`, boats: [], deco: null, crowd: [], firstSeen: null, declined: false };
   }
@@ -271,7 +272,7 @@ export class Tournaments {
       const f = this.npcs.newBoat(spot.x, spot.z, rng() * Math.PI * 2, null, key);
       f.idle = true; f.tourney = true; f.age = 0;
       f.state = 'atMarina'; f.timer = 1e9; f.boat.anchored = true;
-      spec.boats.push({ f, kg: 0, phase: rng(), rank: i, nextFish: 6 + rng() * 10 });
+      spec.boats.push({ f, kg: 0, phase: rng(), rank: i, nextFish: 3 + rng() * 5 });
     }
   }
 
@@ -347,7 +348,7 @@ export class Tournaments {
       const f = b.f;
       f.boat.anchored = false; f.timer = 0; f.matchSpecies = T.stock;
       const a = d.angle + (rng() - 0.5) * 2.6;          // off the pier head, over the water
-      const spot = this.npcs.spotAt(d.headX, d.headZ, a, 70 + rng() * 90, 0.5, 9);
+      const spot = this.npcs.spotAt(d.headX, d.headZ, a, 45 + rng() * 65, 0.5, 9);   // not far: a minute's fishing
       if (spot && f.goTo(spot.x, spot.z)) { f.state = 'toFish'; f.throttle = 0.5 + rng() * 0.4; }
       else { f.startFishing(rng); f.state = 'match'; f.timer = 1e9; }
       b.above = i < T.aboveN;
@@ -458,9 +459,9 @@ export class Tournaments {
         want = settled > 0.5 ? final : Math.max(0, Math.min(final, base * (0.5 + 0.35 * swing)));
       }
       b.nextFish -= dt;
-      if (b.kg < want && b.nextFish <= 0 && T.t > 6) {
+      if (b.kg < want && b.nextFish <= 0 && T.t > 4) {
         const bite = Math.min(want - b.kg, fk * (0.5 + this.rng() * 1.2));
-        b.kg += bite; b.nextFish = (3 + this.rng() * 9) * pace;
+        b.kg += bite; b.nextFish = (2 + this.rng() * 5) * pace;
       }
     }
     // The golden fish, if this is how the win comes: sent to the next rod out.
@@ -516,6 +517,7 @@ export class Tournaments {
     const result = { tier: T.tier.name, marina: T.dock.name, place: T.finalPlace, prize: payout, fee: T.fee, best: T.best, golden: golden ? T.golden : null, caught, shown, weights: T.weights, weightsKg: T.weightsKg, climbed: T.climbed, honestPlace: T.place, bonus: T.bonus, top: rows.slice(0, 3), you: rows.find((r) => r.you), field: T.boats.length + 1 };
     if (caught) this.hud.showWeighIn(this.audio);
     this.hud.setTourney(T, rows, true);
+    result.podium = !caught && T.place <= 3;
     setTimeout(() => this.hud.showTourneyResult(result), caught ? 4200 : 900);
     // The field goes back to its own life, and the water to its own fish.
     for (const b of T.boats) { const f = b.f; f.tourney = false; f.idle = this.rng() < 0.4; f.state = 'idle'; f.timer = 0; f.endCast(); f.boat.anchored = false; f.matchSpecies = null; }

@@ -279,6 +279,15 @@ export class HUD {
     const ord = (n) => ['1st', '2nd', '3rd'][n - 1] || `${n}th`;
     el.classList.toggle('dq', !!r.caught);
     el.classList.toggle('won', !r.caught && r.place <= 3);
+    for (const c of ['gold', 'silver', 'bronze']) el.classList.remove(c);
+    if (!r.caught && r.place <= 3) el.classList.add(['gold', 'silver', 'bronze'][r.place - 1]);
+    // The medal, for a podium; the plain badge otherwise.
+    const medal = el.querySelector('.tr-medal');
+    medal.classList.toggle('hidden', r.caught || r.place > 3);
+    medal.querySelector('text').textContent = r.caught || r.place > 3 ? '' : String(r.place);
+    el.querySelector('.tr-banner').textContent = r.caught ? 'WEIGH-IN' : r.golden ? 'GOLDEN FISH' : r.place === 1 ? 'CHAMPION' : r.place <= 3 ? 'ON THE PODIUM' : r.place === 4 ? 'IN THE CASH' : 'WEIGH-IN';
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    if (!r.caught && r.place <= 3) this.confetti(r.place === 1 ? 'big' : 'small');
     el.querySelector('.tr-tier').textContent = r.tier;
     el.querySelector('.tr-marina').textContent = r.marina;
     el.querySelector('.tr-place').textContent = r.caught ? 'Disqualified' : r.golden ? 'Winner — golden fish!' : `${ord(r.place)} place`;
@@ -329,6 +338,48 @@ export class HUD {
     if (!btn._bound) { btn._bound = true; btn.addEventListener('click', (e) => { e.stopPropagation(); if (this.onTourneyWeight) this.onTourneyWeight(); }); }
   }
   hideTourney() { $('tourney').classList.add('hidden'); }
+
+  /**
+   * Confetti over the whole screen for a podium: a couple of hundred
+   * bits of paper (twice that, and gold, for a win) falling for a few
+   * seconds on a 2D canvas that is only drawn while they fall.
+   */
+  confetti(kind = 'small') {
+    const cv = $('confetti'); if (!cv || !cv.getContext) return;
+    const cx = cv.getContext('2d');
+    const W = cv.width = cv.clientWidth || window.innerWidth, H = cv.height = cv.clientHeight || window.innerHeight;
+    const big = kind === 'big';
+    const cols = big ? ['#ffd166', '#ffe9a8', '#f7f3e8', '#e0b83a', '#7dedae', '#ff9a5c'] : ['#ffd166', '#7dedae', '#3ba0e6', '#ff6b6b', '#f7f3e8'];
+    const n = big ? 420 : 180, life = big ? 5.2 : 3.6;
+    const ps = [];
+    for (let i = 0; i < n; i++) {
+      const fromSide = big && i % 3 === 0;
+      ps.push({ x: fromSide ? (i % 2 ? -10 : W + 10) : Math.random() * W, y: fromSide ? H * (0.3 + Math.random() * 0.5) : -20 - Math.random() * H * 0.6,
+        vx: fromSide ? (i % 2 ? 1 : -1) * (120 + Math.random() * 160) : (Math.random() - 0.5) * 60, vy: fromSide ? -260 - Math.random() * 160 : 60 + Math.random() * 120,
+        w: 6 + Math.random() * 7, h: 3 + Math.random() * 4, a: Math.random() * 6.28, spin: (Math.random() - 0.5) * 8, col: cols[i % cols.length], drift: Math.random() * 6.28 });
+    }
+    cv.classList.remove('hidden');
+    let last = performance.now(), t = 0;
+    cancelAnimationFrame(this._confT);
+    this._confetti = { n, kind, at: performance.now() };
+    const step = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+      cx.clearRect(0, 0, W, H);
+      const fade = t > life - 0.8 ? Math.max(0, (life - t) / 0.8) : 1;
+      cx.globalAlpha = fade;
+      for (const p of ps) {
+        p.vy += 140 * dt; p.vx *= 0.995; p.vy = Math.min(p.vy, 240);
+        p.x += (p.vx + Math.sin(t * 3 + p.drift) * 40) * dt; p.y += p.vy * dt; p.a += p.spin * dt;
+        if (p.y > H + 20) continue;
+        cx.save(); cx.translate(p.x, p.y); cx.rotate(p.a); cx.scale(1, 0.35 + 0.65 * Math.abs(Math.cos(t * 4 + p.drift)));
+        cx.fillStyle = p.col; cx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); cx.restore();
+      }
+      cx.globalAlpha = 1;
+      if (t < life && !document.hidden) this._confT = requestAnimationFrame(step);
+      else { cx.clearRect(0, 0, W, H); cv.classList.add('hidden'); }
+    };
+    this._confT = requestAnimationFrame(step);
+  }
 
   /** The judge finds the weights: the crowd, the shout, the flashing. */
   showWeighIn(audio) {
