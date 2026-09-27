@@ -494,6 +494,7 @@ class Fisherman {
       if (d < bd) { bd = d; best = i; }
     }
     if (best < route.length - 1 && Math.hypot(route[best].x - this.pos.x, route[best].z - this.pos.z) < 10) best++;
+    best = Math.min(route.length - 1, best + (this.skipMarks || 0)); this.skipMarks = 0;
     this.route = route.map((p) => ({ ...p })); this.wp = best; this.helmCache = null; this.stuck = 0;
   }
 
@@ -1137,6 +1138,7 @@ export class NpcFleet {
       if (!route) continue;
       const L = routeLength(route);
       if (L > d * 2.8) continue;
+      if (kind === 'race' && L < 220) continue;      // a race wants room for the lead to change hands
       if (kind === 'race') return { npc: f, kind, stake, goal: { x: w.x, z: w.z, name: r.name }, route, title: 'Race', text: `First boat to ${r.name} takes it.` };
       // A run: the route must thread real rock. The gates go where the
       // rocks are thickest, in order along the way.
@@ -1255,7 +1257,7 @@ export class NpcFleet {
   releaseRacer(f) {
     f.state = 'idle'; f.timer = 0; f.route = null; f.throttle = 1; f.flatOut = false; f.endCast(); f.boat.anchored = false; f.matchSpecies = null;
     if (f.baseMax != null) { f.boat.spec.maxSpeed = f.baseMax; f.boat.spec.accel = f.baseAccel; f.baseMax = null; }
-    f.cap = null; f.ph1 = null; f.progM = null; f.escape = 0;
+    f.cap = null; f.ph1 = null; f.progM = null; f.escape = 0; f.hangCycles = 0; f.skipMarks = 0;
   }
 
   /**
@@ -1348,17 +1350,23 @@ export class NpcFleet {
     // Making no way for a while with the cap up (hung on a corner the
     // feelers missed): the helm's own back-off is set going.
     const s = np * L;
-    if (f.progM == null || s > f.progM + 4 || f.cap < 3) { f.progM = s; f.progT = 0; f.hungT = 0; }
+    if (f.progM == null || s > f.progM + 4 || f.cap < 3) { if (s > (f.progM ?? -1) + 4) f.hangCycles = 0; f.progM = s; f.progT = 0; f.hungT = 0; }
     else {
       f.progT += dt; f.hungT = (f.hungT || 0) + dt;
-      if (f.progT > 5 && !(f.escape > 0)) { f.escape = 2.2; f.stuck = 0; f.progT = 0; }
+      // Each time it hangs again at the same spot it aims a mark further
+      // along the route when it takes it up: round the corner it keeps
+      // catching, not back into it.
+      if (f.progT > 5 && !(f.escape > 0)) { f.escape = 2.2; f.stuck = 0; f.progT = 0; f.hangCycles = (f.hangCycles || 0) + 1; f.skipMarks = Math.min(2, f.hangCycles - 1); }
       // Hung there for a long while whatever it tried, and out of the
-      // player's sight: it is put back on its route at the next mark.
+      // player's sight — as is the mark it would be put at: it is put back
+      // on its route there. In sight a boat is never moved.
       const me = this.vessels[0];
-      if (f.hungT > 25 && me && Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z) > 90 && f.route && f.wp < f.route.length) {
+      if (f.hungT > 25 && me && f.route && f.wp < f.route.length) {
         const n = f.route[f.wp], pr = f.route[f.wp - 1] || f.pos;
-        f.boat.placeAt(n.x, n.z, Math.atan2(-(n.x - pr.x), -(n.z - pr.z)));
-        f.wp++; f.stuck = 0; f.escape = 0; f.hungT = 0; f.progT = 0; f.helmCache = null;
+        if (Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z) > 90 && Math.hypot(n.x - me.pos.x, n.z - me.pos.z) > 90) {
+          f.boat.placeAt(n.x, n.z, Math.atan2(-(n.x - pr.x), -(n.z - pr.z)));
+          f.wp++; f.stuck = 0; f.escape = 0; f.hungT = 0; f.progT = 0; f.helmCache = null; f.hangCycles = 0;
+        }
       }
     }
     // Off the route (stuck and backed out, or shoved): take it up again.
@@ -1576,6 +1584,10 @@ export class NpcFleet {
         if (f.timer <= 0) { b.anchored = false; f.state = 'idle'; f.timer = 0; }
       } else if (f.state === 'race') {
         input = f.helm(bdt);
+      } else if (f.state === 'toFish') {
+        // A tournament entrant on its way out to its spot: there, it fishes the match's game.
+        input = f.helm(bdt);
+        if (!f.route || f.wp >= f.route.length) { const st = f.matchSpecies; f.startFishing(this.rng); f.state = 'match'; f.timer = 1e9; f.matchSpecies = st; }
       } else if (f.state === 'circle') {
         // Round and round the meeting spot, each a third of the way apart.
         const gr = f.group;

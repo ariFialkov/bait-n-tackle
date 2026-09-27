@@ -257,13 +257,47 @@ export class HUD {
     el.querySelector('.tc-tier').textContent = spec.tier.name;
     el.querySelector('.tc-where').textContent = `hosted at ${spec.dock.name}`;
     el.querySelector('.tc-rules').innerHTML = spec.rules.map((r) => `<span>${r.text}</span>`).join('') + `<span>${Math.round(spec.seconds / 60 * 10) / 10} minutes on the clock</span>` + (spec.golden ? `<span class="gold">Golden fish: hook a ${spec.golden.name} and the tournament is yours outright</span>` : '');
-    el.querySelector('.tc-purse').innerHTML = `<b>1st $${spec.prizes[0].toFixed(0)}</b> · 2nd $${spec.prizes[1].toFixed(0)} · 3rd $${spec.prizes[2].toFixed(0)} <i>· ${spec.field} other boats entered</i>`;
+    el.querySelector('.tc-purse').innerHTML = `<b>1st $${spec.prizes[0].toFixed(0)}</b> · 2nd $${spec.prizes[1].toFixed(0)} · 3rd $${spec.prizes[2].toFixed(0)} · 4th $${spec.prizes[3].toFixed(0)} <i>· ${spec.boats.length || spec.field} other boats entered</i>`;
     el.querySelector('.tc-fee').textContent = `$${spec.fee} entry`;
-    el.classList.remove('hidden');
+    clearTimeout(el._hideT);
+    el.classList.remove('hidden'); el.classList.remove('away');
     $('tc-enter').onclick = (e) => { e.stopPropagation(); onEnter(); };
     $('tc-pass').onclick = (e) => { e.stopPropagation(); onPass(); };
   }
-  hideTourneyCard() { $('tourney-card').classList.add('hidden'); }
+  /** The card fades as the player goes; it is only gone once the fade is. */
+  hideTourneyCard() {
+    const el = $('tourney-card');
+    if (el.classList.contains('hidden')) return;
+    el.classList.add('away');
+    clearTimeout(el._hideT);
+    el._hideT = setTimeout(() => { if (el.classList.contains('away')) { el.classList.add('hidden'); el.classList.remove('away'); } }, 450);
+  }
+
+  /** The results: the place and the prize, the biggest catch, and what the weights did. */
+  showTourneyResult(r) {
+    const el = $('tourney-result');
+    const ord = (n) => ['1st', '2nd', '3rd'][n - 1] || `${n}th`;
+    el.classList.toggle('dq', !!r.caught);
+    el.classList.toggle('won', !r.caught && r.place <= 3);
+    el.querySelector('.tr-tier').textContent = r.tier;
+    el.querySelector('.tr-marina').textContent = r.marina;
+    el.querySelector('.tr-place').textContent = r.caught ? 'Disqualified' : r.golden ? 'Winner — golden fish!' : `${ord(r.place)} place`;
+    el.querySelector('.tr-sub').textContent = r.caught ? `Struck from ${ord(r.shown)} of ${r.field}` : r.golden ? `${r.golden.name} on the hook — the tournament is yours outright` : r.place <= 4 ? `of ${r.field} boats · ${r.place <= 3 ? 'on the podium' : 'in the cash'}` : `of ${r.field} boats`;
+    el.querySelector('.tr-prize').textContent = r.prize > 0 ? `$${r.prize.toFixed(2)} prize` : 'No prize';
+    el.querySelector('.tr-prize-sub').textContent = r.bonus > 0 ? `includes the sponsors' bonus of $${r.bonus.toFixed(2)}` : `$${r.fee} entry`;
+    el.querySelector('.tr-best').textContent = r.best ? `Biggest catch: ${r.best.species.name}, ${r.best.kg.toFixed(r.best.kg < 1 ? 2 : 1)} kg` : 'No fish counted for you today';
+    const w = el.querySelector('.tr-weights');
+    if (r.weights > 0) {
+      w.classList.remove('hidden');
+      const kg = `${r.weights} weight${r.weights > 1 ? 's' : ''} (${r.weightsKg.toFixed(1)} kg)`;
+      if (r.caught) w.innerHTML = `<b>Busted at the weigh-in.</b> The judge found ${kg} in your fish. Struck from ${ord(r.shown)}; your honest catch stood ${ord(r.honestPlace)}${r.prize > 0 ? `, which still pays $${r.prize.toFixed(2)}` : ' — nothing to collect'}.`;
+      else if (r.climbed > 0) w.innerHTML = `<b>Phew — you got away with it.</b> ${kg} went in unnoticed, and the judge's blind eye moved you up ${r.climbed} place${r.climbed > 1 ? 's' : ''}.`;
+      else w.innerHTML = `<b>Phew — nobody looked twice.</b> ${kg} went in, though they moved you nowhere the judge would have minded.`;
+    } else w.classList.add('hidden');
+    el.querySelector('.tr-board').innerHTML = r.top.map((t, i) => `<div class="${t.you ? 'you' : ''}"><span>${i + 1}.</span><span>${t.name}</span><b>${t.kg.toFixed(1)} kg</b></div>`).join('');
+    el.classList.remove('hidden');
+    $('tr-done').onclick = (e) => { e.stopPropagation(); el.classList.add('hidden'); };
+  }
 
   /** The live panel: the clock, the rules, the leaderboard, the weights. */
   setTourney(T, rows, over = false) {

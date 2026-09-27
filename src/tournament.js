@@ -1,11 +1,19 @@
-// The fishing tournaments: now and then a marina the player calls at is
+// The fishing tournaments: now and then a marina the player comes to is
 // hosting one, out on the water round it, with a field of other boats
-// entered. A podium pays the top three by the tournament's prestige, the
-// entry fee is the stake, and — as with every wager here — the place is
-// DRAWN when the fee is paid (rtp.js tournamentBet, whose expected return
-// is the game RTP to the cent) and the tournament is then staged to end
-// that way: the other baskets fill, fish by fish, to land the player's
-// honest catch exactly where the draw said.
+// entered. The marina is dressed for it before the player gets there —
+// bunting along the pier, a banner, a podium with the trophy on it, a
+// crowd of fishermen on the planking, the contestants' boats moored in
+// the harbour — and the card comes up as they draw near and goes as they
+// leave, for two minutes after they first see it.
+//
+// A podium pays the top three by the tournament's prestige, with a cash
+// spot for fourth; the entry fee is the stake; and — as with every wager
+// here — the place is DRAWN when the fee is paid (rtp.js tournamentBet,
+// whose expected return is the game RTP to the cent) and the tournament
+// is then staged to end that way: the other baskets fill, fish by fish,
+// to land the player's honest catch exactly where the draw said. The
+// boats that are to finish ahead make their move over the last third of
+// the clock, each on its own timing, racing one another for it.
 //
 // Each tournament has its rules (a target family or species, a minimum
 // weight, a hull the field is limited to) and some carry a "golden fish"
@@ -13,26 +21,31 @@
 // ever how a win the draw already gave is delivered, and sparingly.
 //
 // And the weights. During a tournament a $1 weight can be slipped into
-// the fish at any time, and each one is a $1 wager of its own: a small
-// chance (RTP / the prize step) that the judge looks the other way and the
-// player's entitlement moves up a place, at which point everything stuffed
-// so far is "laundered" — the other baskets are re-staged over it as if it
-// were honest. A player who stuffs past what they are entitled to is
-// caught at the weigh-in ("we got weights in fish!"), disqualified from
-// the place they claimed, and paid for the place their honest catch (plus
-// whatever was laundered) truly held — which, for someone who needed to
-// stuff, is usually nothing. Every dollar, fee or weight, returns the RTP
-// in expectation whatever the player does with it.
+// the fish at any time, and each one is a $1 wager of its own: a chance
+// (RTP over the next prize step) that the judge looks the other way and
+// the player's entitlement moves up a place, at which point everything
+// stuffed so far is "laundered" — the other baskets are re-staged over it
+// as if it were honest. A player who stuffs past what they are entitled
+// to is caught at the weigh-in ("we got weights in fish!"), disqualified
+// from the place they claimed, and paid for the place their honest catch
+// (plus whatever was laundered) truly held. Every dollar, fee or weight,
+// returns the RTP in expectation whatever the player does with it.
 
+import * as THREE from 'three';
 import { TOURNEY_TIERS } from './rtp.js';
 import { CONFIG } from './config.js';
 import { speciesInTiers, poolFor } from './fishdata.js';
 import { BOATS } from './boats.js';
-import { waterKind } from './lake.js';
 import { hullSkins } from './skins.js';
+import { waterKind } from './lake.js';
+import { Character } from './crew.js';
+import { lookFor } from './crewlook.js';
 
 const MIN_GAP_S = 480;            // seconds between tournaments at the least
-const LONG_GAP_S = 1200;          // after this long without one, the next call is likely
+const LONG_GAP_S = 1200;          // after this long without one, the next marina is likely hosting
+const DECIDE_R = 420;             // metres: a marina is decided (and dressed) this far out
+const CARD_R = 95, CARD_OFF_R = 135;   // the card comes up this near, goes this far
+const CARD_WINDOW_S = 120;        // seconds the card keeps coming back after it is first seen
 const TIER_W = { local: 45, regional: 30, major: 18, iconic: 7 };
 const FAMILY_NAMES = {
   catfish: 'catfish', bullhead: 'bullheads', carp: 'carp and suckers', trout: 'trout', bass: 'bass',
@@ -43,10 +56,18 @@ const FAMILY_NAMES = {
 const BOTTOM = new Set(['catfish', 'bullhead', 'carp', 'sturgeon', 'flatfish', 'ray', 'drum', 'eel']);
 const WEIGHT_MIN_KG = 0.2;        // the least a $1 weight adds
 const WEIGHT_SHARE = 0.025;       // ... else this share of the leading basket
+const DECK_Y = 0.51;              // the pier's planking, above the water, in the marina's frame
+const PIER_W = 2.8;
+const CROWD = ['captain', 'bosun', 'deckhand', 'engineer', 'deckhand', 'bosun'];
+const CROWD_UPDATE_R = 170;       // metres: the crowd is posed within this, and at a third of the frames
+const DECO_R = 260;               // metres: the dressing is drawn within this
 
 /** How settled the order is by the clock, 0..1. */
 function settle(k) { const c = Math.max(0, Math.min(1, (k - 0.5) / 0.36)); return c * c * (3 - 2 * c); }
+const smooth = (x) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
 const arch = (s) => (s.style && s.style.arch) || 'other';
+const ORD = (n) => ['1st', '2nd', '3rd'][n - 1] || `${n}th`;
+const dockKey = (d) => `${Math.round(d.x)},${Math.round(d.z)}`;
 
 export class Tournaments {
   constructor(scene, player, rtp, hud, fishing, npcs, docks, ambientFish, opts = {}) {
@@ -54,36 +75,55 @@ export class Tournaments {
     this.npcs = npcs; this.docks = docks; this.ambientFish = ambientFish;
     this.rng = opts.rng || Math.random;
     this.audio = opts.audio || null;      // an HTMLAudioElement for the weigh-in
-    this.offer = null;                    // the card on the table
+    this.hosting = new Map();             // dock key -> spec of the tournament it hosts (dressed, waiting)
+    this.decided = new Set();             // dock keys already decided, hosting or not
+    this.offer = null;                    // the spec whose card is up
     this.live = null;                     // the tournament under way
     this.time = 0;
     this.lastAt = -MIN_GAP_S + 240;       // the first can come a few minutes in
-    this.visitsSince = 0;
-    this.lastDock = null;
+    this.marinasSince = 0;                // marinas come to since the last one
     this.lastResult = null;
+    this._frame = 0;
     // The rods report every hook to the fleet already; the tournament listens too.
     const prev = fishing.onCatch;
     fishing.onCatch = (c) => { if (prev) prev(c); this.playerCaught(c); };
     hud.onTourneyWeight = () => this.dropWeight();
   }
 
-  // --- scheduling ---
-  /** The player has pulled up to a marina: now and then one is hosting. */
-  onMarinaVisit(dock, force = false) {
-    if (this.live || this.offer) return null;
-    if (dock !== this.lastDock) this.visitsSince++;
-    this.lastDock = dock;
-    if (!force) {
-      if (this.npcs.challenge || this.npcs.offer) return null;
-      const since = this.time - this.lastAt;
-      if (since < MIN_GAP_S || this.visitsSince < 2) return null;
-      if (this.player.balance < TOURNEY_TIERS.local.fee[0]) return null;
-      const chance = since >= LONG_GAP_S ? 0.7 : Math.min(0.6, 0.12 + 0.11 * (this.visitsSince - 2));
-      if (this.rng() >= chance) return null;
-    }
-    const spec = this.build(dock, force && typeof force === 'object' ? force : {});
+  // --- deciding, and dressing the marina ---
+  /** A marina come within range for the first time: is it hosting? */
+  decide(dock, me) {
+    const key = dockKey(dock);
+    if (this.decided.has(key)) return null;
+    this.decided.add(key);
+    this.marinasSince++;
+    if (this.live || this.npcs.challenge) return null;
+    const since = this.time - this.lastAt;
+    if (since < MIN_GAP_S || this.marinasSince < 2) return null;
+    if (this.player.balance < TOURNEY_TIERS.local.fee[0]) return null;
+    const chance = since >= LONG_GAP_S ? 0.7 : Math.min(0.6, 0.12 + 0.11 * (this.marinasSince - 2));
+    if (this.rng() >= chance) return null;
+    return this.hostAt(dock);
+  }
+
+  /** This marina hosts: the tournament is built, and the marina dressed for it. */
+  hostAt(dock, opts = {}) {
+    const key = dockKey(dock);
+    if (this.hosting.has(key)) return this.hosting.get(key);
+    const spec = this.build(dock, opts);
     if (!spec) return null;
-    this.offerAt(spec);
+    this.hosting.set(key, spec); this.decided.add(key);
+    this.lastAt = this.time; this.marinasSince = 0;
+    this.dress(spec);
+    return spec;
+  }
+
+  /** (The old hook: pulling up to a marina. Kept for a forced tournament, as the tests use it.) */
+  onMarinaVisit(dock, force = false) {
+    if (!force) return null;
+    if (this.live) return null;
+    const spec = this.hostAt(dock, typeof force === 'object' ? force : {});
+    if (spec && !this.offer) this.showCard(spec);
     return spec;
   }
 
@@ -153,19 +193,110 @@ export class Tournaments {
     }
     const seconds = opts.seconds || (tierId === 'local' ? 150 : tierId === 'regional' ? 180 : 210);
     const field = opts.field || tier.field;
-    return { dock, tierId, tier, fee, prizes: tier.mult.map((m) => fee * m), rules, hull, stock, target, counts, golden, seconds, field, title: `${tier.name} · ${dock.name}` };
+    return { dock, key: dockKey(dock), tierId, tier, fee, prizes: tier.mult.map((m) => fee * m), rules, hull, stock, target, counts, golden, seconds, field, title: `${tier.name} · ${dock.name}`, boats: [], deco: null, crowd: [], firstSeen: null, declined: false };
   }
 
-  /** The card goes up; it stays while the player is about the marina. */
-  offerAt(spec) {
+  /**
+   * The marina dressed for the day: bunting along the pier, a banner at
+   * the head, the podium with the trophy on it by the shore end, a crowd
+   * on the planking (put out a figure a frame), and the contestants'
+   * boats moored round the harbour. All of it plain, unlit and unshadowed
+   * geometry in a handful of meshes, hidden beyond a few hundred metres.
+   */
+  dress(spec) {
+    const d = spec.dock, L = Math.max(10, d.pierLen || 12);
+    const g = new THREE.Group();
+    g.position.set(d.x, CONFIG.WATER_LEVEL, d.z); g.rotation.y = d.angle;
+    // Poles and strings, with flags: one geometry for all the flags.
+    const poleGeo = new THREE.CylinderGeometry(0.04, 0.05, 3.2, 6);
+    const poleMat = new THREE.MeshLambertMaterial({ color: 0xd8d0c0 });
+    const posts = [];
+    for (const sx of [-1, 1]) for (const z of [1.0, L - 0.8]) { const p = new THREE.Mesh(poleGeo, poleMat); p.position.set(sx * (PIER_W / 2 + 0.25), DECK_Y + 1.6, z); g.add(p); posts.push(p.position.clone()); }
+    const cols = [0xe63b2e, 0xffd166, 0x3ba0e6, 0xf7f3e8, 0x39b26b];
+    const verts = [], colors = [];
+    const string = (a, b, sag = 0.35) => {
+      const n = Math.max(3, Math.floor(a.distanceTo(b) / 0.75));
+      for (let i = 0; i < n; i++) {
+        const t0 = i / n, t1 = (i + 0.5) / n, t2 = (i + 1) / n;
+        const at = (t) => new THREE.Vector3().lerpVectors(a, b, t).add(new THREE.Vector3(0, -sag * Math.sin(t * Math.PI), 0));
+        const p0 = at(t0), p2 = at(t2), p1 = at(t1); p1.y -= 0.42;
+        const c = new THREE.Color(cols[i % cols.length]);
+        for (const p of [p0, p2, p1]) { verts.push(p.x, p.y + 1.55, p.z); colors.push(c.r, c.g, c.b); }
+      }
+    };
+    string(posts[0], posts[1]); string(posts[2], posts[3]);           // along each side of the pier
+    string(posts[1], posts[3], 0.25); string(posts[0], posts[2], 0.25); // across the head, across the root
+    const flagGeo = new THREE.BufferGeometry();
+    flagGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    flagGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const flags = new THREE.Mesh(flagGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    flags.frustumCulled = false;
+    g.add(flags);
+    // The banner across the head: the tier, painted once.
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 96;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#183a52'; cx.fillRect(0, 0, 512, 96); cx.strokeStyle = '#ffd166'; cx.lineWidth = 6; cx.strokeRect(6, 6, 500, 84);
+    cx.fillStyle = '#ffd166'; cx.font = 'bold 44px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText(spec.tier.name.toUpperCase(), 256, 38);
+    cx.fillStyle = '#eaf6fb'; cx.font = 'bold 26px sans-serif'; cx.fillText(`TODAY · ${d.name.toUpperCase()}`, 256, 74);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(PIER_W + 1.6, (PIER_W + 1.6) * 96 / 512), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+    banner.position.set(0, DECK_Y + 2.75, L - 0.8); g.add(banner);
+    // The podium by the shore end, the trophy on the top step.
+    const step = (w, h, col, x) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.8), new THREE.MeshLambertMaterial({ color: col })); m.position.set(x, DECK_Y + h / 2, 3.2); g.add(m); return m; };
+    step(0.7, 0.62, 0xe0b83a, 0); step(0.7, 0.42, 0xc8ccd2, -0.72); step(0.7, 0.3, 0xb8763a, 0.72);
+    const gold = new THREE.MeshLambertMaterial({ color: 0xffd166, emissive: 0x4a3a08 });
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.09, 0.26, 12, 1, true), gold); cup.material.side = THREE.DoubleSide;
+    cup.position.set(0, DECK_Y + 0.62 + 0.24, 3.2); g.add(cup);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.12, 8), gold); stem.position.set(0, DECK_Y + 0.62 + 0.06, 3.2); g.add(stem);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.04, 12), gold); foot.position.set(0, DECK_Y + 0.62 + 0.02, 3.2); g.add(foot);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+    this.scene.add(g);
+    spec.deco = g;
+    // The crowd, to be put out a figure a frame as the marina is drawn.
+    spec.crowdTodo = CROWD.slice(0, 4 + Math.floor(this.rng() * 3)).map((id, i) => ({ id, x: (i % 2 ? 1 : -1) * (0.45 + this.rng() * 0.35), z: 5 + (i / 6) * (L - 7) + this.rng() * 1.2, f: this.rng() * Math.PI * 2 }));
+    // The contestants, moored about the harbour, waiting: the field.
+    this.moorField(spec);
+  }
+
+  moorField(spec) {
+    const d = spec.dock, rng = this.rng;
+    const hull = spec.hull ? BOATS.find((b) => b.id === spec.hull) : null;
+    const keys = hull ? hullSkins(hull).map((s) => s.key) : null;
+    for (let i = 0; i < spec.field * 2 && spec.boats.length < spec.field; i++) {
+      const a = d.angle + (rng() - 0.5) * 2.6;          // off the pier head, over the water
+      const spot = this.npcs.spotAt(d.headX, d.headZ, a, 28 + rng() * 40, 0.4, 7) || this.npcs.spotAt(d.headX, d.headZ, rng() * Math.PI * 2, 60, Math.PI, 7);
+      if (!spot) continue;
+      const key = keys ? keys[Math.floor(rng() * keys.length)] : null;
+      const f = this.npcs.newBoat(spot.x, spot.z, rng() * Math.PI * 2, null, key);
+      f.idle = true; f.tourney = true; f.age = 0;
+      f.state = 'atMarina'; f.timer = 1e9; f.boat.anchored = true;
+      spec.boats.push({ f, kg: 0, phase: rng(), rank: i, nextFish: 6 + rng() * 10 });
+    }
+  }
+
+  /** The dressing comes down; the field goes back to its own life (or, with `keep`, stays entered). */
+  undress(spec, keepBoats = false) {
+    if (spec.deco) { this.scene.remove(spec.deco); spec.deco.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); spec.deco = null; }
+    for (const ch of spec.crowd) ch.dispose();
+    spec.crowd = []; spec.crowdTodo = null;
+    if (!keepBoats) for (const b of spec.boats) { const f = b.f; f.tourney = false; f.idle = this.rng() < 0.4; f.state = 'idle'; f.timer = 0; f.boat.anchored = false; f.matchSpecies = null; }
+    this.hosting.delete(spec.key);
+  }
+
+  // --- the card ---
+  showCard(spec) {
     this.offer = spec;
+    if (spec.firstSeen == null) spec.firstSeen = this.time;
     this.hud.showTourneyCard(spec, () => this.enter(), () => this.decline());
   }
+  hideCard() { this.offer = null; this.hud.hideTourneyCard(); }
 
   decline() {
-    if (!this.offer) return;
-    this.offer = null;
-    this.hud.hideTourneyCard();
+    const spec = this.offer; if (!spec) return;
+    spec.declined = true;
+    this.hideCard();
+    this.undress(spec);
   }
 
   /** Can this boat enter? A hull rule has to be met at the rail. */
@@ -176,29 +307,27 @@ export class Tournaments {
     return { ok: true, why: '' };
   }
 
-  /** The fee is paid, the place drawn, the field put on the water, lines in. */
+  /** The fee is paid, the place drawn, the field sent out, lines in. */
   enter() {
     const spec = this.offer; if (!spec) return false;
     const el = this.eligible(spec);
     if (!el.ok) { this.hud.hint(el.why, 3200); return false; }
-    this.offer = null; this.hud.hideTourneyCard();
+    this.hideCard();
     this.player.balance -= spec.fee; this.rtp.wager(spec.fee); this.player.save();
     const draw = this.rtp.tournamentBet(spec.fee, spec.tierId, this.rng);
     const T = this.live = {
       ...spec, t: 0, limit: spec.seconds, place: draw.place, place0: draw.place, payout: draw.payout,
-      honest: 0, laundered: 0, weights: 0, weightsKg: 0, bonus: 0, catches: 0,
-      boats: [], board: null, order: null, goldenPlan: false, goldenAt: 0, goldenSent: false, done: false,
+      honest: 0, laundered: 0, weights: 0, weightsKg: 0, bonus: 0, catches: 0, best: null,
+      order: null, goldenPlan: false, goldenAt: 0, goldenSent: false, done: false,
     };
-    // Off the podium, the player still finishes somewhere: mid-field.
-    T.dispPlace = draw.place <= 3 ? draw.place : 4 + Math.floor(this.rng() * Math.max(1, spec.field - 2));
-    T.aboveN = T.dispPlace - 1;
+    // Off the podium and the cash spot, the player still finishes somewhere: mid-field.
+    T.dispPlace = draw.place <= 4 ? draw.place : 5 + Math.floor(this.rng() * Math.max(1, spec.field - 3));
+    T.aboveN = Math.min(T.dispPlace - 1, spec.boats.length);
     T.fishKg = spec.stock.reduce((a, s) => a + s.kg, 0) / Math.max(1, spec.stock.length);
     // A win is delivered by the golden fish now and then — never a loss.
     if (spec.golden && draw.place === 1 && this.rng() < 0.35) { T.goldenPlan = true; T.goldenAt = 0.6 + this.rng() * 0.25; }
-    this.lastAt = this.time; this.visitsSince = 0;
-    // The field: boats fishing on the water round the marina, in the hull
-    // the rules call for. Nobody calls across during a tournament.
-    this.spawnField(T);
+    this.undress(spec, true);
+    this.sendField(T);
     this.npcs.holdSpawns = true; this.npcs.enabled = false;
     this.fishing.startMatch({ name: `${spec.tier.name} — ${spec.rules.map((r) => r.text).join(', ')}`, stock: spec.stock, counts: spec.counts, never: spec.golden ? [spec.golden] : [], quiet: true });
     if (this.ambientFish) this.ambientFish.setFeature(spec.stock);
@@ -207,29 +336,30 @@ export class Tournaments {
     return true;
   }
 
-  spawnField(T) {
+  /**
+   * The field leaves its moorings for the water off the marina, each boat
+   * to a spot of its own, and fishes there; who finishes above the player
+   * is settled here, and each of those gets its own moment to make its move.
+   */
+  sendField(T) {
     const d = T.dock, rng = this.rng;
-    const hull = T.hull ? BOATS.find((b) => b.id === T.hull) : null;
-    const keys = hull ? hullSkins(hull).map((s) => s.key) : null;
-    for (let i = 0; i < T.field && T.boats.length < T.field; i++) {
-      // Spread over the water off the marina, a hundred metres out or so.
-      const a = d.angle + Math.PI + (rng() - 0.5) * 2.4;
-      const spot = this.npcs.spotAt(d.headX, d.headZ, a, 70 + rng() * 90, 0.5, 9) || this.npcs.spotAt(d.headX, d.headZ, rng() * Math.PI * 2, 120, Math.PI, 8);
-      if (!spot) continue;
-      const key = keys ? keys[Math.floor(rng() * keys.length)] : null;
-      const f = this.npcs.newBoat(spot.x, spot.z, rng() * Math.PI * 2, null, key);
-      f.idle = true; f.tourney = true; f.age = 0;
-      f.startFishing(rng); f.state = 'match'; f.timer = 1e9; f.matchSpecies = T.stock;
-      T.boats.push({ f, kg: 0, phase: rng(), rank: i, nextFish: 6 + rng() * 10 });
-    }
-    // Who finishes above the player: the first `aboveN`, with margins that
-    // spread them out; the rest below.
-    T.boats.forEach((b, i) => { b.above = i < T.aboveN; b.margin = b.above ? 0.12 + i * 0.16 : 0.15 + (i - T.aboveN) * 0.14; });
+    T.boats.forEach((b, i) => {
+      const f = b.f;
+      f.boat.anchored = false; f.timer = 0; f.matchSpecies = T.stock;
+      const a = d.angle + (rng() - 0.5) * 2.6;          // off the pier head, over the water
+      const spot = this.npcs.spotAt(d.headX, d.headZ, a, 70 + rng() * 90, 0.5, 9);
+      if (spot && f.goTo(spot.x, spot.z)) { f.state = 'toFish'; f.throttle = 0.5 + rng() * 0.4; }
+      else { f.startFishing(rng); f.state = 'match'; f.timer = 1e9; }
+      b.above = i < T.aboveN;
+      b.margin = b.above ? 0.12 + i * 0.16 : 0.15 + (i - T.aboveN) * 0.14;
+      // Its charge: when it starts to move, and when it is where it means to be.
+      b.chargeAt = 0.6 + rng() * 0.26; b.chargeEnd = Math.min(0.97, b.chargeAt + 0.1 + rng() * 0.12);
+    });
   }
 
   // --- the live tournament ---
-  /** The prize a place pays, in dollars (fourth and beyond: nothing). */
-  prizeFor(T, place) { return place >= 1 && place <= 3 ? T.prizes[place - 1] : 0; }
+  /** The prize a place pays, in dollars (fifth and beyond: nothing). */
+  prizeFor(T, place) { return place >= 1 && place <= 4 ? T.prizes[place - 1] : 0; }
 
   /** What the player's basket weighs at the scales: honest catch plus the weights. */
   scaleKg(T) { return T.honest + T.weightsKg; }
@@ -248,6 +378,7 @@ export class Tournaments {
     if (T.golden && c.species === T.golden) { this.finish('golden'); return; }
     if (!c.counts) return;
     T.honest += c.kg; T.catches++;
+    if (!T.best || c.kg > T.best.kg) T.best = { species: c.species, kg: c.kg };
     this.hud.hint(`${c.species.name} counts — ${this.scaleKg(T).toFixed(1)} kg on the scales`, 2200);
   }
 
@@ -278,8 +409,8 @@ export class Tournaments {
 
   /** The entitlement moved up: one fewer boat is to finish above the player. */
   restage(T) {
-    T.dispPlace = T.place <= 3 ? T.place : T.dispPlace;
-    T.aboveN = T.dispPlace - 1;
+    T.dispPlace = T.place <= 4 ? T.place : T.dispPlace;
+    T.aboveN = Math.min(T.dispPlace - 1, T.boats.length);
     T.boats.forEach((b, i) => { b.above = i < T.aboveN; });
   }
 
@@ -287,31 +418,49 @@ export class Tournaments {
   baseKg(T) { return Math.max(T.honest, T.laundered); }
 
   update(dt, t, me) {
-    this.time += dt;
-    const T = this.live;
-    if (!T) {
-      // A card left on the table: it is withdrawn once the player has gone.
-      if (this.offer && me && Math.hypot(this.offer.dock.headX - me.pos.x, this.offer.dock.headZ - me.pos.z) > 110) this.decline();
-      return;
+    this.time += dt; this._frame++;
+    // The marinas about: a new one within range is decided; the dressed
+    // ones are drawn and their crowds posed while near; the card comes and
+    // goes with the distance, for two minutes from the first sight of it.
+    if (me) {
+      const near = this.docks.nearest(me.pos.x, me.pos.z);
+      if (near.dock && near.dist < DECIDE_R && !this.decided.has(dockKey(near.dock))) this.decide(near.dock, me);
+      for (const spec of this.hosting.values()) {
+        const dist = Math.hypot(spec.dock.headX - me.pos.x, spec.dock.headZ - me.pos.z);
+        this.tendDressing(spec, dist, dt, t);
+        if (this.live) continue;
+        if (spec.firstSeen != null && this.time - spec.firstSeen > CARD_WINDOW_S) { if (this.offer === spec) this.hideCard(); spec.declined = true; this.undress(spec); continue; }
+        if (this.offer === spec) { if (dist > CARD_OFF_R) this.hideCard(); }
+        else if (!this.offer && dist < CARD_R && !spec.declined) this.showCard(spec);
+      }
     }
-    if (T.done) return;
+    const T = this.live;
+    if (!T || T.done) return;
     T.t += dt;
     const k = T.t / T.limit, settled = settle(k);
     const base = this.baseKg(T), fk = T.fishKg;
-    // The other baskets: swinging about while the order is open, then
-    // settling to their finals — above the player's honest weight or
-    // below it, as drawn — and only ever filling.
+    // The other baskets. While the order is open they swing about, under
+    // the player's honest weight for the most part. Each boat that is to
+    // finish ahead then makes its move on its own timing over the last
+    // third — a run of fish, ending where it means to be with a little of
+    // the clock to spare — and the rest settle short. Baskets only fill.
     for (const b of T.boats) {
       const swing = Math.sin((k * 1.6 + b.phase) * Math.PI * 2) * (1 - settled);
       const final = b.above ? base * (1 + b.margin) + fk * (0.6 + 0.4 * b.rank) : Math.max(0, Math.min(base - fk * 0.5, base * (1 - b.margin)));
-      let want;
-      if (settled > 0.5) want = final;
-      else if (b.above) want = Math.max(0, final * (0.35 + 0.65 * k) + swing * fk * 0.8);
-      else want = Math.max(0, Math.min(final, base * (0.5 + 0.35 * swing)));
+      let want, pace = 1;
+      if (b.above) {
+        // Short of the player until its move — unless the player has next to nothing, when it shows a fish or two anyway.
+        const open = Math.max(0, Math.min(final, base * 0.92, base * (0.55 + 0.3 * swing)) + (base < fk * 0.5 ? fk * 0.3 * (0.5 + swing) : 0));
+        const c = smooth((k - b.chargeAt) / Math.max(0.02, b.chargeEnd - b.chargeAt));
+        want = open + (final - open) * c;
+        if (k > b.chargeAt && c < 1) pace = 0.4;                    // fish come faster on the charge
+      } else {
+        want = settled > 0.5 ? final : Math.max(0, Math.min(final, base * (0.5 + 0.35 * swing)));
+      }
       b.nextFish -= dt;
       if (b.kg < want && b.nextFish <= 0 && T.t > 6) {
         const bite = Math.min(want - b.kg, fk * (0.5 + this.rng() * 1.2));
-        b.kg += bite; b.nextFish = 5 + this.rng() * 12;
+        b.kg += bite; b.nextFish = (3 + this.rng() * 9) * pace;
       }
     }
     // The golden fish, if this is how the win comes: sent to the next rod out.
@@ -322,10 +471,28 @@ export class Tournaments {
     if (T.t >= T.limit) this.finish('bell');
   }
 
+  /** The dressing, by distance: drawn when near, the crowd posed nearer still, a figure put out a frame. */
+  tendDressing(spec, dist, dt, t) {
+    if (!spec.deco) return;
+    const show = dist < DECO_R;
+    if (spec.deco.visible !== show) spec.deco.visible = show;
+    if (!show) return;
+    if (spec.crowdTodo && spec.crowdTodo.length) {
+      const c = spec.crowdTodo.shift();
+      const ch = new Character(c.id, c.id === 'captain' ? null : lookFor(Math.floor(this.rng() * 1e6)), 1);
+      spec.deco.add(ch.actor); ch.placeAt(c.x, c.z, c.f); ch.y = DECK_Y;
+      spec.crowd.push(ch);
+    }
+    if (dist < CROWD_UPDATE_R && (this._frame % 3) === 0) {
+      for (const ch of spec.crowd) if (ch.ready) { if (ch.model && ch.model.children[0] && ch.model.children[0].castShadow) ch.model.traverse((o) => { if (o.isMesh) o.castShadow = false; }); ch.update(dt * 3, t, () => DECK_Y); }
+    }
+  }
+
   /**
-   * The weigh-in. The other baskets take their finals (a fish on the
-   * bell); the player's basket is read off the scales; and if it stands
-   * higher than the player is entitled to, the judge finds the weights.
+   * The weigh-in. The other baskets take their finals (a last fish on the
+   * bell where one is still short); the player's basket is read off the
+   * scales; and if it stands higher than the player is entitled to, the
+   * judge finds the weights.
    */
   finish(reason) {
     const T = this.live; if (!T || T.done) return;
@@ -335,36 +502,27 @@ export class Tournaments {
       if (b.above) b.kg = Math.max(b.kg, base * (1 + b.margin) + fk * (0.6 + 0.4 * b.rank) + 0.05);
       else b.kg = Math.min(b.kg, Math.max(0, base - 0.05));
     }
-    let golden = reason === 'golden';
+    const golden = reason === 'golden';
     if (golden) { T.place = 1; T.payout = this.prizeFor(T, 1); for (const b of T.boats) { b.above = false; b.kg = Math.min(b.kg, Math.max(0, base - 0.05)); } }
     const rows = this.boardOf(T);
     const shown = T.shownPlace;
     const caught = !golden && this.prizeFor(T, shown) > this.prizeFor(T, T.place);
     const payout = this.prizeFor(T, T.place) + T.bonus;
     if (payout > 0) { this.player.balance += payout; this.rtp.book(payout); this.player.save(); }
-    T.finalPlace = caught ? T.place : shown; T.caught = caught; T.paid = payout;
-    this.lastResult = { tier: T.tierId, place: T.place, shown, caught, golden, payout, weights: T.weights, honest: T.honest };
-    // The word from the scales.
-    const ord = (n) => ['1st', '2nd', '3rd'][n - 1] || `${n}th`;
-    if (caught) {
-      this.hud.showWeighIn(this.audio);
-      const honest = T.place <= 3 ? `Your honest catch stood ${ord(T.place)} — $${this.prizeFor(T, T.place).toFixed(2)}.` : 'Your honest catch was off the podium.';
-      this.hud.toast(`<div class="catch-body"><div class="catch-name">Disqualified — weights in the fish</div><div class="catch-sub">Struck from ${ord(shown)}. ${honest}</div></div>`, 'meh', 7000);
-    } else if (golden) {
-      this.hud.toast(`<div class="catch-body"><div class="catch-name">Golden fish! You win the ${T.tier.name}</div><div class="catch-sub">${T.golden.name} on the hook — the tournament is yours outright</div></div><div class="catch-value">$${payout.toFixed(2)}</div>`, 'win', 6500);
-    } else if (T.place <= 3) {
-      this.hud.toast(`<div class="catch-body"><div class="catch-name">${ord(T.place)} at the ${T.tier.name}!</div><div class="catch-sub">${this.scaleKg(T).toFixed(1)} kg on the scales${T.bonus > 0 ? ` · sponsors' bonus $${T.bonus.toFixed(2)}` : ''}</div></div><div class="catch-value">$${payout.toFixed(2)}</div>`, 'win', 6500);
-    } else {
-      this.hud.toast(`<div class="catch-body"><div class="catch-name">${ord(shown)} of ${T.boats.length + 1} — no prize</div><div class="catch-sub">${T.tier.name} · $${T.fee} entry</div></div>`, 'meh', 5000);
-    }
+    T.finalPlace = caught ? T.place : shown; T.caught = caught; T.paid = payout; T.golden = golden ? T.golden : T.golden;
+    T.climbed = T.place0 - T.place;
+    this.lastResult = { tier: T.tierId, place: T.place, shown, caught, golden, payout, weights: T.weights, honest: T.honest, climbed: T.climbed };
+    // The word from the scales: the overlay when caught, then the results card.
+    const result = { tier: T.tier.name, marina: T.dock.name, place: T.finalPlace, prize: payout, fee: T.fee, best: T.best, golden: golden ? T.golden : null, caught, shown, weights: T.weights, weightsKg: T.weightsKg, climbed: T.climbed, honestPlace: T.place, bonus: T.bonus, top: rows.slice(0, 3), you: rows.find((r) => r.you), field: T.boats.length + 1 };
+    if (caught) this.hud.showWeighIn(this.audio);
     this.hud.setTourney(T, rows, true);
+    setTimeout(() => this.hud.showTourneyResult(result), caught ? 4200 : 900);
     // The field goes back to its own life, and the water to its own fish.
     for (const b of T.boats) { const f = b.f; f.tourney = false; f.idle = this.rng() < 0.4; f.state = 'idle'; f.timer = 0; f.endCast(); f.boat.anchored = false; f.matchSpecies = null; }
     this.npcs.holdSpawns = false; this.npcs.enabled = true;
     this.fishing.endMatch();
     if (this.ambientFish) this.ambientFish.setFeature(null);
     this.live = null;
-    setTimeout(() => { if (!this.live) this.hud.hideTourney(); }, 9000);
+    setTimeout(() => { if (!this.live) this.hud.hideTourney(); }, 6000);
   }
 }
-

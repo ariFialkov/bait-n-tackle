@@ -312,8 +312,9 @@ bet — what it proposes goes with its hull: the nimble boats race and run
 the rocks, the working boats fish — and a card comes up with fourteen
 seconds to answer:
 
-* **Race** — first boat to a named water two to five hundred metres off.
-  A chip on the HUD points at the goal with the distance.
+* **Race** — first boat to a named water two to five hundred metres off
+  (at least two hundred and twenty by water, so the lead has room to
+  change hands). A chip on the HUD points at the goal with the distance.
 * **Run the rocks** — through three or four gates to a named water, in
   order, then home. The route has to thread a real rapid: it is only
   offered where it runs through rapids with eight boulders and more
@@ -422,25 +423,35 @@ corner shows both boats' progress, or both baskets, and the clock.
 
 ### Fishing tournaments
 
-Now and then a marina the player pulls up to is **hosting a tournament**
-(`tournament.js`): roughly one call in seven, and never within eight
-minutes of the last; after twenty minutes without one the next call is
-likely. A card goes up over the store — the tier, the rules, the entry
-fee, the purse and how many other boats are entered — and the player
-enters or passes; the card stays while they are about the marina.
+Now and then a marina the player comes to is **hosting a tournament**
+(`tournament.js`). It is decided as the marina comes within a few
+hundred metres — roughly one marina in seven, never within eight minutes
+of the last, and likely after twenty minutes without one — and the
+marina is **dressed for it** before the player gets there: bunting along
+the pier and across its head, a banner naming the day, a podium with the
+trophy on its top step by the shore end, a crowd of fishermen on the
+planking, and the contestants' boats moored round the harbour, waiting.
+The dressing is a handful of plain, unlit, unshadowed meshes (the flags
+one geometry), drawn only within a couple of hundred metres; the crowd
+are the crew figures, put out one a frame and posed at a third of the
+frames while the player is near. The **card** — the tier, the rules, the
+entry fee, the purse and the field — comes up as the player draws near
+the pier and fades as they leave, and keeps coming back for two minutes
+from the first time they see it; then, or on Pass, the dressing comes
+down and the boats go their ways.
 
 * **Four tiers** by prestige (`rtp.js TOURNEY_TIERS`): a local open, a
   regional classic, a major, an iconic invitational. A bigger purse means
   more sponsors — first pays 3× the entry at a local open and 10× at an
-  invitational, second and third in proportion — and a bigger entry fee
-  (twenty to forty dollars at a local, up to two hundred and fifty at an
-  invitational), never more than the wallet holds.
-* **The purse is an isolated bet** like every other wager here. The
-  podium's odds stand in the ratio 1 : 1.4 : 1.8 (first : second :
-  third) and are scaled per tier so the expected return of an entry is
-  the game RTP to the cent — asserted when the game loads. The place is
-  **drawn when the fee is paid**, and the tournament is staged to end
-  that way.
+  invitational, second and third in proportion, and a **cash spot for
+  fourth** (a quarter of the entry at a local, half at an invitational)
+  — and a bigger entry fee (twenty to forty dollars at a local, up to two
+  hundred and fifty at an invitational), never more than the wallet holds.
+* **The purse is an isolated bet** like every other wager here. The odds
+  of first to fourth stand in the ratio 1 : 1.4 : 1.8 : 2.2 and are
+  scaled per tier so the expected return of an entry is the game RTP to
+  the cent — asserted when the game loads. The place is **drawn when the
+  fee is paid**, and the tournament is staged to end that way.
 * **Rules.** Each tournament targets something: a family of these waters
   (any trout, any catfish, any perch and walleye …), the bottom feeders,
   a single species, only fish over so many kilograms, or the heaviest
@@ -451,11 +462,16 @@ enters or passes; the card stays while they are about the marina.
   stocked with the target, anything that does not count goes back at
   the rail, and the live panel shows the clock, the rules and a
   **leaderboard of the whole field** by weight.
-* **The field.** Five to eight other boats are put on the water off the
-  marina, fishing. Their baskets fill, fish by fish, and only ever fill:
-  swinging about while the order is open and settling, over the last
-  third of the clock, above or below the player's honest catch exactly
-  as the draw said. Nobody calls across during a tournament.
+* **The field.** On entry the moored boats leave for spots of their own
+  on the water off the marina and fish there. Their baskets fill, fish
+  by fish, and only ever fill. While the order is open they swing about
+  short of the player's honest catch; then each boat that is to finish
+  ahead **makes its move on its own timing** over the last third of the
+  clock — a run of fish starting somewhere between three fifths and six
+  sevenths of the way, ending where it means to be with a little of the
+  clock to spare, so two such boats race each other for it rather than
+  leaping past the player on the bell — and the rest settle short.
+  Nobody calls across during a tournament.
 * **The golden fish.** Some tournaments name a prize fish of these
   waters: hook it and the tournament is yours outright, whatever the
   scales say. It never bites of its own accord — it is only ever sent,
@@ -466,10 +482,12 @@ enters or passes; the card stays while they are about the marina.
   any time from the panel, and each adds a little to what the scales
   read (a fortieth of the leading basket, a fifth of a kilo at least).
   Each weight is a **$1 wager of its own**: with odds of RTP over the
-  next prize step (0.94 over the difference between the prize the
-  player is entitled to and the next one up) the judge looks the other
-  way and the entitlement moves up a place, and everything in the fish
-  so far is as good as honest — the field is re-staged over it. Already
+  next prize step the judge looks the other way and the entitlement
+  moves up a place, and everything in the fish so far is as good as
+  honest — the field is re-staged over it. The cash spot for fourth is
+  what makes the first step cheap: at a local open it is five to ten
+  dollars, so a place is bought for about six dollars on average, and
+  each step up the podium costs what its prize step is worth. Already
   entitled to first, a weight buys a draw from the ordinary paytable
   instead, paid with the purse as the sponsors' bonus. Either way every
   dollar returns the RTP in expectation, whatever the player does with
@@ -481,6 +499,11 @@ enters or passes; the card stays while they are about the marina.
   never taken away by a disqualification, since the weights that led to
   it were bets the player has already paid for; only the stolen place
   is.
+* **The results card** at the weigh-in shows the trophy and the tier,
+  the place and the prize, the biggest catch, the top three, and — if
+  weights went in — whether the player got away with it and how many
+  places the judge's blind eye moved them, or that they were busted,
+  struck from the place claimed, and where their honest catch stood.
 
 ### Boats and the shore
 
