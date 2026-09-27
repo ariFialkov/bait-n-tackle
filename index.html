@@ -136,6 +136,24 @@
       <div class="ch-stake">$10 each · winner takes the purse</div>
       <div class="ch-btns"><button id="ch-accept">You're on</button><button id="ch-decline">Pass</button></div>
     </div>
+    <!-- A fishing tournament hosted at the marina: the card -->
+    <div id="tourney-card" class="hidden">
+      <div class="tc-head"><span class="tc-tier">Regional classic</span><span class="tc-fee">$40 entry</span></div>
+      <div class="tc-where">hosted at Juniper Marina</div>
+      <div class="tc-rules"></div>
+      <div class="tc-purse"></div>
+      <div class="ch-btns"><button id="tc-enter">Enter</button><button id="tc-pass">Pass</button></div>
+    </div>
+    <!-- The live tournament: the clock, the rules, the leaderboard, the weights -->
+    <div id="tourney" class="hidden">
+      <div class="tn-head"><span class="tn-title">Regional classic</span><span class="tn-clock">3:00</span></div>
+      <div class="tn-rule"></div>
+      <div class="tn-board"></div>
+      <button id="tn-weight" class="tn-weight">Slip a weight in · $1</button>
+    </div>
+    <!-- The weigh-in that goes wrong -->
+    <div id="weighin" class="hidden"><div class="wi-text">WE GOT WEIGHTS IN FISH!</div><div class="wi-sub">GET OUTTA HERE!</div></div>
+    <audio id="weighin-audio" src="audio/weigh-in.m4a" preload="auto"></audio>
     <!-- The live side bet: both boats' progress, or both baskets -->
     <div id="comp" class="hidden">
       <div class="comp-title">Race to Juniper Lake</div>

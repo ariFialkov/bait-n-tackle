@@ -658,7 +658,8 @@ class Fisherman {
         c.phase = 'fight'; c.t = 0; c.fight = 3 + rng() * 5;
         const pool = poolFor(waterKind(bx, bz));
         const sp = speciesInTiers(0, 3, pool);
-        const species = this.matchSpecies && rng() < 0.7 ? this.matchSpecies : sp[Math.floor(rng() * sp.length)];
+        const stock = Array.isArray(this.matchSpecies) ? this.matchSpecies : this.matchSpecies ? [this.matchSpecies] : null;
+        const species = stock && rng() < 0.7 ? stock[Math.floor(rng() * stock.length)] : sp[Math.floor(rng() * sp.length)];
         this.fish = new HookedFish(this.fleet.scene, species, 0.7 + rng() * 0.8);
         this.fleet.onNpcHook && this.fleet.onNpcHook(this, species);
       }
@@ -719,6 +720,7 @@ export class NpcFleet {
     this.group = null;             // the circling three, while they wait
     this.onNpcHook = null;
     this.enabled = true;
+    this.holdSpawns = false;       // a tournament is on: no encounters meanwhile
     fishing.onCatch = (c) => this.playerCaught(c);
   }
 
@@ -746,9 +748,9 @@ export class NpcFleet {
     return skins[Math.floor(rng() * skins.length)].key;
   }
 
-  newBoat(x, z, heading, purpose = null) {
+  newBoat(x, z, heading, purpose = null, key = null) {
     const rng = this.rng;
-    const key = this.pickHull(x, z, purpose);
+    key = key || this.pickHull(x, z, purpose);
     let name = NAMES[Math.floor(rng() * NAMES.length)];
     for (let n = 0; this.usedNames.has(name) && n < 30; n++) name = NAMES[Math.floor(rng() * NAMES.length)];
     this.usedNames.add(name);
@@ -1479,10 +1481,10 @@ export class NpcFleet {
       nearest = Math.min(nearest, d);
       const inBet = this.challenge && (this.challenge.npc === f || (this.challenge.boats || []).includes(f));
       const waiting = f.group && !f.group.dead;
-      if (!inBet && (d > DESPAWN || (!waiting && f.age > 150 && d > 380))) { if (f.group) this.disperseGroup(f.group); f.dispose(); this.usedNames.delete(f.name); this.boats.splice(i, 1); }
+      if (!inBet && !f.tourney && (d > DESPAWN || (!waiting && f.age > 150 && d > 380))) { if (f.group) this.disperseGroup(f.group); f.dispose(); this.usedNames.delete(f.name); this.boats.splice(i, 1); }
     }
     this.lonely = nearest < 400 ? 0 : this.lonely + dt;
-    if (active) {
+    if (active && !this.holdSpawns) {
       this.nextEncounter -= dt;
       const singles = this.boats.filter((f) => !f.group).length;
       if (this.spawnJob) {
@@ -1532,7 +1534,7 @@ export class NpcFleet {
       // Level of detail by distance: a far boat is stepped a few times a
       // second, without its wake and smoke, and throws no shadow.
       const d = Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z);
-      const inBet = this.challenge && (this.challenge.npc === f || (this.challenge.boats || []).includes(f));
+      const inBet = (this.challenge && (this.challenge.npc === f || (this.challenge.boats || []).includes(f))) || !!f.tourney;
       const lod = inBet ? 0 : d < LOD_NEAR ? 0 : d < LOD_FAR ? 1 : 2;
       if (lod !== f.lod) {
         f.lod = lod;

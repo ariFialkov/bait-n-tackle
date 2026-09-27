@@ -37,6 +37,25 @@ export const PLACE_ODDS = [0.20, 0.28, 0.32, 0.20];
 // (Their expected return must be the RTP: 0.5 + 0.28 + 0.16 = 0.94.)
 if (Math.abs(PLACE_MULT.reduce((a, m, i) => a + m * PLACE_ODDS[i], 0) - CONFIG.RTP) > 1e-9) throw new Error('PLACE_ODDS do not return the RTP');
 
+// The fishing tournaments' prestige tiers: what the podium pays, as
+// multiples of the entry fee, and the odds of each step of it. The odds of
+// first, second and third stand in the ratio 1 : 1.4 : 1.8 and are scaled
+// so that the expected return of an entry is the game RTP to the cent —
+// a bigger purse (more sponsors) means longer odds, never a better deal.
+export const TOURNEY_TIERS = {
+  local:    { name: 'Local open',       mult: [3, 1.5, 0.75],  fee: [20, 40],   field: 5 },
+  regional: { name: 'Regional classic', mult: [4, 2, 1],       fee: [40, 80],   field: 6 },
+  major:    { name: 'Major',            mult: [6, 2.5, 1],     fee: [80, 150],  field: 7 },
+  iconic:   { name: 'Iconic invitational', mult: [10, 4, 1.5], fee: [150, 250], field: 8 },
+};
+for (const t of Object.values(TOURNEY_TIERS)) {
+  const [m1, m2, m3] = t.mult;
+  const p1 = CONFIG.RTP / (m1 + 1.4 * m2 + 1.8 * m3);
+  t.odds = [p1, 1.4 * p1, 1.8 * p1];
+  if (Math.abs(t.odds[0] * m1 + t.odds[1] * m2 + t.odds[2] * m3 - CONFIG.RTP) > 1e-9) throw new Error('tournament odds do not return the RTP');
+  if (t.odds[0] + t.odds[1] + t.odds[2] >= 1) throw new Error('tournament podium odds over one');
+}
+
 export class RTPEngine {
   constructor() {
     this.reset();
@@ -130,6 +149,20 @@ export class RTPEngine {
       acc += PLACE_ODDS[i];
       if (r <= acc || i === PLACE_ODDS.length - 1) return { place: i + 1, payout: stake * PLACE_MULT[i] };
     }
+    return { place: 4, payout: 0 };
+  }
+
+  /**
+   * A fishing tournament entry: the place is drawn once, here, from the
+   * tier's podium odds — first, second, third, or off the podium — and the
+   * tournament is staged to end that way. Returns { place (1..3, or 4 for
+   * none), payout }, with E[payout] = RTP * fee to the cent.
+   */
+  tournamentBet(fee, tier, rng = Math.random) {
+    const t = TOURNEY_TIERS[tier] || TOURNEY_TIERS.local;
+    const r = rng();
+    let acc = 0;
+    for (let i = 0; i < 3; i++) { acc += t.odds[i]; if (r <= acc) return { place: i + 1, payout: fee * t.mult[i] }; }
     return { place: 4, payout: 0 };
   }
 

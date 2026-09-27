@@ -85,9 +85,12 @@ export class AmbientFish {
    * change at once, the rest as they are recycled. Scenery only.
    */
   setFeature(species) {
-    this.feature = species || null;
-    if (!species) return;
-    for (const f of this.fish) if (Math.random() < 0.66 && f.species !== species) this.dress(f, species);
+    // One species, or a list of them (a tournament's target family).
+    const list = Array.isArray(species) ? species : species ? [species] : [];
+    if (!list.length) this._wasFeature = this.feature;
+    this.feature = list.length ? list : null;
+    if (!list.length) return;
+    for (const f of this.fish) if (Math.random() < 0.66 && !list.includes(f.species)) this.dress(f, list[Math.floor(Math.random() * list.length)]);
   }
 
   /** Drop a fish at a random watery point around the focus at ~radius r. */
@@ -100,9 +103,9 @@ export class AmbientFish {
         f.x = x; f.z = z;
         f.heading = Math.random() * Math.PI * 2;
         const pool = poolAt(x, z);
-        if (this.feature && Math.random() < 0.75) { if (f.species !== this.feature) this.dress(f, this.feature); }
+        if (this.feature && Math.random() < 0.75) { if (!this.feature.includes(f.species)) this.dress(f, this.feature[Math.floor(Math.random() * this.feature.length)]); }
         // The wrong kind of fish for this water: it comes back as the right one.
-        else if ((pool !== 'both' && f.species.water !== pool) || (!this.feature && f.species === this._wasFeature)) this.dress(f, pickAmbientSpecies(pool));
+        else if ((pool !== 'both' && f.species.water !== pool) || (!this.feature && this._wasFeature && this._wasFeature.includes(f.species))) this.dress(f, pickAmbientSpecies(pool));
         return true;
       }
     }

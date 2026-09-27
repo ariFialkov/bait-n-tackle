@@ -423,9 +423,15 @@ export class Fishing {
 
   // ---------- the fishing match ----------
   /** The match is on: the rods play the match's game until endMatch. */
-  startMatch(species) {
-    this.match = { species, hooked: 0, counted: 0 };
-    this.hud.hint(`Match on: ${species.name} count, everything else goes back`, 3200);
+  /**
+   * `rule` is a species (the side bet's match) or a rule object:
+   *   { name, stock: [species…], counts(catch) => bool, quiet? }
+   * The water is stocked with `stock`, and only what `counts` says counts.
+   */
+  startMatch(rule) {
+    const r = rule && rule.stock ? rule : { name: `${rule.name} count, everything else goes back`, species: rule, stock: [rule], counts: (c) => c.species === rule };
+    this.match = { rule: r, species: r.species || null, stock: r.stock, counts: r.counts, hooked: 0, counted: 0, forceNext: null };
+    if (!r.quiet) this.hud.hint(`Match on: ${r.name}`, 3200);
   }
 
   endMatch() {
@@ -446,19 +452,24 @@ export class Fishing {
     line.hooked = true;
     line.biting = false;
     this.hud.setBite(this.lines.some((l) => l.biting));
-    let species = m.species;
-    if (Math.random() >= 0.7) {
-      const pool = speciesInTiers(0, 3, this.poolAt(line.pos.x, line.pos.z)).filter((s) => s !== m.species);
+    // Mostly the stocked kind; the rest whatever else swims here — never
+    // a species held back (a golden fish bites only when it is sent).
+    let species = m.stock[Math.floor(Math.random() * m.stock.length)];
+    if (m.forceNext) { species = m.forceNext; m.forceNext = null; }
+    else if (Math.random() >= 0.7) {
+      const pool = speciesInTiers(0, 3, this.poolAt(line.pos.x, line.pos.z)).filter((s) => !m.stock.includes(s) && !(m.rule.never || []).includes(s));
       if (pool.length) species = pool[Math.floor(Math.random() * pool.length)];
     }
     const sizeMult = 0.75 + Math.random() * 0.6;
-    const c = { species, sizeMult, kg: Math.max(0.005, species.kg * sizeMult * sizeMult), value: 0, match: true, counts: species === m.species };
+    const c = { species, sizeMult, kg: Math.max(0.005, species.kg * sizeMult * sizeMult), value: 0, match: true };
+    c.counts = !!m.counts(c);
     m.hooked++;
     line.catch = c;
     line.catchWager = 0;
     line.fish = new HookedFish(this.scene, c.species, c.sizeMult);
-    if (c.counts) { m.counted++; if (this.onCatch) this.onCatch(c); }
-    if (!quiet) this.hud.hint(c.counts ? `Fish on — a ${species.name}, it counts!` : 'Fish on', 2200);
+    if (c.counts) m.counted++;
+    if (this.onCatch) this.onCatch(c);       // every hook is reported; whoever listens decides what counts
+    if (!quiet) this.hud.hint(c.counts ? `Fish on — a ${species.name}, it counts!` : `Fish on — a ${species.name}`, 2200);
     if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
     return true;
   }

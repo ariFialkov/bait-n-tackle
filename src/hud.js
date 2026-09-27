@@ -250,6 +250,62 @@ export class HUD {
   }
   clearComp() { $('comp').classList.add('hidden'); this.clearGoalFinder(); }
 
+  // --- the fishing tournaments ---
+  /** The card: what is on, the rules, the fee and the purse; Enter or Pass. */
+  showTourneyCard(spec, onEnter, onPass) {
+    const el = $('tourney-card');
+    el.querySelector('.tc-tier').textContent = spec.tier.name;
+    el.querySelector('.tc-where').textContent = `hosted at ${spec.dock.name}`;
+    el.querySelector('.tc-rules').innerHTML = spec.rules.map((r) => `<span>${r.text}</span>`).join('') + `<span>${Math.round(spec.seconds / 60 * 10) / 10} minutes on the clock</span>` + (spec.golden ? `<span class="gold">Golden fish: hook a ${spec.golden.name} and the tournament is yours outright</span>` : '');
+    el.querySelector('.tc-purse').innerHTML = `<b>1st $${spec.prizes[0].toFixed(0)}</b> · 2nd $${spec.prizes[1].toFixed(0)} · 3rd $${spec.prizes[2].toFixed(0)} <i>· ${spec.field} other boats entered</i>`;
+    el.querySelector('.tc-fee').textContent = `$${spec.fee} entry`;
+    el.classList.remove('hidden');
+    $('tc-enter').onclick = (e) => { e.stopPropagation(); onEnter(); };
+    $('tc-pass').onclick = (e) => { e.stopPropagation(); onPass(); };
+  }
+  hideTourneyCard() { $('tourney-card').classList.add('hidden'); }
+
+  /** The live panel: the clock, the rules, the leaderboard, the weights. */
+  setTourney(T, rows, over = false) {
+    const el = $('tourney');
+    el.classList.remove('hidden');
+    el.querySelector('.tn-title').textContent = T.tier.name;
+    el.querySelector('.tn-rule').textContent = T.rules.map((r) => r.text).join(' · ') + (T.golden ? ` · golden: ${T.golden.name}` : '');
+    const left = Math.max(0, T.limit - T.t);
+    el.querySelector('.tn-clock').textContent = over ? 'Weigh-in' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    const bd = el.querySelector('.tn-board');
+    if (!bd._rows || bd._rows.length !== rows.length) {
+      bd.innerHTML = ''; bd._rows = [];
+      for (let i = 0; i < rows.length; i++) { const row = document.createElement('div'); row.className = 'comp-row'; row.innerHTML = `<span class="tn-place"></span><span class="comp-who"></span><div class="comp-bar"><i></i></div><b></b>`; bd.appendChild(row); bd._rows.push(row); }
+    }
+    const top = Math.max(0.1, ...rows.map((r) => r.kg));
+    rows.forEach((r, i) => {
+      const row = bd._rows[i];
+      row.classList.toggle('you', !!r.you);
+      row.classList.toggle('dq', over && r.you && !!T.caught);
+      const who = r.you ? (over && T.caught ? 'You · DQ' : `You${r.weights ? ` · ${r.weights} wt` : ''}`) : r.name;
+      const w = `${(r.kg / top) * 100}%`, v = `${r.kg.toFixed(1)} kg`;
+      if (row._p !== i) { row._p = i; row.firstChild.textContent = `${i + 1}.`; }
+      if (row._who !== who) { row._who = who; row.children[1].textContent = who; }
+      if (row._v !== v) { row._v = v; row.querySelector('i').style.width = w; row.lastChild.textContent = v; }
+    });
+    const btn = $('tn-weight');
+    btn.disabled = over;
+    btn.textContent = over ? 'Scales closed' : 'Slip a weight in · $1';
+    if (!btn._bound) { btn._bound = true; btn.addEventListener('click', (e) => { e.stopPropagation(); if (this.onTourneyWeight) this.onTourneyWeight(); }); }
+  }
+  hideTourney() { $('tourney').classList.add('hidden'); }
+
+  /** The judge finds the weights: the crowd, the shout, the flashing. */
+  showWeighIn(audio) {
+    const el = $('weighin');
+    el.classList.remove('hidden'); el.classList.add('go');
+    try { if (audio) { audio.currentTime = 0; const p = audio.play(); if (p && p.catch) p.catch(() => {}); } } catch { /* no sound: the words still land */ }
+    if (navigator.vibrate) navigator.vibrate([120, 80, 120, 80, 300]);
+    clearTimeout(this._wiT);
+    this._wiT = setTimeout(() => { el.classList.add('hidden'); el.classList.remove('go'); }, 5200);
+  }
+
   /** The chip that points at a bet's next mark: a gate, a goal, the finish. */
   setGoalFinder(name, x, z, boatPos) {
     const el = $('finder-goal');

@@ -15,6 +15,7 @@ import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { Dex } from './dex.js';
 import { Marina } from './marina.js';
+import { Tournaments } from './tournament.js';
 import { Player } from './player.js';
 import { Docks, DOCK_HINT_RANGE, berthFor } from './docks.js';
 import { Tender } from './tender.js';
@@ -299,6 +300,8 @@ equipBoat(player.boatId);
 const marina = new Marina(player, (key) => { docks.sold(key); return equipBoat(key, true); });
 // The other fishermen on the water, and the side bets they call across.
 const npcs = new NpcFleet(scene, lake, player, rtp, hud, fishing, docks, ambientFish);
+// The fishing tournaments the marinas host now and then.
+const tourneys = new Tournaments(scene, player, rtp, hud, fishing, npcs, docks, ambientFish, { audio: document.getElementById('weighin-audio') });
 // Stock turned over while the store is open at that marina: show the new boats.
 docks.onRestock = (dock) => { if (marina.open && marina.dock === dock) marina.render(); };
 
@@ -426,6 +429,8 @@ function updateDocks(dt) {
 
   marina.show(here);
   dockCooldown = 1.5;
+  // Now and then the marina is hosting a tournament: the card goes up.
+  if (helm === boat) tourneys.onMarinaVisit(here);
 }
 
 // --- Sonar readout ---
@@ -496,6 +501,7 @@ function frame() {
   tick('docks');
   // The other boats: driving, fishing, calling at the marinas, calling across.
   npcs.update(dt, t, tender.deployed ? [boat, tender] : [boat], state === 'play' && !marina.open);
+  if (state === 'play') tourneys.update(dt, t, boat);
   tick('npcs');
   const eye = helm === tender ? tender.pos : boat.pos;
   lake.update(t, eye.x, eye.z, dt, tender.deployed ? [boat, tender] : [boat]);
@@ -550,6 +556,7 @@ frame();
 
 // Debug/test handle (harmless in production).
 window.BNT = {
+  tourneys,
   hud, rtp, fishing, boat, tender, crew, player, dex, marina, docks, lake, rig, SPECIES,
   equipBoat, refreshShipPanel, separateHulls, labels, climate, minimap, npcs, start, BIOMES,
   renderer, scene, camera, sun, ambientFish,

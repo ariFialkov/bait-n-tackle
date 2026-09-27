@@ -420,6 +420,68 @@ forfeits the stake. The purse is paid at the finish — the long haul's by
 the place drawn, whatever the player saw — and the live card in the
 corner shows both boats' progress, or both baskets, and the clock.
 
+### Fishing tournaments
+
+Now and then a marina the player pulls up to is **hosting a tournament**
+(`tournament.js`): roughly one call in seven, and never within eight
+minutes of the last; after twenty minutes without one the next call is
+likely. A card goes up over the store — the tier, the rules, the entry
+fee, the purse and how many other boats are entered — and the player
+enters or passes; the card stays while they are about the marina.
+
+* **Four tiers** by prestige (`rtp.js TOURNEY_TIERS`): a local open, a
+  regional classic, a major, an iconic invitational. A bigger purse means
+  more sponsors — first pays 3× the entry at a local open and 10× at an
+  invitational, second and third in proportion — and a bigger entry fee
+  (twenty to forty dollars at a local, up to two hundred and fifty at an
+  invitational), never more than the wallet holds.
+* **The purse is an isolated bet** like every other wager here. The
+  podium's odds stand in the ratio 1 : 1.4 : 1.8 (first : second :
+  third) and are scaled per tier so the expected return of an entry is
+  the game RTP to the cent — asserted when the game loads. The place is
+  **drawn when the fee is paid**, and the tournament is staged to end
+  that way.
+* **Rules.** Each tournament targets something: a family of these waters
+  (any trout, any catfish, any perch and walleye …), the bottom feeders,
+  a single species, only fish over so many kilograms, or the heaviest
+  basket of anything; and one in ten is limited to a single hull class
+  (mud-dredgers only, say) — a boat of another class cannot enter, and
+  the field shows up in that hull. For the tournament's minutes the rods
+  play the match's game: nothing is charged or paid, the water is
+  stocked with the target, anything that does not count goes back at
+  the rail, and the live panel shows the clock, the rules and a
+  **leaderboard of the whole field** by weight.
+* **The field.** Five to eight other boats are put on the water off the
+  marina, fishing. Their baskets fill, fish by fish, and only ever fill:
+  swinging about while the order is open and settling, over the last
+  third of the clock, above or below the player's honest catch exactly
+  as the draw said. Nobody calls across during a tournament.
+* **The golden fish.** Some tournaments name a prize fish of these
+  waters: hook it and the tournament is yours outright, whatever the
+  scales say. It never bites of its own accord — it is only ever sent,
+  to a rod that is out in the last third of the clock, on a tournament
+  the draw already gave to the player, and on only a third of those, so
+  the moment keeps its shine.
+* **Weights in the fish.** A $1 weight can be slipped into the basket at
+  any time from the panel, and each adds a little to what the scales
+  read (a fortieth of the leading basket, a fifth of a kilo at least).
+  Each weight is a **$1 wager of its own**: with odds of RTP over the
+  next prize step (0.94 over the difference between the prize the
+  player is entitled to and the next one up) the judge looks the other
+  way and the entitlement moves up a place, and everything in the fish
+  so far is as good as honest — the field is re-staged over it. Already
+  entitled to first, a weight buys a draw from the ordinary paytable
+  instead, paid with the purse as the sponsors' bonus. Either way every
+  dollar returns the RTP in expectation, whatever the player does with
+  it. But stuff **past** what the entitlement allows and the judge finds
+  the weights at the weigh-in: the crowd, the shout, the flashing —
+  disqualified from the place claimed, and paid only for the place the
+  honest catch (plus whatever was laundered) truly held, which for
+  someone who needed to stuff is usually nothing. The entitled place is
+  never taken away by a disqualification, since the weights that led to
+  it were bets the player has already paid for; only the stolen place
+  is.
+
 ### Boats and the shore
 
 **Marinas** generate deterministically along the shoreline as the river
