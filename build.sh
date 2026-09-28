@@ -38,7 +38,7 @@ mkdir -p "$DIST"
 
 # Runtime files only — no node_modules, no git, no docs, no .nojekyll.
 cp "$ROOT/index.html" "$ROOT/styles.css" "$ROOT/sw.js" "$DIST/"
-cp -R "$ROOT/src" "$ROOT/vendor" "$ROOT/assets" "$DIST/"
+cp -R "$ROOT/src" "$ROOT/vendor" "$ROOT/assets" "$ROOT/audio" "$DIST/"
 
 if [ "$WANT_MANIFEST" -eq 1 ]; then
   cp "$ROOT/manifest.webmanifest" "$DIST/manifest.json"
