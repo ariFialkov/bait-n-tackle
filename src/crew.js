@@ -23,6 +23,7 @@
 // world space.
 
 import * as THREE from 'three';
+import { MODEL_EXT } from './config.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { dressCanvas, lookKey } from './crewlook.js';
@@ -31,7 +32,7 @@ const loader = new GLTFLoader();
 const modelCache = new Map();     // id -> Promise<{ scene, classLum }>
 const skinCache = new Map();      // `${id}|${lookKey}` -> CanvasTexture
 
-export function crewModelURL(id) { return `./assets/crew/${id}.glb`; }
+export function crewModelURL(id) { return `./assets/crew/${id}.${MODEL_EXT}`; }
 
 function loadModel(id) {
   if (!modelCache.has(id)) {

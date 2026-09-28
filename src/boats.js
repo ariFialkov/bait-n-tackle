@@ -17,6 +17,7 @@
 // spread. A skin is what the player actually buys and sails.
 
 import { SKINS, hullSkins, skinKey } from './skins.js';
+import { MODEL_EXT } from './config.js';
 import { hullYawRate } from './hullphysics.js';
 
 export const BOATS = [
@@ -229,7 +230,7 @@ export function fleetCatalog() {
   return BOATS.map((hull) => ({ hull, skins: hullSkins(hull) }));
 }
 
-export function boatModelURL(hullId) { return `./assets/boats/${hullId}.glb`; }
+export function boatModelURL(hullId) { return `./assets/boats/${hullId}.${MODEL_EXT}`; }
 export function boatCamoURL(hullId) { return `./assets/boats/${hullId}-camo.png`; }
 export function boatPortraitURL(hullId, skinId) {
   return `./assets/boats/${hullId}-${skinId}.png`;

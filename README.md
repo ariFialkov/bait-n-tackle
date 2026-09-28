@@ -31,7 +31,19 @@ Three.js vendored in. `./build.sh` just assembles a clean, uploadable
 ./build.sh                 # dist/ with the manifest as manifest.json
 ./build.sh --no-manifest   # dist/ with no manifest at all
 ./build.sh --zip           # also writes bait-n-tackle.zip
+./build.sh --models-as data   # the .glb models shipped as .data (see below)
 ```
+
+Some hosts (Rollerz, for one) accept only the file types of a "static
+WebGL build" and refuse `.glb`. The models are plain GLB bytes and the
+loader reads the bytes, not the name, so `--models-as EXT` ships them
+under whatever extension the host allows and tells the game once (the
+`MODEL_EXT` constant in `config.js`). Try `data` first (a Unity build's
+own binary extension); if that is refused too, `js` or `json` will be on
+any such list. The weigh-in clip is carried inside `src/weighin-audio.js`
+as a data URL, fetched only when it is first needed, and with
+`--models-as` the SVG icon is dropped for its PNGs, so the build holds
+nothing but `.html`, `.css`, `.js`, `.json`, `.png` and the models.
 
 The manifest is emitted as `manifest.json` rather than
 `manifest.webmanifest` because many static hosts reject the `.webmanifest`

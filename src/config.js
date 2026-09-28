@@ -1,5 +1,11 @@
 // Central tuning knobs for Bait N' Tackle.
 
+// The extension the hull and crew models are served under. They are GLB
+// files; the loader reads the bytes, not the name, and a host that allows
+// only "web build" file types can have them under another name (see
+// build.sh --models-as).
+export const MODEL_EXT = 'glb';
+
 export const CONFIG = {
   // --- Economy / RTP ---
   // Every bet is ISOLATED: when it resolves, a payout multiplier is drawn

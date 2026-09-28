@@ -301,7 +301,18 @@ const marina = new Marina(player, (key) => { docks.sold(key); return equipBoat(k
 // The other fishermen on the water, and the side bets they call across.
 const npcs = new NpcFleet(scene, lake, player, rtp, hud, fishing, docks, ambientFish);
 // The fishing tournaments the marinas host now and then.
-const tourneys = new Tournaments(scene, player, rtp, hud, fishing, npcs, docks, ambientFish, { audio: document.getElementById('weighin-audio') });
+// The weigh-in clip is fetched only when it is first needed.
+const weighInAudio = {
+  el: null,
+  async play() {
+    if (!this.el) { const m = await import('./weighin-audio.js'); this.el = new Audio(m.WEIGH_IN_AUDIO); }
+    this.el.currentTime = 0;
+    return this.el.play();
+  },
+  set currentTime(v) { if (this.el) this.el.currentTime = v; },
+  get currentTime() { return this.el ? this.el.currentTime : 0; },
+};
+const tourneys = new Tournaments(scene, player, rtp, hud, fishing, npcs, docks, ambientFish, { audio: weighInAudio });
 // Stock turned over while the store is open at that marina: show the new boats.
 docks.onRestock = (dock) => { if (marina.open && marina.dock === dock) marina.render(); };
 
